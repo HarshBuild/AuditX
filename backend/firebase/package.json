@@ -1,0 +1,13 @@
+{
+  "name": "auditx-firebase-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Firebase tools root for AuditX (Admin SDK utilities + firebase-tools)",
+  "type": "module",
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.30.0"
+  }
+}

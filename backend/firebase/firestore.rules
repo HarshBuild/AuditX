@@ -1,0 +1,221 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    /* ------------------------------------------------------------------ */
+    /* Shared helpers — authorization is enforced HERE, never on the UI.  */
+    /* Custom claims (role, status) are minted server-side via the Admin  */
+    /* SDK only. A blocked/pending user is denied everything.             */
+    /*                                                                     */
+    /* IMPORTANT (query compatibility): collection LIST queries in        */
+    /* Firestore are rejected with "Missing or insufficient permissions"  */
+    /* when the read rule calls get() on another document. Every          */
+    /* collection therefore declares BOTH rules:                          */
+    /*   - `allow get`  — single-document reads (may use get())           */
+    /*   - `allow list` — collection/query reads, which must NOT call     */
+    /*     get(). Staff checks in list rules rely on custom claims        */
+    /*     (request.auth.token.role/status), which are query-compatible.  */
+    /*                                                                     */
+    /* Roles (SIH 2026 PS26034):                                           */
+    /*   user        → Consumer                                            */
+    /*   inspector   → Inspector (field scans, violations, evidence)       */
+    /*   admin       → Admin     (platform operator + staff)               */
+    /*   super_admin → Super Admin (owner)                                 */
+    /* ------------------------------------------------------------------ */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    /* Role/status authoritative source: the user's own /users/{uid} document.
+       Reads the doc directly instead of relying on custom claims, which are
+       only minted by Cloud Functions (not deployed in this release). The doc
+       is always present for a signed-in user (created at signup). */
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function userStatus() {
+      return userDoc().data.status;
+    }
+    function userRole() {
+      return userDoc().data.role;
+    }
+    function isActive() {
+      return isSignedIn() && userStatus() == 'active';
+    }
+    /* Staff = anyone who works with inspection data (consumers do not). */
+    function isStaff() {
+      return isActive() && userRole() in ['inspector', 'admin', 'super_admin'];
+    }
+    /* Managers = platform operators who administer users/products/rules. */
+    function isManager() {
+      return isActive() && userRole() in ['admin', 'super_admin'];
+    }
+    function isSuperAdmin() {
+      return isActive() && userRole() == 'super_admin';
+    }
+    function isOwner(uid) {
+      return isActive() && request.auth.uid == uid;
+    }
+    /* Claims-based helpers (query-compatible — no get()). Claims are minted
+       by the Admin SDK: bootstrap mint role/status for sentinel accounts, and
+       setClaims/syncClaims keep them in sync for the rest. */
+    function claimsActive() {
+      return isSignedIn() && request.auth.token.status == 'active';
+    }
+    function claimsStaff() {
+      return claimsActive() && request.auth.token.role in ['inspector', 'admin', 'super_admin'];
+    }
+    function claimsManager() {
+      return claimsActive() && request.auth.token.role in ['admin', 'super_admin'];
+    }
+    function claimsSuperAdmin() {
+      return claimsActive() && request.auth.token.role == 'super_admin';
+    }
+    /* A user may not change their own role unless a super admin flips it
+       (roleFlipAllowed below). On create the doc is new — the role still has
+       to be the consumer default 'user' (enforced in the create rule). */
+    function roleUnchanged() {
+      return resource == null ||
+             !('role' in request.resource.data) ||
+             (resource != null && request.resource.data.role == resource.data.role);
+    }
+    /* Staff/super-admin may flip a NON-super-admin account between
+       'user', 'inspector' and 'admin' (approving / revoking staff access).
+       A query guard is not needed here: updates are per-document. */
+    function roleFlipAllowed() {
+      return isSuperAdmin()
+        && 'role' in request.resource.data
+        && request.resource.data.role in ['user', 'inspector', 'admin']
+        && resource.data.role in ['user', 'inspector', 'admin']
+        && resource.data.role != request.resource.data.role;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* users — own data, manager staff management, role-flip guard         */
+    /* ------------------------------------------------------------------ */
+    match /users/{uid} {
+      /* Own profile MUST be readable even while a freshly minted claim is
+         still pending on the client ID token (claim-lag window). */
+      allow get:    if request.auth != null && (request.auth.uid == uid || isStaff());
+      allow list:   if claimsStaff() || isSignedIn() && request.auth.uid == uid;
+      /* Self-service signup creates an active consumer account only. */
+      allow create: if isSignedIn() && request.auth.uid == uid
+                    && request.resource.data.role == 'user'
+                    && request.resource.data.status in ['active', 'pending'];
+      allow update: if (roleUnchanged() || roleFlipAllowed()) && (
+                      (isOwner(uid)
+                        && !('status' in request.resource.data)
+                        && !('role' in request.resource.data))
+                      || (isManager()
+                        && !('role' in request.resource.data)
+                        && resource.data.role != 'super_admin')
+                    );
+      allow delete: if false;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* scans — owners manage their own; staff monitors/review all          */
+    /* ------------------------------------------------------------------ */
+    match /scans/{scanId} {
+      allow get:    if isActive() && (isStaff() || resource.data.user_id == request.auth.uid);
+      allow list:   if isSignedIn() && (
+                      claimsStaff() || resource.data.user_id == request.auth.uid
+                    );
+      allow create: if isActive() && request.resource.data.user_id == request.auth.uid;
+      allow update: if (isOwner(resource.data.user_id) || isStaff())
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['user_id', 'created_at']);
+      allow delete: if false;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* violations — staff-managed (inspector compliance verification)      */
+    /* ------------------------------------------------------------------ */
+    match /violations/{vid} {
+      allow get:    if isStaff();
+      allow list:   if claimsStaff();
+      allow create: if isStaff();
+      allow update: if isStaff();
+      allow delete: if isStaff();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* reports — owners may read/create their own; staff manage all        */
+    /* ------------------------------------------------------------------ */
+    match /reports/{reportId} {
+      allow create: if isActive() && request.resource.data.user_id == request.auth.uid;
+      allow get:    if isActive() && (isStaff() || resource.data.user_id == request.auth.uid);
+      allow list:   if isSignedIn() && (
+                      claimsStaff() || resource.data.user_id == request.auth.uid
+                    );
+      allow update: if isStaff();
+      allow delete: if false;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* notifications — owner only                                          */
+    /* ------------------------------------------------------------------ */
+    match /notifications/{nid} {
+      allow get:    if isActive() && resource.data.user_id == request.auth.uid;
+      allow list:   if isSignedIn() && resource.data.user_id == request.auth.uid;
+      /* A user may self-notify (e.g. scan created). Staff may notify others
+         (review outcomes, admin approvals). */
+      allow create: if isActive() && (
+                      request.resource.data.user_id == request.auth.uid || isStaff()
+                    );
+      allow update: if isOwner(resource.data.user_id)
+                    && !('user_id' in request.resource.data)
+                    && !('type' in request.resource.data)
+                    && !('title' in request.resource.data)
+                    && !('body' in request.resource.data);
+      allow delete: if false;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* adminRequests/staff requests — self-create; review = manager only   */
+    /* ------------------------------------------------------------------ */
+    match /adminRequests/{rid} {
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow get:    if isManager();
+      allow list:   if claimsManager();
+      allow update: if isManager();
+      allow delete: if false;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* complianceRules — active users read; maintained by managers only    */
+    /* ------------------------------------------------------------------ */
+    match /complianceRules/{ruleId} {
+      allow get:    if isActive();
+      allow list:   if isSignedIn();
+      allow create, update, delete: if isManager();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* products — public-active read; maintained by managers only          */
+    /* Product document id = normalized barcode (index-free lookup).       */
+    /* ------------------------------------------------------------------ */
+    match /products/{productId} {
+      allow get:    if isActive();
+      allow list:   if isSignedIn();
+      allow create, update, delete: if isManager();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* activityLogs — audit trail, staff only (never deletable)            */
+    /* ------------------------------------------------------------------ */
+    match /activityLogs/{logId} {
+      allow get:    if isStaff();
+      allow list:   if claimsStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* inspectionReviews — staff only                                      */
+    /* ------------------------------------------------------------------ */
+    match /inspectionReviews/{reviewId} {
+      allow get:    if isStaff();
+      allow list:   if claimsStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+  }
+}

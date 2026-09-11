@@ -1,0 +1,21 @@
+{
+  "name": "auditx",
+  "version": "3.0.0",
+  "private": true,
+  "description": "AuditX — Legal Metrology (Packaged Commodities) label-compliance scanner. React dashboard + PWA + Firebase functions + deterministic compliance engine.",
+  "scripts": {
+    "dev": "npm --prefix dashboard run dev",
+    "build": "npm --prefix dashboard run build",
+    "build:site": "npm --prefix dashboard run build:site",
+    "build:functions": "npm --prefix backend/firebase/functions run build",
+    "preview:site": "npm --prefix dashboard run preview",
+    "test": "npm --prefix backend/firebase/functions run test:engine",
+    "deploy:rules": "firebase --cwd backend/firebase deploy --only firestore:rules,storage",
+    "deploy:functions": "npm --prefix backend/firebase/functions run build && firebase --cwd backend/firebase deploy --only functions",
+    "deploy": "npm run deploy:rules && npm run deploy:functions",
+    "bootstrap:superadmin": "node backend/firebase/functions/scripts/bootstrap-super-admin.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

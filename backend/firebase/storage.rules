@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    /* Role/status read from the user's own Firestore doc (Cloud Functions
+       are not deployed in this release, so custom claims are unavailable). */
+    function userDoc() {
+      return firestore.get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function isActive() {
+      return isSignedIn() && userDoc().data.status == 'active';
+    }
+    function isStaff() {
+      return isActive() && userDoc().data.role in ['inspector', 'admin', 'super_admin'];
+    }
+
+    /* Product-label photos — the uploader owns their prefix; staff may read */
+    match /scans/{uid}/{allPaths=**} {
+      allow read:   if isActive() && (request.auth.uid == uid || isStaff());
+      allow write:  if isActive() && request.auth.uid == uid
+                    && request.resource.size < 10 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow delete: if false;
+    }
+
+    /* Everything else is denied by default */
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

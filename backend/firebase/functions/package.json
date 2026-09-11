@@ -1,0 +1,22 @@
+{
+  "name": "auditx-functions",
+  "version": "1.0.0",
+  "description": "AuditX Firebase Cloud Functions (AI scan analysis + claim minting)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test:engine": "npm run build && node tests/engine-probe.cjs",
+    "deploy": "npm run build && firebase deploy --only functions",
+    "bootstrap:superadmin": "node scripts/bootstrap-super-admin.mjs"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.3.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
