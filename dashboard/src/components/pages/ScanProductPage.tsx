@@ -13,6 +13,7 @@ import { lookupBarcodeExternal } from '../../lib/services'
 import { SUPPORTED_LANGUAGES } from '../../i18n/report'
 import InspectionReport from '../inspection/InspectionReport'
 import type { ScanRow } from '../../lib/types2'
+import type { PanelPrior } from '../../lib/textract/types'
 
 interface PickedImage {
   file: File
@@ -175,6 +176,7 @@ export default function ScanProductPage() {
         product_name: productName.trim() || undefined,
         manufacturer: manufacturer.trim() || undefined,
         barcode: barcode.trim() || undefined,
+        positions: picked.map((p) => p.position as PanelPrior),
       })
       setResult(scan)
       // Best-effort photo persistence (Storage may not be provisioned yet).
