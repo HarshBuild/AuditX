@@ -69,23 +69,26 @@ service cloud.firestore {
     function claimsSuperAdmin() {
       return claimsActive() && request.auth.token.role == 'super_admin';
     }
-    /* A user may not change their own role unless a super admin flips it
-       (roleFlipAllowed below). On create the doc is new — the role still has
-       to be the consumer default 'user' (enforced in the create rule). */
-    function roleUnchanged() {
-      return resource == null ||
-             !('role' in request.resource.data) ||
-             (resource != null && request.resource.data.role == resource.data.role);
+    /* Every role assignment lives in the /users/{uid} document, which is the
+       authoritative source for get rules (see userDoc). Custom claims keep the
+       query-compatible list rules (claimsStaff/claimsManager) in sync and are
+       minted server-side by scripts/bootstrap-super-admin.mjs, scripts/mint-claims.cjs
+       and routes/claims.ts (/api/set-claims) whenever an admin action changes a
+       user's role/status. */
+    function validRole(role) {
+      return role in ['user', 'inspector', 'admin', 'super_admin'];
     }
-    /* Staff/super-admin may flip a NON-super-admin account between
-       'user', 'inspector' and 'admin' (approving / revoking staff access).
-       A query guard is not needed here: updates are per-document. */
+    /* Managers may flip a NON-super-admin account between any valid role
+       (approving an admin request promotes 'user' → 'super_admin'; rejecting
+       keeps/restores 'user'). Existing super_admin docs stay protected so the
+       served owner cannot be demoted from the panel. Updates are per-document,
+       so no query-compatibility concern here. The caller-must-not-be-target
+       guard lives in the match block (needs the {uid} wildcard). */
     function roleFlipAllowed() {
-      return isSuperAdmin()
+      return isManager()
         && 'role' in request.resource.data
-        && request.resource.data.role in ['user', 'inspector', 'admin']
-        && resource.data.role in ['user', 'inspector', 'admin']
-        && resource.data.role != request.resource.data.role;
+        && validRole(request.resource.data.role)
+        && resource.data.role != 'super_admin';
     }
 
     /* ------------------------------------------------------------------ */
@@ -100,13 +103,21 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.auth.uid == uid
                     && request.resource.data.role == 'user'
                     && request.resource.data.status in ['active', 'pending'];
-      allow update: if (roleUnchanged() || roleFlipAllowed()) && (
+      /* Semantics:
+           - Owners edit their own name/organization only (never role/status).
+           - Managers change STATUS (or name/org) on any other account, incl.
+             previously approved admins (doc role 'super_admin').
+           - Managers use roleFlipAllowed() to approve/reject admin requests
+             (role flips) — never on their own account. */
+      allow update: if isSignedIn() && (
                       (isOwner(uid)
                         && !('status' in request.resource.data)
                         && !('role' in request.resource.data))
                       || (isManager()
-                        && !('role' in request.resource.data)
-                        && resource.data.role != 'super_admin')
+                        && request.auth.uid != uid
+                        && !('role' in request.resource.data))
+                      || (roleFlipAllowed()
+                        && request.auth.uid != uid)
                     );
       allow delete: if false;
     }

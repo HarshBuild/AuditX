@@ -76,10 +76,23 @@ production the signup flow keeps `users/{uid}` in sync automatically.
 ## 8. Roles & claims model
 - Role/status live in `users/{uid}` and in the Auth custom claims mirror.
 - Claims are minted by: the bootstrap script, the `setClaims` callable, and the
-  `syncClaimsOnUserStatus` trigger. Never by the browser.
+  `syncClaimsOnUserStatus` trigger. Never by the browser directly.
+- The deployed dashboard calls the Express API `POST /api/set-claims`
+  (`backend/firebase/functions/routes/claims.ts`) automatically after a super
+  admin approves an admin request or changes an account's status — this keeps
+  custom claims in sync so staff/manager collection LIST queries pass the rules.
+  The route accepts `{ uid, role?, status? }`; omitted fields are carried over
+  from the existing profile (a status-only change never wipes the role).
 - Firestore rules (`firestore.rules`) and Storage rules (`storage.rules`) are the
   only authorization boundary; the UI role checks are fail-fast UX only.
 - Blocked/pending users: claims status check inside rules denies every write.
+- The `users/{uid}` doc is the authoritative role source for per-document rules;
+  custom claims only gate the query-compatible LIST rules.
+- `firestore.rules` note: managers can flip a NON-super-admin account between
+  any valid role (approve: `user` → `super_admin`; reject keeps/restores `user`),
+  and change status on any other account including previously approved admins.
+  An existing `super_admin` doc cannot be demoted or edited by anyone else, and
+  managers cannot change their own role/status.
 
 ### One-time live-mint (no deploy required)
 Staff collection LIST queries are gated by custom claims. If Cloud Functions are
@@ -93,9 +106,9 @@ node scripts/seed-data.cjs        # (optional) fills scans/violations/reports/
                                   # products/complianceRules/activityLogs with live demo data
 ```
 
-Re-run `mint-claims.cjs` after an admin status/role change until the
-`syncClaimsOnUserStatus` Cloud Function is deployed. Users must sign the token
-again (or reload the dashboard) for fresh claims to be picked up.
+Re-run `mint-claims.cjs` if a deploy-time claim sync failed (the dashboard shows
+an explicit error when `/api/set-claims` could not be reached). Users must sign
+the token again (or reload the dashboard) for fresh claims to be picked up.
 
 ## 9. Realtime listeners (Supabase realtime → Firestore)
 - Notifications: `useNotifications` (`onSnapshot`). Scans lists are paginated

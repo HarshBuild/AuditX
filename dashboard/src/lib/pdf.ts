@@ -43,7 +43,15 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
     COMPLIANT: t(lang, 'verdict_compliant'),
     PARTIALLY_COMPLIANT: t(lang, 'verdict_partial'),
     NON_COMPLIANT: t(lang, 'verdict_non_compliant'),
+    REQUIRES_PHYSICAL_INSPECTION: t(lang, 'verdict_review'),
   }
+  const verdictText = verdictMap[scan.verdict] ?? scan.verdict
+  const verdictColor =
+    scan.verdict === 'NON_COMPLIANT'
+      ? '#e11d48'
+      : scan.verdict === 'PARTIALLY_COMPLIANT' || scan.verdict === 'REQUIRES_PHYSICAL_INSPECTION'
+        ? '#d97706'
+        : '#059669'
   const label = `#${scan.id.slice(0, 8)}`
   const row = (k: string, v: string) =>
     `<tr><td style="width:38%;padding:6px 10px;border:1px solid #e2e8f0;font-size:9.5px;color:#475569;background:#f8fafc;font-weight:600;">${k}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-size:10px;color:#0f172a;">${v || t(lang, 'not_available')}</td></tr>`
@@ -96,7 +104,6 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
         (d) => `<tr>
         <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#475569;background:#f8fafc;font-weight:700;">${esc(d.label)}</td>
         <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;">${esc(scan.extractions![d.key])}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:8.5px;color:#475569;text-align:center;">${scan.extractions![d.key] && String(scan.extractions![d.key]).length > 10 ? 'HIGH' : 'MED'}</td>
       </tr>`,
       )
       .join('')
@@ -117,7 +124,7 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
     </div>
     <div style="display:flex;justify-content:space-between;padding:10px 26px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;">
       <span>${esc(t(lang, 'report_generated'))}: ${esc(generatedAt)}</span>
-      <span>Language: ${esc(lang.toUpperCase())} · AuditX</span>
+      <span>Language: ${esc(lang.toUpperCase())}</span>
     </div>
 
     <div style="padding:18px 26px;">
@@ -138,7 +145,7 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
           <div style="font-size:9px;color:#64748b;margin-top:2px;">${esc(t(lang, 'overall_score'))}</div>
         </div>
         <div style="flex:1;border:1px solid #e2e8f0;border-radius:14px;padding:14px;text-align:center;">
-          <div style="font-size:26px;font-weight:800;color:${verdictMap[scan.verdict] === t(lang, 'verdict_non_compliant') ? '#e11d48' : verdictMap[scan.verdict] === t(lang, 'verdict_partial') ? '#d97706' : '#059669'};">${esc(verdictMap[scan.verdict] ?? scan.verdict)}</div>
+          <div style="font-size:26px;font-weight:800;color:${verdictColor};">${esc(verdictText)}</div>
           <div style="font-size:9px;color:#64748b;margin-top:2px;">${esc(t(lang, 'verdict'))}</div>
         </div>
         <div style="flex:1;border:1px solid #e2e8f0;border-radius:14px;padding:14px;text-align:center;">
@@ -150,7 +157,7 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
       ${declarationRows ? `
         <div style="font-size:12px;font-weight:800;color:#0f172a;margin:14px 0 8px;">${esc('Extracted Declarations')}</div>
         <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Declaration</td><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Value</td><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;text-align:center;">Confidence</td></tr>
+          <tr><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Declaration</td><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Value</td></tr>
           ${declarationRows}
         </table>` : ''}
 

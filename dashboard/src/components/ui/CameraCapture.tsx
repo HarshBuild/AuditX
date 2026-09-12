@@ -33,6 +33,24 @@ export default function CameraCapture({
     streamRef.current = null
   }, [])
 
+  /* Attach the acquired stream to the <video> element. The element only
+     mounts once state flips to 'live', so this must happen in an effect —
+     attaching it inside start() runs while the element is still unmounted. */
+  const attachStream = useCallback(() => {
+    const video = videoRef.current
+    if (state !== 'live' || !streamRef.current || !video) return
+    if (video.srcObject !== streamRef.current) {
+      video.srcObject = streamRef.current
+      void video.play().catch(() => {
+        /* not-yet-visible or unmuted playback can reject — harmless */
+      })
+    }
+  }, [state])
+
+  useEffect(() => {
+    attachStream()
+  }, [attachStream])
+
   const start = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setState('error')
@@ -47,10 +65,6 @@ export default function CameraCapture({
         audio: false,
       })
       streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
       setState('live')
     } catch (e) {
       const err = e as DOMException

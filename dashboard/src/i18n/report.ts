@@ -36,6 +36,7 @@ type CopyKey =
   | 'verdict_compliant'
   | 'verdict_partial'
   | 'verdict_non_compliant'
+  | 'verdict_review'
   | 'risk_low'
   | 'risk_medium'
   | 'risk_high'
@@ -86,6 +87,7 @@ const en: Record<CopyKey, string> = {
   verdict_compliant: 'COMPLIANT',
   verdict_partial: 'PARTIALLY COMPLIANT',
   verdict_non_compliant: 'NON-COMPLIANT',
+  verdict_review: 'NEEDS PHYSICAL INSPECTION',
   risk_low: 'Low',
   risk_medium: 'Medium',
   risk_high: 'High',
@@ -137,6 +139,7 @@ const hi: Record<CopyKey, string> = {
   verdict_compliant: 'अनुपालन',
   verdict_partial: 'आंशिक अनुपालन',
   verdict_non_compliant: 'गैर-अनुपालन',
+  verdict_review: 'भौतिक निरीक्षण आवश्यक',
   risk_low: 'कम',
   risk_medium: 'मध्यम',
   risk_high: 'उच्च',
@@ -188,6 +191,7 @@ const ta: Record<CopyKey, string> = {
   verdict_compliant: 'இணக்கமானது',
   verdict_partial: 'பகுதி இணக்கம்',
   verdict_non_compliant: 'இணக்கமற்றது',
+  verdict_review: 'நேரடி ஆய்வு தேவை',
   risk_low: 'குறைவு',
   risk_medium: 'நடுத்தரம்',
   risk_high: 'அதிகம்',
@@ -239,6 +243,7 @@ const te: Record<CopyKey, string> = {
   verdict_compliant: 'కంప్లైయంట్',
   verdict_partial: 'పాక్షికంగా కంప్లైయంట్',
   verdict_non_compliant: 'కంప్లైయంట్ కాదు',
+  verdict_review: 'భౌతిక తనిఖీ అవసరం',
   risk_low: 'తక్కువ',
   risk_medium: 'మధ్యస్థం',
   risk_high: 'ఎక్కువ',
@@ -290,6 +295,7 @@ const bn: Record<CopyKey, string> = {
   verdict_compliant: 'সঙ্গত',
   verdict_partial: 'আংশিক সঙ্গত',
   verdict_non_compliant: 'অসঙ্গত',
+  verdict_review: 'শারীরিক পরিদর্শন প্রয়োজন',
   risk_low: 'কম',
   risk_medium: 'মাঝারি',
   risk_high: 'উচ্চ',
@@ -341,6 +347,7 @@ const mr: Record<CopyKey, string> = {
   verdict_compliant: 'अनुपालन',
   verdict_partial: 'अंशतः अनुपालन',
   verdict_non_compliant: 'अनुपालन नाही',
+  verdict_review: 'प्रत्यक्ष तपासणी आवश्यक',
   risk_low: 'कमी',
   risk_medium: 'मध्यम',
   risk_high: 'उच्च',
@@ -392,6 +399,7 @@ const gu: Record<CopyKey, string> = {
   verdict_compliant: 'અનુપાલન',
   verdict_partial: 'આંશિક અનુપાલન',
   verdict_non_compliant: 'બિન-અનુપાલન',
+  verdict_review: 'ભૌતિક તપાસ જરૂરી',
   risk_low: 'ઓછું',
   risk_medium: 'મધ્યમ',
   risk_high: 'ઊંચું',
@@ -443,6 +451,7 @@ const pa: Record<CopyKey, string> = {
   verdict_compliant: 'ਅਨੁਕੂਲ',
   verdict_partial: 'ਅੰਸ਼ਕ ਤੌਰ ‘ਤੇ ਅਨੁਕੂਲ',
   verdict_non_compliant: 'ਗੈਰ-ਅਨੁਕੂਲ',
+  verdict_review: 'ਸਰੀਰਕ ਨਿਰੀਖਣ ਜ਼ਰੂਰੀ',
   risk_low: 'ਘੱਟ',
   risk_medium: 'ਦਰਮਿਆਨਾ',
   risk_high: 'ਉੱਚ',

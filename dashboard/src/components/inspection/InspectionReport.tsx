@@ -324,7 +324,8 @@ function ViolationCard({
 }) {
   const severity = violationSeverity(r)
   const desc = r.reason || r.issue || (r.detected_value ? `Detected: "${r.detected_value}"` : 'Missing from the label.')
-  const hasImg = typeof onViewEvidence === 'function'
+  const sourceImg = r.evidence?.source_image ?? null
+  const hasImg = typeof onViewEvidence === 'function' && sourceImg != null && sourceImg >= 0
   return (
     <details className="group rounded-xl border border-rose-200 bg-rose-50/50 dark:border-rose-500/20 dark:bg-rose-500/5">
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3">
@@ -362,7 +363,7 @@ function ViolationCard({
         {(r.evidence?.ocr_text || hasImg) && (
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
             {hasImg && (
-              <Button size="sm" variant="outline" icon={<Eye className="h-3.5 w-3.5" />} onClick={() => onViewEvidence(r.evidence?.source_image ?? null)}>
+              <Button size="sm" variant="outline" icon={<Eye className="h-3.5 w-3.5" />} onClick={() => onViewEvidence(sourceImg)}>
                 View evidence
               </Button>
             )}

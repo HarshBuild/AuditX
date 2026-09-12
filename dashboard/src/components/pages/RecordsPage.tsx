@@ -27,11 +27,19 @@ export default function RecordsPage() {
   const [scans, setScans] = useState<ScanRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [query, setQuery] = useState(searchParams.get('q') ?? '')
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [status, setStatus] = useState('all')
   const [selected, setSelected] = useState<ScanRow | null>(null)
   const [violations, setViolations] = useState<ViolationRow[]>([])
   const [reports, setReports] = useState<ReportRow[]>([])
+
+  /* The header's global search writes the query into the URL (?q=). Keep this
+     page's filter in sync so typing in the header (or navigating with a query
+     already set) actually filters the list. Only the URL → local direction is
+     synced; the page's own input never overwrites the URL. */
+  useEffect(() => {
+    setQuery(searchParams.get('q') ?? '')
+  }, [searchParams])
 
   const load = useCallback(async () => {
     if (!user?.id) return

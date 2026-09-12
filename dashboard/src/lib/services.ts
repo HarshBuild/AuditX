@@ -25,6 +25,7 @@ import {
 } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import { COLLECTIONS } from './db'
+import { syncUserClaims } from './claims'
 import type { ManualResult, ScanRow, Severity } from './types2'
 
 /* ------------------------------------------------------------------ */
@@ -301,6 +302,17 @@ export async function approveAdminRequest(targetUserId: string, approve: boolean
     { request_id: reqSnapshot.empty ? '' : reqSnapshot.docs[0].id },
   )
   void logActivity(actor, approve ? 'admin_request.approved' : 'admin_request.rejected', 'user', targetUserId, { status })
+  // The doc write above already succeeded — but custom claims are what Firestore
+  // LIST rules check, and only the Admin SDK (via the AuditX API) can mint them.
+  // Sync them now; if the API is unreachable, surface it so the operator can run
+  // scripts/mint-claims.cjs and staff list queries take effect.
+  try {
+    await syncUserClaims({ uid: targetUserId, role: approve ? 'super_admin' : 'user', status: 'active' })
+  } catch (e) {
+    throw new Error(
+      `Account updated, but staff-access sync failed (${(e as Error).message}). Run scripts/mint-claims.cjs to grant list access, or check the AuditX API.`,
+    )
+  }
 }
 
 export async function setAdminStatus(targetUserId: string, status: 'active' | 'blocked' | 'pending') {
@@ -322,6 +334,15 @@ export async function setAdminStatus(targetUserId: string, status: 'active' | 'b
     {},
   )
   void logActivity(actor, `admin.status.${status}`, 'user', targetUserId, { status })
+  // Keep custom claims in sync so status-gated rules (claimsActive) apply
+  // immediately after refresh. Role is preserved server-side when omitted.
+  try {
+    await syncUserClaims({ uid: targetUserId, status })
+  } catch (e) {
+    throw new Error(
+      `Status updated, but claim sync failed (${(e as Error).message}). Run scripts/mint-claims.cjs to apply the access change.`,
+    )
+  }
 }
 
 export async function setUserStatus(targetUserId: string, status: 'active' | 'blocked') {
@@ -341,6 +362,15 @@ export async function setUserStatus(targetUserId: string, status: 'active' | 'bl
     {},
   )
   void logActivity(actor, `user.status.${status}`, 'user', targetUserId, { status })
+  // Keep custom claims in sync — a blocked claim immediately denies the
+  // account's staff-scoped queries on next token refresh.
+  try {
+    await syncUserClaims({ uid: targetUserId, status })
+  } catch (e) {
+    throw new Error(
+      `Status updated, but claim sync failed (${(e as Error).message}). Run scripts/mint-claims.cjs to apply the access change.`,
+    )
+  }
 }
 
 export async function updateProfileFields(targetUserId: string, patch: { full_name?: string; organization?: string }) {
