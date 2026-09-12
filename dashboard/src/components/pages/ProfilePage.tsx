@@ -86,15 +86,15 @@ export default function ProfilePage() {
           <div className="mt-4 grid grid-cols-3 gap-2">
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-center dark:border-slate-800 dark:bg-slate-950/40">
               <p className="text-xl font-extrabold text-slate-900 dark:text-slate-100">{stats?.count ?? '—'}</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Scans</p>
+              <p className="text-[10px] font-semibold uppercase tracking-normal text-slate-400">Scans</p>
             </div>
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-center dark:border-slate-800 dark:bg-slate-950/40">
               <p className="text-xl font-extrabold text-slate-900 dark:text-slate-100">{stats?.avg ?? '—'}</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Avg score</p>
+              <p className="text-[10px] font-semibold uppercase tracking-normal text-slate-400">Avg score</p>
             </div>
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-center dark:border-slate-800 dark:bg-slate-950/40">
               <p className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400">{stats?.compliant ?? '—'}</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Compliant</p>
+              <p className="text-[10px] font-semibold uppercase tracking-normal text-slate-400">Compliant</p>
             </div>
           </div>
         </AnalyticsCard>

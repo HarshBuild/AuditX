@@ -138,7 +138,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white">
               {initials}
             </div>
-            <div>
+            <div className="min-w-0 break-words">
               <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{profile?.name ?? 'User'}</p>
               <div className="mt-0.5 flex items-center gap-2">
                 <ToneBadge tone={roleTone[profile?.role ?? 'user'] ?? 'brand'}>
@@ -162,7 +162,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
         </AnalyticsCard>
 
         <AnalyticsCard title="Appearance & preferences" subtitle="How AuditX looks and behaves on your device">
-          <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-3">
+          <div role="radiogroup" aria-label="Theme" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {themeOptions.map((opt) => {
               const Icon = opt.icon
               const active = mode === opt.key

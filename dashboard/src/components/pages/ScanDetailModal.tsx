@@ -59,7 +59,7 @@ export default function ScanDetailModal({
   const stats: Array<{ label: string; value: React.ReactNode }> = [
     { label: 'Compliance score', value: <span className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{scan.overall_score}<span className="text-base font-bold text-slate-400">/100</span></span> },
     { label: 'Risk score', value: (
-      <span className="inline-flex items-center gap-2">
+      <span className="inline-flex flex-wrap items-center justify-center gap-1.5">
         <span className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{risk}</span>
         <ToneBadge tone={riskTone(band)}>{band} risk</ToneBadge>
       </span>

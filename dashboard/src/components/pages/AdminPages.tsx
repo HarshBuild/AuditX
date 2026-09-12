@@ -89,7 +89,7 @@ export function ViolationsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/60 px-4 py-3 dark:border-rose-500/20 dark:bg-rose-500/10">
           <AlertTriangle className="h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
           <p className="text-sm text-rose-700 dark:text-rose-300">
@@ -190,7 +190,7 @@ export function ManufacturersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Manufacturers</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{rows.length} manufacturers across your scanned products.</p>

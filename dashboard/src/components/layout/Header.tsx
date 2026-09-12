@@ -113,7 +113,7 @@ export default function Header({
       </button>
 
       <div className="min-w-0">
-        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</p>
+        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{title}</p>
         <p className="hidden text-xs text-slate-400 sm:block">AuditX / {title}</p>
       </div>
 
@@ -150,7 +150,7 @@ export default function Header({
         </button>
 
         <Dropdown
-          width="w-80"
+          width="w-[min(20rem,calc(100vw-2rem))]"
           trigger={
             <button
               aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
@@ -172,7 +172,7 @@ export default function Header({
         </Dropdown>
 
         <Dropdown
-          width="w-64"
+          width="w-[min(16rem,calc(100vw-2rem))]"
           trigger={
             <button className="flex items-center gap-2.5 rounded-lg p-1.5 pr-2 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold text-white">

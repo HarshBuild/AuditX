@@ -116,7 +116,7 @@ export default function CameraCapture({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <p className="flex items-center gap-2 text-sm font-bold text-white">
             <Camera className="h-4 w-4 text-brand-400" /> Capture label photo
@@ -131,7 +131,7 @@ export default function CameraCapture({
           </button>
         </div>
 
-        <div className="relative aspect-[3/4] bg-black">
+        <div className="relative min-h-0 flex-1 bg-black">
           {state === 'starting' && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-brand-400" />
