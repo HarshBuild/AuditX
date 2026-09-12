@@ -1,16 +1,20 @@
 /**
  * AuditX — Production Node.js/Express backend for Render deployment.
  * 
- * Environment variables (required):
- *   PORT                — listen port (default: 8080)
- *   PROJECT_ID          — Firebase project ID
- *   CLIENT_EMAIL        — Firebase client email
- *   PRIVATE_KEY         — Firebase private key (PEM; literal \\n supported)
- *   GEMINI_API_KEY      — Google Gemini API key
- *   GEMINI_VISION_MODEL — Gemini model for label extraction (default gemini-3.6-flash)
- *   GEMINI_TEXT_MODEL   — Gemini model for assistant answers (default gemini-3.6-flash)
- *   FRONTEND_URL        — CORS allowed origin
+ * Environment variables:
+ *   PORT                 — listen port (default: 8080, Render injects its own)
+ *   PROJECT_ID           — Firebase project ID
+ *   CLIENT_EMAIL         — Firebase client email
+ *   PRIVATE_KEY          — Firebase private key (PEM; literal \\n supported)
+ *   GEMINI_API_KEY       — Google Gemini API key
+ *   GEMINI_VISION_MODEL  — Gemini model for label extraction (default gemini-3.6-flash)
+ *   GEMINI_TEXT_MODEL    — Gemini model for assistant answers (default gemini-3.6-flash)
+ *   FRONTEND_URL         — CORS allowed origin(s), comma-separated
+ *   CORS_ORIGINS         — optional; overrides FRONTEND_URL for CORS
  */
+
+// --- Load local .env first (no-op in production; Render injects environment) ---
+import './env.js'
 
 import * as admin from 'firebase-admin'
 import express, { Request, Response, NextFunction } from 'express'
@@ -28,11 +32,26 @@ import claimsRouter from './routes/claims.js'
 // --- Express app ---
 const app: express.Express = express()
 
-// CORS — allow FRONTEND_URL if set
+// CORS — allow FRONTEND_URL / CORS_ORIGINS (comma-separated) plus localhost dev origins
+const allowedOrigins: string[] = (process.env.CORS_ORIGINS ?? process.env.FRONTEND_URL ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ? String(process.env.FRONTEND_URL) : undefined,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+      ) {
+        callback(null, true)
+      } else {
+        callback(null, false)
+      }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   }),
@@ -41,15 +60,6 @@ app.use(
 // Body parsers
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
-
-// --- Centralized error handler ---
-app.use(
-  (err: any, _req: Request, _res: Response, _next: NextFunction): void => {
-    console.error('⚠️ Express error handler:', err?.message ?? err)
-    const status: number = err.status ?? 500
-    _res.status(status).json({ ok: false, error: err?.message ?? 'Internal server error' })
-  },
-)
 
 // --- Firebase ID token authentication middleware ---
 function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
@@ -119,6 +129,15 @@ app.use('/api/set-claims', firebaseAuthMiddleware, claimsRouter)
 app.use((_req: Request, _res: Response): void => {
   _res.status(404).json({ ok: false, error: 'Not found' })
 })
+
+// --- Centralized error handler (last, so it catches body-parser and route errors) ---
+app.use(
+  (err: any, _req: Request, _res: Response, _next: NextFunction): void => {
+    console.error('⚠️ Express error handler:', err?.message ?? err)
+    const status: number = err.status ?? 500
+    _res.status(status).json({ ok: false, error: err?.message ?? 'Internal server error' })
+  },
+)
 
 // --- Start server ---
 const PORT: number = Number(process.env.PORT) || 8080

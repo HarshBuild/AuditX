@@ -710,11 +710,11 @@ function EvidenceChain({ chain }: { chain?: EvidenceLink[] }) {
       <div className="space-y-2">
         {chain.map((e, i) => (
           <div key={i} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200">
                 <span className="font-mono text-brand-600 dark:text-brand-400">{e.rule_id}</span> · {e.requirement}
               </p>
-              <div className="flex items-center gap-1.5">
+              <div className="flex shrink-0 items-center gap-1.5">
                 {e.source_image != null && <span className="text-[10px] text-slate-400">Img {e.source_image + 1}</span>}
                 <RuleStatusBadge status={e.status} />
               </div>
@@ -841,7 +841,7 @@ export default function InspectionReport({ scan, onScanAnother }: { scan: ScanRo
   const verdictLabel = scan.verdict || (score >= 80 ? 'COMPLIANT' : score >= 50 ? 'PARTIALLY COMPLIANT' : 'NON-COMPLIANT')
 
   return (
-    <div className={`space-y-4`}>
+    <div className="animate-slide-in space-y-4">
       {/* Action bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center gap-2">

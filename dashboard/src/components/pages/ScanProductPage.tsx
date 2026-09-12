@@ -5,7 +5,7 @@ import Button from '../ui/Button'
 import CameraCapture from '../ui/CameraCapture'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../lib/auth'
-import { fileToDataUrl, assessImageQuality, runScanAnalysis, attachScanPhotos, MAX_SCAN_IMAGES, type ImageQuality } from '../../lib/scan'
+import { prepareImageFile, runScanAnalysis, attachScanPhotos, MAX_SCAN_IMAGES, type ImageQuality } from '../../lib/scan'
 import { detectBarcodeFromFile } from '../../lib/barcode'
 import { findProductByBarcode } from '../../lib/db'
 import { lookupBarcodeExternal } from '../../lib/services'
@@ -66,14 +66,12 @@ export default function ScanProductPage() {
     const slots = imageFiles.slice(0, space)
     setPhase('reading')
     try {
-      const prepared = await Promise.all(
-        slots.map(async (file, i) => {
-          const dataUrl = await fileToDataUrl(file)
-          const hiResUrl = await fileToDataUrl(file, 4096)
-          const quality = await assessImageQuality(file)
-          return { file, dataUrl, hiResUrl, position: i === 0 ? 'front' : i === 1 ? 'back' : 'side', quality }
-        }),
-      )
+const prepared = await Promise.all(
+          slots.map(async (file, i) => {
+            const { dataUrl, hiResUrl, quality } = await prepareImageFile(file)
+            return { file, dataUrl, hiResUrl, position: i === 0 ? 'front' : i === 1 ? 'back' : 'side', quality }
+          }),
+        )
       const qualityWarnings = prepared.flatMap((p) => p.quality?.warnings ?? [])
       if (qualityWarnings.length > 0) {
         toast('info', 'Image quality warning', qualityWarnings[0])
@@ -277,22 +275,30 @@ export default function ScanProductPage() {
 
               {phase === 'analyzing' && (
                 <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-500/20 dark:bg-brand-500/10">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
-                      {PROGRESS_STEPS.map((s, i) => (
-                        <span key={s} className="flex items-center gap-1.5">
-                          {i < progressStep ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                          ) : i === progressStep && phase === 'analyzing' ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-brand-600" />
-                          ) : (
-                            <span className="h-4 w-4 rounded-full border-2 border-slate-300 dark:border-slate-600" />
-                          )}
-                          <span className={i <= progressStep ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'}>{s}</span>
-                          {i < PROGRESS_STEPS.length - 1 && <span className="mx-0.5 text-slate-300 dark:text-slate-600">→</span>}
-                        </span>
-                      ))}
-                    </div>
+                  <div className="flex items-center justify-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300 sm:hidden">
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand-600" />
+                    <span>{PROGRESS_STEPS[progressStep]}</span>
+                  </div>
+                  <div className="hidden flex-wrap items-center justify-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300 sm:flex">
+                    {PROGRESS_STEPS.map((s, i) => (
+                      <span key={s} className="flex items-center gap-1.5">
+                        {i < progressStep ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                        ) : i === progressStep && phase === 'analyzing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-brand-600" />
+                        ) : (
+                          <span className="h-4 w-4 rounded-full border-2 border-slate-300 dark:border-slate-600" />
+                        )}
+                        <span className={i <= progressStep ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'}>{s}</span>
+                        {i < PROGRESS_STEPS.length - 1 && <span className="mx-0.5 text-slate-300 dark:text-slate-600">→</span>}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/15">
+                    <div
+                      className="h-full rounded-full bg-brand-500 transition-all duration-700 ease-out"
+                      style={{ width: `${((progressStep + 1) / PROGRESS_STEPS.length) * 100}%` }}
+                    />
                   </div>
                   <p className="mt-2 text-xs text-brand-600/80 dark:text-brand-300/70">
                     Powered by Google Gemini AI when the Cloud Function is unavailable — real label transcription + the Legal Metrology rules engine.
@@ -351,7 +357,7 @@ export default function ScanProductPage() {
                           type="button"
                           onClick={() => removeAt(i)}
                           aria-label={`Remove photo ${i + 1}`}
-                          className="absolute right-1.5 top-1.5 rounded-full bg-slate-900/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                          className="absolute right-1.5 top-1.5 rounded-full bg-slate-900/70 p-1 text-white opacity-100 transition-opacity group-hover:opacity-100 sm:opacity-0"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>

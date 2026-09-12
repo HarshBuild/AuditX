@@ -1,0 +1,77 @@
+#################################################################
+# AuditX — Render Blueprint
+# Deploy:  render.yaml is auto-detected when you connect this repo
+#          (https://github.com/HarshBuild/AuditX) on Render.
+# Creates two services:
+#   auditx-api  — Node.js Express API  (Web Service, free plan)
+#   auditx-web  — React dashboard       (Static Site, free plan)
+#
+# After first deploy: copy the auditx-web onrender.com URL into the
+# auditx-api FRONTEND_URL env var and redeploy the API.
+#################################################################
+
+envVarGroups:
+  - name: auditx-firebase-web
+    envVars:
+      - key: VITE_FIREBASE_API_KEY
+        sync: false            # prompt during blueprint setup
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false
+      - key: VITE_FIREBASE_MEASUREMENT_ID
+        sync: false
+      - key: VITE_FIREBASE_FUNCTIONS_REGION
+        value: asia-south1
+
+services:
+  # --------------------------- API ---------------------------
+  - type: web
+    name: auditx-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: backend/firebase/functions
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Firebase Admin service account (Project Settings > Service accounts).
+      # PRIVATE_KEY: paste the PEM with literal \n sequences.
+      - key: PROJECT_ID
+        sync: false
+      - key: CLIENT_EMAIL
+        sync: false
+      - key: PRIVATE_KEY
+        sync: false
+      # Gemini (https://aistudio.google.com/apikey)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_VISION_MODEL
+        value: gemini-3.6-flash
+      - key: GEMINI_TEXT_MODEL
+        value: gemini-3.6-flash
+      # Set to the auditx-web URL after the first deploy, e.g. https://auditx.onrender.com
+      - key: FRONTEND_URL
+        sync: false
+
+  # ------------------------- Dashboard ------------------------
+  - type: web
+    name: auditx-web
+    runtime: static
+    plan: free
+    rootDir: dashboard
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - fromGroup: auditx-firebase-web

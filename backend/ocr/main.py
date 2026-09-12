@@ -112,5 +112,7 @@ async def ocr_endpoint(files: Optional[List[UploadFile]] = None, payload: Option
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8100)
+    port = int(os.getenv("PORT", "8100"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

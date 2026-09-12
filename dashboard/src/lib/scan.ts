@@ -58,52 +58,110 @@ export interface ImageQuality {
   warnings: string[]
 }
 
-/** Assess image quality via canvas analysis — blur and low-light detection. */
-export async function assessImageQuality(file: File): Promise<ImageQuality> {
+/** Blur / low-light assessment from an already-decoded bitmap. */
+function assessQualityBitmap(bitmap: ImageBitmap): ImageQuality {
   const warnings: string[] = []
   let blurry = false
   let dark = false
+  const sampleW = Math.min(128, bitmap.width)
+  const sampleH = Math.min(128, bitmap.height)
+  const canvas = document.createElement('canvas')
+  canvas.width = sampleW
+  canvas.height = sampleH
+  const ctx = canvas.getContext('2d')
+  if (!ctx) { return { blurry, dark, warnings } }
+  ctx.drawImage(bitmap, 0, 0, sampleW, sampleH)
+  const data = ctx.getImageData(0, 0, sampleW, sampleH).data
+
+  let totalLum = 0
+  const n = sampleW * sampleH
+  for (let i = 0; i < data.length; i += 4) {
+    totalLum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+  }
+  const meanLum = totalLum / n
+  if (meanLum < 40) { dark = true; warnings.push('Image is too dark — retake in better lighting.') }
+
+  let edgeSum = 0
+  let edgeCount = 0
+  for (let y = 1; y < sampleH - 1; y++) {
+    for (let x = 1; x < sampleW - 1; x++) {
+      const idx = (y * sampleW + x) * 4
+      const l = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+      const r = 0.299 * data[idx + 4] + 0.587 * data[idx + 5] + 0.114 * data[idx + 6]
+      const b = 0.299 * data[idx + sampleW * 4] + 0.587 * data[idx + sampleW * 4 + 1] + 0.114 * data[idx + sampleW * 4 + 2]
+      const gx = Math.abs(l - r)
+      const gy = Math.abs(l - b)
+      edgeSum += gx + gy
+      edgeCount++
+    }
+  }
+  const edgeEnergy = edgeCount > 0 ? edgeSum / edgeCount : 0
+  if (edgeEnergy < 6) { blurry = true; warnings.push('Image may be blurry — hold the camera steady and retry.') }
+  return { blurry, dark, warnings }
+}
+
+/** Assess image quality via canvas analysis — blur and low-light detection. */
+export async function assessImageQuality(file: File): Promise<ImageQuality> {
   try {
     const bitmap = await createImageBitmap(file)
-    const sampleW = Math.min(128, bitmap.width)
-    const sampleH = Math.min(128, bitmap.height)
-    const canvas = document.createElement('canvas')
-    canvas.width = sampleW
-    canvas.height = sampleH
-    const ctx = canvas.getContext('2d')
-    if (!ctx) { bitmap.close(); return { blurry, dark, warnings } }
-    ctx.drawImage(bitmap, 0, 0, sampleW, sampleH)
-    const data = ctx.getImageData(0, 0, sampleW, sampleH).data
-    bitmap.close()
-
-    let totalLum = 0
-    const n = sampleW * sampleH
-    for (let i = 0; i < data.length; i += 4) {
-      totalLum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+    try {
+      return assessQualityBitmap(bitmap)
+    } finally {
+      bitmap.close()
     }
-    const meanLum = totalLum / n
-    if (meanLum < 40) { dark = true; warnings.push('Image is too dark — retake in better lighting.') }
-
-    let edgeSum = 0
-    let edgeCount = 0
-    for (let y = 1; y < sampleH - 1; y++) {
-      for (let x = 1; x < sampleW - 1; x++) {
-        const idx = (y * sampleW + x) * 4
-        const l = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-        const r = 0.299 * data[idx + 4] + 0.587 * data[idx + 5] + 0.114 * data[idx + 6]
-        const b = 0.299 * data[idx + sampleW * 4] + 0.587 * data[idx + sampleW * 4 + 1] + 0.114 * data[idx + sampleW * 4 + 2]
-        const gx = Math.abs(l - r)
-        const gy = Math.abs(l - b)
-        edgeSum += gx + gy
-        edgeCount++
-      }
-    }
-    const edgeEnergy = edgeCount > 0 ? edgeSum / edgeCount : 0
-    if (edgeEnergy < 6) { blurry = true; warnings.push('Image may be blurry — hold the camera steady and retry.') }
   } catch {
     // Image quality assessment is best-effort; never block the pipeline.
+    return { blurry: false, dark: false, warnings: [] }
   }
-  return { blurry, dark, warnings }
+}
+
+/** Draw a bitmap downscaled to ≤ maxDim and return a compressed JPEG data URL. */
+function drawScaled(bitmap: ImageBitmap, maxDim: number): string {
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+  const w = Math.max(1, Math.round(bitmap.width * scale))
+  const h = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas unavailable in this browser.')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+  ctx.drawImage(bitmap, 0, 0, w, h)
+  return canvas.toDataURL('image/jpeg', 0.8)
+}
+
+export interface PreparedImage {
+  dataUrl: string
+  hiResUrl: string
+  quality: ImageQuality
+}
+
+/**
+ * Prepare a photo for analysis with a SINGLE image decode: createImageBitmap
+ * once, then build the downscaled + hi-res data URLs and the quality estimate
+ * from that one bitmap. This is roughly 3× cheaper than the previous path
+ * (which re-decoded the file three times) — noticeably faster on phone photos.
+ * Falls back to the individual helpers where ImageBitmap is unavailable.
+ */
+export async function prepareImageFile(file: File): Promise<PreparedImage> {
+  try {
+    const bitmap = await createImageBitmap(file)
+    try {
+      return {
+        dataUrl: drawScaled(bitmap, MAX_DIM),
+        hiResUrl: drawScaled(bitmap, MAX_DIM_HI),
+        quality: assessQualityBitmap(bitmap),
+      }
+    } finally {
+      bitmap.close()
+    }
+  } catch {
+    const dataUrl = await fileToDataUrl(file)
+    const hiResUrl = await fileToDataUrl(file, MAX_DIM_HI)
+    const quality = await assessImageQuality(file)
+    return { dataUrl, hiResUrl, quality }
+  }
 }
 
 /** Read a File, downscale it to ≤ maxDim px and return a compressed JPEG data URL. */
