@@ -3,22 +3,112 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="AuditX dashboard — monitor product label compliance records, insights and analytics." />
+    <meta name="description" content="AuditX — Legal Metrology compliance inspection. Scan product labels, verify mandatory declarations and generate professional inspection reports." />
     <meta name="theme-color" content="#1e3a8a" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="AuditX" />
+    <meta name="twitter:card" content="summary" />
     <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/png" sizes="64x64" href="./icons/favicon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
-    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-180.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <title>AuditX Dashboard</title>
+    <title>AuditX — Legal Metrology Compliance Inspection</title>
+    <style>
+      /* App splash shown while the single-file bundle boots; React replaces it. */
+      #root:empty {
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+      }
+      #root:has(.auditx-splash) {
+        min-height: 100dvh;
+      }
+      .auditx-splash {
+        display: grid;
+        place-items: center;
+        min-height: 100dvh;
+        background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+        color: #1e3a8a;
+      }
+      .auditx-splash__inner {
+        text-align: center;
+        padding: 24px;
+      }
+      .auditx-splash__tile {
+        width: 76px;
+        height: 76px;
+        margin: 0 auto 16px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 45%, #1e40af 100%);
+        box-shadow: 0 12px 28px -10px rgb(30 58 138 / 0.55);
+        display: grid;
+        place-items: center;
+      }
+      .auditx-splash__mark {
+        width: 44px;
+        height: 44px;
+      }
+      .auditx-splash__name {
+        font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #172554;
+        margin: 0;
+      }
+      .auditx-splash__name span {
+        color: #2563eb;
+      }
+      .auditx-splash__tagline {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin: 6px 0 18px;
+      }
+      .auditx-splash__spinner {
+        width: 22px;
+        height: 22px;
+        border-radius: 9999px;
+        border: 2px solid #bfdbfe;
+        border-top-color: #2563eb;
+        margin: 0 auto;
+        animation: auditx-spin 0.8s linear infinite;
+      }
+      @keyframes auditx-spin {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .auditx-splash__spinner { animation: none; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="auditx-splash">
+        <div class="auditx-splash__inner">
+          <div class="auditx-splash__tile">
+            <svg class="auditx-splash__mark" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 13 L10 18 L19 7" />
+              <path d="M14 5.5 C16 5 18 5 18.5 6.5 C19 8 17.5 9.5 16 10.5" stroke="#bfdbfe" />
+            </svg>
+          </div>
+          <p class="auditx-splash__name">Audit<span>X</span></p>
+          <p class="auditx-splash__tagline">Legal Metrology Compliance Inspection</p>
+          <div class="auditx-splash__spinner" role="status" aria-label="Loading AuditX">
+            <span class="sr-only">Loading…</span>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

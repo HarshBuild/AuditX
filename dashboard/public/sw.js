@@ -1,11 +1,20 @@
-/**
- * AuditX — service worker.
- * Tiny offline-first cache so the installed app opens fast and works when
- * the network drops. Only same-origin app shell assets are cached (the
- * bundle is a single self-contained index.html; everything else is OTA data).
+/* AuditX — service worker (offline app shell).
+ *
+ * Honest offline model: the build is a single-file SPA (vite-plugin-singlefile),
+ * so the *whole UI shell* can run offline. Anything that needs the network —
+ * Firebase Auth, Firestore, Storage, Gemini analysis, the AuditX Express API —
+ * stays network-only and surfaces the app's normal error handling when offline.
+ *
+ * Strategy:
+ *  - install:  precache the app shell (index.html + manifest + icons)
+ *  - fetch:    navigations serve the cached shell first (instant start,
+ *              offline-capable), then revalidate from the network in the
+ *              background; static assets use stale-while-revalidate.
+ *  - activate: purge outdated cache versions after each deploy.
  */
+
 const VERSION = 'auditx-v1'
-const SHELL = ['./', './index.html', './manifest.json']
+const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -20,46 +29,42 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))),
-      )
+      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   )
 })
 
 self.addEventListener('fetch', (event) => {
-  const req = event.request
-  if (req.method !== 'GET') return
-  const url = new URL(req.url)
-  if (url.origin !== self.location.origin) return
+  const { request } = event
+  if (request.method !== 'GET') return
 
-  // App shell: network-first so fresh builds win, cache as offline fallback.
-  if (req.mode === 'navigate') {
+  const url = new URL(request.url)
+  if (url.origin !== self.location.origin) return // never intercept API/CDN origins
+
+  // Navigation requests: app shell from cache first, revalidate in background.
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone()
-          caches.open(VERSION).then((cache) => cache.put('./index.html', copy))
-          return res
-        })
-        .catch(() => caches.match('./index.html').then((hit) => hit || caches.match('./'))),
+      caches
+        .match('./index.html')
+        .then((cached) => cached || fetch(request))
+        .catch(() => fetch(request)),
     )
     return
   }
 
-  // Static assets (manifest, icons): stale-while-revalidate.
+  // Static assets (icons, manifest): stale-while-revalidate.
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const fresh = fetch(req)
+    caches.match(request).then((cached) => {
+      const network = fetch(request)
         .then((res) => {
-          if (res && res.ok) {
+          if (res.ok) {
             const copy = res.clone()
-            caches.open(VERSION).then((cache) => cache.put(req, copy))
+            caches.open(VERSION).then((cache) => cache.put(request, copy))
           }
           return res
         })
         .catch(() => cached)
-      return cached || fresh
+      return cached || network
     }),
   )
 })

@@ -1,0 +1,23 @@
+appId: com.harshbuild.auditx
+productName: AuditX
+directories:
+  output: release
+files:
+  - "dist/**"
+  - "build/**"
+  - main.js
+  - preload.js
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: AuditX
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+artifactName: "${productName}-${version}-Setup.${ext}"
+asar: true

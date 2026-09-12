@@ -1,0 +1,22 @@
+{
+  "name": "auditx-desktop",
+  "version": "1.0.0",
+  "description": "AuditX — Legal Metrology Compliance Inspection (Windows desktop)",
+  "author": "AuditX",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "app:build": "cd ..\\dashboard && npm run build",
+    "copy": "node scripts/copy-dist.mjs",
+    "start": "electron .",
+    "build": "npm run app:build && npm run copy",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder --win",
+    "dist:portable": "npm run build && electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

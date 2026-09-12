@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, MonitorSmartphone, X } from 'lucide-react'
+import { Download, MonitorSmartphone, ShieldCheck, X } from 'lucide-react'
 import { AuditXMark } from '../brand/AuditXMark'
 import { useToast } from './Toast'
+import { platform } from '../../lib/platform'
 
 /**
  * PWA install prompt — a professional bottom-sheet shown once to eligible,
@@ -10,6 +11,9 @@ import { useToast } from './Toast'
  * event (Chrome/Edge/Android), defers to an appropriate moment (after the
  * user has engaged with the page), and remembers dismissals so the notice
  * never nags returning users. Respects `prefers-reduced-motion`.
+ *
+ * The prompt never appears inside the Windows desktop shell (it is installed
+ * separately) — the browser simply won't fire the event, and we double-check.
  */
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -31,6 +35,9 @@ export default function PwaInstallPrompt() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+
+    // Never in the Windows desktop shell — it has its own installer.
+    if (platform().isDesktop) return
 
     // Browser must advertise installability (Chrome/Edge/Android).
     const hasSupport = 'onbeforeinstallprompt' in window
@@ -174,13 +181,13 @@ export default function PwaInstallPrompt() {
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
                 <Download className="h-4 w-4" />
               </span>
-              Works offline — photos and scans are never blocked by a slow connection
+              Opens instantly from your home screen, like a native app
             </li>
             <li className="flex items-center gap-3">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                <X className="h-4 w-4" />
+                <ShieldCheck className="h-4 w-4" />
               </span>
-              No account changes — your inspections stay in the same secure workspace
+              Same secure account and records — one AuditX workspace
             </li>
           </ul>
 
