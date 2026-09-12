@@ -1,0 +1,22 @@
+# AuditX OCR microservice — Python sidecar (FastAPI + PaddleOCR)
+# Install with a Python 3.11 interpreter (PaddlePaddle does not support 3.14 yet):
+#
+#   C:\Users\Dell\AppData\Roaming\uv\python\cpython-3.11.16-windows-x86_64-none\python.exe -m venv .venv
+#   .venv\Scripts\activate
+#   pip install -r requirements.txt
+#   uvicorn main:app --host 0.0.0.0 --port 8100
+#
+# PaddlePaddle CPU wheels come from the official Paddle index (network required once).
+
+# PaddlePaddle 3.x's new PIR/oneDNN executor crashes on some CPUs
+# (ConvertPirAttribute2RuntimeAttribute) — the 2.6.x + OCR 2.7 stack is reliable.
+paddlepaddle==2.6.2
+paddleocr==2.7.0.3
+PyMuPDF==1.24.10
+numpy==1.26.4
+opencv-contrib-python>=4.9.0.80
+Pillow>=10.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+rapidfuzz>=3.6.0

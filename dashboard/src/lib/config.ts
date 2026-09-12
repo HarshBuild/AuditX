@@ -50,7 +50,18 @@ export const CONFIG = {
   ),
   /** Region where the scan/analytics Cloud Functions are deployed */
   FIREBASE_FUNCTIONS_REGION: (import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION as string | undefined) || 'asia-south1',
-  /** Groq API key for real-time assistant answers (VITE_GROQ_API_KEY). */
-  GROQ_API_KEY: (import.meta.env.VITE_GROQ_API_KEY as string | undefined) || '',
-  GROQ_TEXT_MODEL: 'llama-3.3-70b-versatile',
+  /**
+   * Google Gemini API key for real-time AI analysis + assistant answers.
+   *
+   * SECURITY: never hardcode the key here. It is resolved at runtime from
+   * VITE_GEMINI_API_KEY (build/deploy env) or localStorage `mc_gemini_api_key`
+   * (operator-supplied after deployment) so the published bundle stays clean.
+   */
+  GEMINI_API_KEY:
+    (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ||
+    localStorage.getItem('mc_gemini_api_key') ||
+    '',
+  /** Gemini models (tuned for fast, multimodal label extraction and Q&A). */
+  GEMINI_MODEL: (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-3.6-flash',
+  GEMINI_VISION_MODEL: (import.meta.env.VITE_GEMINI_VISION_MODEL as string | undefined) || 'gemini-3.6-flash',
 }

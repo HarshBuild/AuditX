@@ -16,5 +16,11 @@
     "declaration": true,
     "declarationMap": true
   },
-  "include": ["index.ts", "compliance/**/*.ts"]
+  "include": [
+    "compliance/**/*.ts",
+    "routes/**/*.ts",
+    "lib/**/*.ts",
+    "firebase-admin-init.ts",
+    "server.ts"
+  ]
 }

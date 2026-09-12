@@ -1,6 +1,9 @@
 /* PART 2 domain types (mirror the Supabase schema fields) */
 
 export type ScanStatus = 'pending_review' | 'analyzed' | 'flagged' | 'manual_review' | 'resolved'
+
+/** Which processing engine actually produced this scan (detected at runtime). */
+export type ScanEngine = 'cloud_function' | 'gemini' | 'local' | 'queued' | 'unknown'
 export type RiskBand = 'Low' | 'Medium' | 'High' | 'Critical'
 export type Severity = 'low' | 'medium' | 'high' | 'critical'
 export type ViolationStatus =
@@ -104,7 +107,7 @@ export interface OcrExtract {
 
 /**
  * Structured declarations the AI extracts from a package label.
- * Mirrors the extractions object returned by the Groq `scanAnalysis` function.
+ * Mirrors the extractions object returned by the Gemini `scanAnalysis` function.
  */
 export interface ExtractedDeclarations {
   mrp?: string
@@ -218,6 +221,8 @@ export interface ScanRow {
   longitude: number | null
   location_name: string
   language: string
+  /** Processing engine that produced this scan — set by the pipeline, never hardcoded. */
+  engine?: ScanEngine
 }
 
 export interface ViolationRow {

@@ -129,7 +129,7 @@ export interface SanitizedExtractions {
   ex: Extractions
 }
 
-/** Extract extractions from raw Groq JSON — handles both old and new formats. */
+/** Extract extractions from raw AI JSON — handles both old and new formats. */
 export function sanitizeExtractions(value: unknown): SanitizedExtractions {
   const fields: Record<string, NormField> = {}
   const ex: Extractions = {

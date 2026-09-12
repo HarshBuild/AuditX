@@ -5,7 +5,7 @@
  * IMPORTANT: a valid-looking value is still NOT a legal fact — the engine
  * controls what each validator result means (PASS / WARNING / NOT_VERIFIABLE).
  */
-import { UNIT_DICTIONARY, VAGUE_QUANTITY_WORDS, WEIGHT_UNITS, VOLUME_UNITS, LENGTH_UNITS, NUMBER_UNITS } from './data'
+import { UNIT_DICTIONARY, VAGUE_QUANTITY_WORDS, WEIGHT_UNITS, VOLUME_UNITS, LENGTH_UNITS, NUMBER_UNITS } from './data.js'
 
 export interface Validation {
   ok: boolean

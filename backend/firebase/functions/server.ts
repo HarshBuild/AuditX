@@ -1,0 +1,133 @@
+/**
+ * AuditX — Production Node.js/Express backend for Render deployment.
+ * 
+ * Environment variables (required):
+ *   PORT                — listen port (default: 8080)
+ *   PROJECT_ID          — Firebase project ID
+ *   CLIENT_EMAIL        — Firebase client email
+ *   PRIVATE_KEY         — Firebase private key (PEM; literal \\n supported)
+ *   GEMINI_API_KEY      — Google Gemini API key
+ *   GEMINI_VISION_MODEL — Gemini model for label extraction (default gemini-3.6-flash)
+ *   GEMINI_TEXT_MODEL   — Gemini model for assistant answers (default gemini-3.6-flash)
+ *   FRONTEND_URL        — CORS allowed origin
+ */
+
+import * as admin from 'firebase-admin'
+import express, { Request, Response, NextFunction } from 'express'
+import cors from 'cors'
+
+// --- Firebase Admin initialization from env vars ---
+import './firebase-admin-init.js'
+
+// --- API routers ---
+import scanRouter from './routes/scan.js'
+import assistantRouter from './routes/assistant.js'
+import barcodeRouter from './routes/barcode.js'
+import claimsRouter from './routes/claims.js'
+
+// --- Express app ---
+const app: express.Express = express()
+
+// CORS — allow FRONTEND_URL if set
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL ? String(process.env.FRONTEND_URL) : undefined,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  }),
+)
+
+// Body parsers
+app.use(express.json({ limit: '50mb' }))
+app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+
+// --- Centralized error handler ---
+app.use(
+  (err: any, _req: Request, _res: Response, _next: NextFunction): void => {
+    console.error('⚠️ Express error handler:', err?.message ?? err)
+    const status: number = err.status ?? 500
+    _res.status(status).json({ ok: false, error: err?.message ?? 'Internal server error' })
+  },
+)
+
+// --- Firebase ID token authentication middleware ---
+function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+  void (async () => {
+    try {
+      const authHeader: string = req.headers.authorization ?? ''
+      if (!authHeader.startsWith('Bearer ')) {
+        res.status(401).json({ ok: false, error: 'Unauthorized — missing Bearer token.' })
+        return
+      }
+      const idToken: string = authHeader.slice('Bearer '.length).trim()
+      const decoded = await admin.auth().verifyIdToken(idToken)
+      const profileSnap = await admin.firestore().doc(`users/${decoded.uid}`).get()
+      if (!profileSnap.exists) {
+        res.status(403).json({ ok: false, error: 'Account profile not found.' })
+        return
+      }
+      const data = profileSnap.data()
+      const role: string = String(data?.role ?? '')
+      const status: string = String(data?.status ?? '')
+      const validRoles: string[] = ['user', 'inspector', 'admin', 'super_admin']
+      if (!validRoles.includes(role)) {
+        res.status(403).json({ ok: false, error: 'Invalid account role.' })
+        return
+      }
+      if (status === 'pending') {
+        res.status(403).json({ ok: false, error: 'Your staff access request is awaiting approval.' })
+        return
+      }
+      if (status !== 'active') {
+        res.status(403).json({ ok: false, error: 'Your account has been restricted. Contact the system administrator.' })
+        return
+      }
+      ;(req as any).uid = decoded.uid
+      ;(req as any).role = role
+      ;(req as any).status = status
+      next()
+    } catch (e: any) {
+      if (e.code === 'auth/id-token-expired' || e.code === 'auth/user-token-expired') {
+        res.status(401).json({ ok: false, error: 'Unauthorized — ID token has expired.' })
+        return
+      }
+      if (e.code === 'auth/invalid-id-token') {
+        res.status(401).json({ ok: false, error: 'Unauthorized — invalid ID token.' })
+        return
+      }
+      console.error('⚠️ Firebase auth middleware error:', e?.message ?? e)
+      res.status(500).json({ ok: false, error: 'Authentication service error.' })
+    }
+  })().catch((e) => {
+    console.error('⚠️ Auth middleware unexpected error:', e)
+  })
+}
+
+// --- Health check ---
+app.get('/health', (_req: Request, res: Response): void => {
+  res.json({ ok: true, service: 'AuditX backend' })
+})
+
+// --- API route mounts (all require Firebase ID token auth) ---
+app.use('/api/scan', firebaseAuthMiddleware, scanRouter)
+app.use('/api/assistant', firebaseAuthMiddleware, assistantRouter)
+app.use('/api/barcode', firebaseAuthMiddleware, barcodeRouter)
+app.use('/api/set-claims', firebaseAuthMiddleware, claimsRouter)
+
+// --- 404 ---
+app.use((_req: Request, _res: Response): void => {
+  _res.status(404).json({ ok: false, error: 'Not found' })
+})
+
+// --- Start server ---
+const PORT: number = Number(process.env.PORT) || 8080
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 AuditX backend listening on http://0.0.0.0:${PORT}`)
+})
+
+// --- Graceful shutdown ---
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received — shutting down')
+  process.exit(0)
+})

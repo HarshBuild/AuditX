@@ -3,7 +3,6 @@ import { AlertTriangle, Camera, ImagePlus, Loader2, RefreshCw, ScanLine, Sparkle
 import AnalyticsCard from '../dashboard/AnalyticsCard'
 import Button from '../ui/Button'
 import CameraCapture from '../ui/CameraCapture'
-import { ToneBadge } from '../ui/Badge'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../lib/auth'
 import { fileToDataUrl, assessImageQuality, runScanAnalysis, attachScanPhotos, MAX_SCAN_IMAGES, type ImageQuality } from '../../lib/scan'
@@ -189,6 +188,8 @@ export default function ScanProductPage() {
       })
       if (scan.pending) {
         toast('info', 'Analysis queued', 'AI function is not deployed yet — scan saved for staff review.')
+      } else if (scan.scan.language_note?.includes('Gemini')) {
+        toast('success', 'Analyzed with AI', `Google Gemini read the label and scored "${scan.scan.product_name}" ${scan.scan.overall_score}/100.`)
       } else if (scan.scan.language_note?.includes('on-device')) {
         toast('success', 'Analyzed locally', `Free OCR engine scored "${scan.scan.product_name}" ${scan.scan.overall_score}/100 — no server needed.`)
       } else {
@@ -294,7 +295,7 @@ export default function ScanProductPage() {
                     </div>
                   </div>
                   <p className="mt-2 text-xs text-brand-600/80 dark:text-brand-300/70">
-                    This runs fully on-device when the Cloud Function is unavailable — no data ever leaves your browser.
+                    Powered by Google Gemini AI when the Cloud Function is unavailable — real label transcription + the Legal Metrology rules engine.
                   </p>
                 </div>
               )}
@@ -455,7 +456,7 @@ export default function ScanProductPage() {
                   disabled={busy || picked.length === 0}
                   className="w-full"
                 >
-                  {busy ? (phase === 'analyzing' ? PROGRESS_STEPS[progressStep] : 'Working…') : 'Analyze label (free on-device OCR)'}
+                  {busy ? (phase === 'analyzing' ? PROGRESS_STEPS[progressStep] : 'Working…') : 'Analyze label with AI'}
                 </Button>
                 {picked.length > 0 && (
                   <Button variant="outline" onClick={reset} disabled={busy} className="w-full">
@@ -482,25 +483,12 @@ export default function ScanProductPage() {
                   Analysis is queued — an inspector will review this label shortly.
                 </p>
                 <p className="text-sm text-slate-400">
-                  The AI Cloud Function is not deployed yet. Deploy functions and set the Groq key to enable instant results.
+                  The AI Cloud Function is not deployed yet. Instant results use Google Gemini — scans still land here if offline.
                 </p>
               </div>
             </AnalyticsCard>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-100">Inspection result</h2>
-                  <ToneBadge tone={result.scan.overall_score >= 80 ? 'emerald' : result.scan.overall_score >= 50 ? 'amber' : 'rose'}>
-                    {result.scan.verdict}
-                  </ToneBadge>
-                </div>
-                <Button variant="outline" onClick={reset} icon={<ScanLine className="h-4 w-4" />}>
-                  New scan
-                </Button>
-              </div>
-              <InspectionReport scan={result.scan} />
-            </>
+            <InspectionReport scan={result.scan} onScanAnother={reset} />
           )}
         </div>
       )}

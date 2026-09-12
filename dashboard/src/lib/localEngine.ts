@@ -315,6 +315,7 @@ export async function runLocalScan(input: LocalScanInput): Promise<ScanRow> {
     longitude: null,
     location_name: '',
     language: lang,
+    engine: 'local' as ScanRow['engine'],
   }
   saveLocalScan(localScan)
   return localScan

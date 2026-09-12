@@ -6,8 +6,8 @@
  * If a value is not visible/legible the model MUST return null + mark the
  * key "uncertain" instead of guessing.
  */
-import { ALLOWED_CATEGORIES } from './data'
-import { EXTRACTION_KEYS, FOOD_CATEGORIES, type Extractions, type ExtractionStatus } from './types'
+import { ALLOWED_CATEGORIES } from './data.js'
+import { EXTRACTION_KEYS, FOOD_CATEGORIES, type Extractions, type ExtractionStatus } from './types.js'
 
 export const SUPPORTED_LANGS: Record<string, string> = {
   en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', mr: 'Marathi',
@@ -167,7 +167,7 @@ export interface SanitizedExtractions {
   ex: Extractions
 }
 
-/** Extract extractions from raw Groq JSON — handles both old and new formats. */
+/** Extract extractions from raw AI JSON — handles both old and new formats. */
 export function sanitizeExtractions(value: unknown): SanitizedExtractions {
   const fields: Record<string, NormField> = {}
   const ex: Extractions = {

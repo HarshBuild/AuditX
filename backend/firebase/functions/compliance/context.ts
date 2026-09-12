@@ -10,9 +10,9 @@ import {
   AD_KEYWORDS, DIMENSION_COMMODITIES, IMPORT_KEYWORDS, WHOLESALE_KEYWORDS, EXPORT_KEYWORDS,
   EXEMPTION_KEYWORDS, NON_FOOD_CATEGORY_HINTS, PRICE_LINKED_COMMODITIES, COUNT_COMMODITIES,
   SHEET_COMMODITIES,
-} from './data'
-import type { EngineInputs } from './types'
-import { FOOD_CATEGORIES } from './types'
+} from './data.js'
+import type { EngineInputs } from './types.js'
+import { FOOD_CATEGORIES } from './types.js'
 
 export type PackageType = 'retail' | 'wholesale' | 'export' | 'advertisement' | 'unknown'
 export type OriginType = 'indian' | 'imported' | 'unknown'

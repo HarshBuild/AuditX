@@ -6,14 +6,14 @@
  */
 import {
   STANDARD_PACKAGE_SIZES, VAGUE_QUANTITY_WORDS,
-} from './data'
-import { detectContext, type PackageContext } from './context'
+} from './data.js'
+import { detectContext, type PackageContext } from './context.js'
 import {
   validateMRP, validateQuantity, validateUnitAgainstSoldBy, validateDate, validateContact,
   validateFssai, validateVegNonVeg, validateAddressCompleteness, validateCounted, validateSheets,
   detectUnit,
-} from './validators'
-import type { EngineInputs, Extractions, RuleCheck, RuleEvidence, RuleStatus, VerificationType } from './types'
+} from './validators.js'
+import type { EngineInputs, Extractions, RuleCheck, RuleEvidence, RuleStatus, VerificationType } from './types.js'
 
 export interface EvaluatedRule {
   id: string
@@ -219,14 +219,22 @@ function runRule6(ctx: PackageContext, d: EngineInputs): RuleCheck[] {
   }
 
   /* 6(2) Declarations in Hindi OR English (Rule 6(2)). Extra languages optional. */
-  const meaningful = d.languages.filter((l) => l !== 'und')
-  const hasHindiOrEnglish = meaningful.some((l) => l === 'en' || l === 'hi')
+  const LANG_CODES: Record<string, string> = {
+    eng: 'en', english: 'en', enUs: 'en',
+    hin: 'hi', hindi: 'hi',
+    tam: 'ta', tel: 'te', ben: 'bn', mar: 'mr', guj: 'gu', pan: 'pa', mal: 'ml', kan: 'kn',
+  }
+  const meaningful = d.languages
+    .map((l) => LANG_CODES[l.toLowerCase()] ?? l.toLowerCase().split(/[-_]/)[0])
+    .filter((l) => l && l !== 'und' && l !== 'unknown')
+  const uniqueLangs = Array.from(new Set(meaningful))
+  const hasHindiOrEnglish = uniqueLangs.some((l) => l === 'en' || l === 'hi')
   if (hasHindiOrEnglish) {
     out.push(rc('Rule 6(2)', 'Language of declarations (Hindi/English)', 'PASS',
-      { detected_value: meaningful.join(', '), reason: 'Mandatory declarations are printed in Hindi or English as required.', weight: 1 }))
-  } else if (meaningful.length > 0) {
+      { detected_value: uniqueLangs.join(', '), reason: 'Mandatory declarations are printed in Hindi or English as required.', weight: 1 }))
+  } else if (uniqueLangs.length > 0) {
     out.push(rc('Rule 6(2)', 'Language of declarations (Hindi/English)', 'WARNING',
-      { detected_value: meaningful.join(', '), reason: `Detected languages (${meaningful.join(', ')}) are neither Hindi nor English — Rule 6(2) requires mandatory declarations in Hindi or English.`, weight: 1 }))
+      { detected_value: uniqueLangs.join(', '), reason: `Detected languages (${uniqueLangs.join(', ')}) are neither Hindi nor English — Rule 6(2) requires mandatory declarations in Hindi or English.`, weight: 1 }))
   } else {
     out.push(rc('Rule 6(2)', 'Language of declarations (Hindi/English)', 'NOT_VERIFIABLE',
       { reason: 'Label languages could not be determined from the photos.', verification_type: 'NOT_VERIFIABLE', weight: 1 }))

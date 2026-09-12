@@ -1,20 +1,20 @@
 /**
  * Deterministic Legal Metrology compliance engine.
  *
- * Pipeline: scanner -> OCR/Groq (extraction.ts) -> structured data ->
+ * Pipeline: scanner -> OCR/Gemini (extraction.ts) -> structured data ->
  * context detection (context.ts) -> rule applicability (rules.ts) ->
  * per-rule evaluation -> verdict + evidence (result.ts).
  *
  * The LLM is never the decision-maker here.
  */
-import { detectContext as detect, type PackageContext } from './context'
-import { runAllRules, RULES } from './rules'
-import { computeCompliance, buildAssistant } from './result'
-import type { ComplianceSummary, EngineInputs, RuleCheck } from './types'
+import { detectContext as detect, type PackageContext } from './context.js'
+import { runAllRules, RULES } from './rules.js'
+import { computeCompliance, buildAssistant } from './result.js'
+import type { ComplianceSummary, EngineInputs, RuleCheck } from './types.js'
 
-export * from './types'
+export * from './types.js'
 export { RULES }
-export { detectContext } from './context'
+export { detectContext } from './context.js'
 
 export interface ComplianceOutcome {
   context: PackageContext

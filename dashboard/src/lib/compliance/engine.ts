@@ -1,7 +1,7 @@
 /**
  * Deterministic Legal Metrology compliance engine.
  *
- * Pipeline: scanner -> OCR/Groq (extraction.ts) -> structured data ->
+ * Pipeline: scanner -> OCR/Gemini (extraction.ts) -> structured data ->
  * context detection (context.ts) -> rule applicability (rules.ts) ->
  * per-rule evaluation -> verdict + evidence (result.ts).
  *

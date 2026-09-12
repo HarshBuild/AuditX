@@ -7,7 +7,7 @@
  *   3. any WARNING / NOT_DETECTED on a critical rule -> PARTIALLY_COMPLIANT
  *   4. otherwise                                    -> COMPLIANT
  */
-import type { ComplianceSummary, FinalVerdict, RuleCheck, RuleStatus, StatusCounts } from './types'
+import type { ComplianceSummary, FinalVerdict, RuleCheck, RuleStatus, StatusCounts } from './types.js'
 
 const isApplicable = (s: RuleStatus) =>
   s === 'PASS' || s === 'FAIL' || s === 'WARNING' || s === 'NOT_DETECTED'

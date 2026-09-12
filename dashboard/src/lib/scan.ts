@@ -1,8 +1,11 @@
 /*
  * AuditX v3.0 — AI inspection pipeline client.
  *
- * Wraps the server-side `scanAnalysis` Cloud Function (Groq vision) which
- * combines several label photos (front / back / sides) into ONE inspection:
+ * Wraps the AI inspection pipeline, which combines several label photos
+ * (front / back / sides) into ONE inspection:
+ *   - server-side `scanAnalysis` Cloud Function (Gemini vision)
+ *   - Google Gemini AI fallback (vision extraction + compliance rules)
+ *   - on-device free OCR (Tesseract) fallback
  *   - multi-language OCR
  *   - multi-label detection
  *   - 10-rule Rule 6 checklist
@@ -20,6 +23,7 @@ import { uploadScanImages } from './storage'
 import { createScan } from './services'
 import { saveLocalScan } from './localStore'
 import { runLocalScan } from './localEngine'
+import { runGeminiScan } from './geminiScan'
 import { COLLECTIONS } from './db'
 import type {
   AIIinsight,
@@ -31,6 +35,7 @@ import type {
   OcrBlock,
   OcrExtract,
   RuleCheck,
+  ScanEngine,
   ScanRow,
 } from './types2'
 import type { PanelPrior } from './textract/types'
@@ -199,13 +204,14 @@ function insightsFrom(rules: RuleCheck[]): AIIinsight[] {
     .map((r) => ({ rule_id: r.rule_id ?? '', field: r.field ?? '', status: r.status, issue: r.issue ?? '' }))
 }
 
-function buildScanRow(scanId: string, out: ScanAnalysisOutput, lang: string, meta: ScanAnalysisMeta): ScanRow {
+function buildScanRow(scanId: string, out: ScanAnalysisOutput, lang: string, meta: ScanAnalysisMeta, engine: ScanEngine = 'cloud_function'): ScanRow {
   const score = Math.max(0, Math.min(100, out.result.overall_score))
   const uid = auth.currentUser?.uid ?? null
   return {
     id: scanId,
     created_at: new Date().toISOString(),
     user_id: uid,
+    engine,
     product_name: out.result.product_name ?? meta.product_name ?? 'Unknown',
     brand: out.result.brand ?? '',
     manufacturer: meta.manufacturer ?? out.result.brand ?? '',
@@ -262,9 +268,10 @@ export async function attachScanPhotos(scanId: string, files: File[]): Promise<s
 /**
  * Run the AI inspection over label photos.
  *
- * Priority: server `scanAnalysis` Cloud Function → on-device free OCR engine →
- * staff-review queue. Persistence is best-effort everywhere, so a result row
- * is always returned and the user never hits a hard analysis error.
+ * Priority: server `scanAnalysis` Cloud Function → Google Gemini AI →
+ * on-device free OCR engine → staff-review queue. Persistence is
+ * best-effort everywhere, so a result row is always returned and the user
+ * never hits a hard analysis error.
  */
 export async function runScanAnalysis(input: ScanAnalysisInput): Promise<{ scan: ScanRow; pending: boolean }> {
   const fn = httpsCallable<ScanAnalysisRequest, ScanAnalysisOutput>(functions, 'scanAnalysis')
@@ -281,8 +288,21 @@ export async function runScanAnalysis(input: ScanAnalysisInput): Promise<{ scan:
     if (!out?.ok || !out.scan_id) throw new Error('Empty AI response from server.')
     return { scan: buildScanRow(out.scan_id, out, input.lang ?? 'en', input), pending: false }
   } catch (_fnErr) {
-    // Attempt an instant on-device analysis before falling back to manual review.
+    // 1) Google Gemini AI analysis (high-accuracy vision extraction + rules).
     try {
+      const geminiScan = await runGeminiScan({
+        images: input.images,
+        hiResImages: input.hiResImages,
+        lang: input.lang ?? 'en',
+        product_name: input.product_name,
+        manufacturer: input.manufacturer,
+        barcode: input.barcode,
+        positions: input.positions,
+      })
+      return { scan: geminiScan, pending: false }
+    } catch (_geminiErr) {
+      // 2) Free on-device analysis (Tesseract) before falling back to manual review.
+      try {
     const localScan = await runLocalScan({
       images: input.images,
       hiResImages: input.hiResImages,
@@ -346,9 +366,11 @@ export async function runScanAnalysis(input: ScanAnalysisInput): Promise<{ scan:
         longitude: null,
         location_name: '',
         language: input.lang ?? 'en',
+        engine: 'queued',
       }
       saveLocalScan(pending)
       return { scan: pending, pending: true }
     }
+  }
   }
 }
