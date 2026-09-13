@@ -1439,12 +1439,17 @@ export default function InspectionReport({
       </div>
 
       {/* Compliance score + overall status */}
-      <ScoreHero scan={scan} counts={counts} sig={sig} />
+      <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+        <ScoreHero scan={scan} counts={counts} sig={sig} />
+      </div>
 
       {/* Qualitative result status + key findings + recommendations */}
-      <ResultSummary sig={sig} onTryAgain={onRegenerate} />
+      <div className="animate-fade-up" style={{ animationDelay: '120ms' }}>
+        <ResultSummary sig={sig} onTryAgain={onRegenerate} />
+      </div>
 
       {/* Product information */}
+      <div className="animate-fade-up space-y-4" style={{ animationDelay: '180ms' }}>
       <AnalyticsCard title="Detected Information" subtitle="Values read off the package label">
         <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/[0.08]">
           <div className="hidden items-center gap-3 bg-slate-50/80 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:grid sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)_130px_120px_48px] dark:bg-white/[0.04] dark:text-slate-500">
@@ -1785,6 +1790,7 @@ export default function InspectionReport({
           <Bot className="h-3.5 w-3.5 text-brand-500" /> Analysis
         </span>
         <span className="font-medium">{analysis}</span>
+      </div>
       </div>
 
       {/* Evidence modal */}
