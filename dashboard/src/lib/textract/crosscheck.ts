@@ -23,11 +23,12 @@ export function isPlausibleBarcode(digits: string): boolean {
 /** All barcode-length digit runs found in an OCR text (deduplicated). */
 export function findBarcodesInText(text: string): string[] {
   if (!text) return []
+  // Grab WHOLE contiguous digit runs (\d{8,14}) then keep only run lengths that
+  // are a valid GTIN/GS1 length. Never \d{8}|\d{13} alternation: that matches the
+  // first 8 digits OF a 13-digit GTIN and fabricates a false conflict.
   const out = new Set<string>()
-  const regex = /\d{8}|\d{12}|\d{13}|\d{14}/g
-  let m: RegExpExecArray | null
-  while ((m = regex.exec(text)) !== null) {
-    out.add(m[0])
+  for (const run of text.match(/\d{8,14}/g) ?? []) {
+    if (isPlausibleBarcode(run)) out.add(run)
   }
   return [...out]
 }
