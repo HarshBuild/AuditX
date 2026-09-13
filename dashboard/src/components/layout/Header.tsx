@@ -108,14 +108,25 @@ export default function Header({
       <button
         onClick={onMenu}
         aria-label="Open navigation menu"
-        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800"
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800"
       >
         <Menu className="h-5 w-5" />
       </button>
 
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
-        <p className="hidden text-xs text-slate-400 sm:block">Legal Metrology Suite</p>
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onNavigate(homePath({ role, status: profile?.status ?? 'active' }))}
+          aria-label="AuditX home"
+          title="AuditX"
+          className="shrink-0 rounded-lg transition-opacity hover:opacity-90"
+        >
+          <AuditXMark size="sm" />
+        </button>
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
+          <p className="hidden text-xs text-slate-400 sm:block">Legal Metrology Suite</p>
+        </div>
       </div>
 
 {recPath && (
@@ -145,7 +156,7 @@ export default function Header({
           onClick={onCycleTheme}
           aria-label={`Switch theme (currently ${resolvedDark ? 'dark' : 'light'})`}
           title={`Theme: ${theme} (${resolvedDark ? 'dark' : 'light'})`}
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
         >
           {resolvedDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </button>
@@ -156,7 +167,7 @@ export default function Header({
             <button
               aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
               className={cn(
-                'relative rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800',
+                'relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800',
                 unread > 0 && 'text-brand-600 dark:text-brand-400',
               )}
             >
@@ -177,9 +188,9 @@ export default function Header({
           trigger={
             <button
               aria-label={`Account menu for ${profile?.name ?? 'user'}`}
-              className="flex items-center gap-2.5 rounded-lg p-1.5 pr-2 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="flex h-9 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 sm:pr-2"
             >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold text-white">
                 {initials}
               </span>
               <span className="hidden text-left sm:block">
@@ -204,17 +215,6 @@ export default function Header({
           </MenuItem>
         </Dropdown>
       </div>
-
-      {/* Brand mark — pinned to the top-right corner (home) */}
-      <button
-        type="button"
-        onClick={() => onNavigate(homePath({ role, status: profile?.status ?? 'active' }))}
-        aria-label="AuditX home"
-        title="AuditX — Legal Metrology Compliance"
-        className="ml-1 shrink-0 rounded-lg transition-opacity hover:opacity-90"
-      >
-        <AuditXMark size="sm" />
-      </button>
 
       <ConfirmDialog
         open={logoutOpen}
