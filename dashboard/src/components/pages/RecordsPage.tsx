@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowUpRight, RefreshCw, Search } from 'lucide-react'
+import { ArrowUpRight, RefreshCw, ScanLine, Search } from 'lucide-react'
+import Button from '../ui/Button'
 import DataTable, { type DataColumn } from '../table/DataTable'
 import { ToneBadge } from '../ui/Badge'
 import { EmptyState, LoadingState } from '../ui/States'
@@ -9,6 +10,7 @@ import { useAuth } from '../../lib/auth'
 import { fetchScansForUser, fetchViolationsForScan, fetchReportsForScan } from '../../lib/db'
 import { scanStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
+import { displayProductName, displayText } from '../../lib/textnorm'
 import type { ReportRow, ScanRow, ViolationRow } from '../../lib/types2'
 import ScanDetailModal from './ScanDetailModal'
 
@@ -92,12 +94,12 @@ export default function RecordsPage() {
             <img src={s.image_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
           ) : (
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-xs font-bold text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-              {s.product_name.slice(0, 2).toUpperCase()}
+              {displayProductName(s.product_name).slice(0, 2).toUpperCase()}
             </span>
           )}
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-800 dark:text-slate-100">{s.product_name}</p>
-            <p className="truncate text-xs text-slate-400">{(s.brand || s.manufacturer) || '—'}</p>
+            <p className="truncate font-semibold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled'}</p>
+            <p className="truncate text-xs text-slate-400">{displayText(s.brand || s.manufacturer) || '—'}</p>
           </div>
         </div>
       ),
@@ -149,19 +151,18 @@ export default function RecordsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="outline"
+            icon={<RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />}
+            loading={refreshing}
             onClick={() => void refresh()}
             disabled={refreshing}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60"
           >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
-          </button>
-          <button
-            onClick={() => navigate('/scan-product')}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
-          >
+            Refresh
+          </Button>
+          <Button icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
             New scan
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -175,12 +176,9 @@ export default function RecordsPage() {
             title="No scans yet"
             message="Scan your first product label — the AI inspection takes under a minute."
             action={
-              <button
-                onClick={() => navigate('/scan-product')}
-                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-              >
+              <Button icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
                 Scan a product
-              </button>
+              </Button>
             }
           />
         </div>

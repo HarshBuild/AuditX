@@ -8,6 +8,7 @@ import { useToast } from '../ui/Toast'
 import { listViolations, setViolationStatus, listScans } from '../../lib/db'
 import { severityTone, violationStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
+import { displayProductName, displayText } from '../../lib/textnorm'
 import type { ScanRow, ViolationRow } from '../../lib/types2'
 
 export function ViolationsPage() {
@@ -46,8 +47,8 @@ export function ViolationsPage() {
       label: 'Product',
       render: (v) => (
         <div className="min-w-[200px]">
-          <p className="font-semibold text-slate-800 dark:text-slate-100">{v.product_name || '—'}</p>
-          <p className="text-xs text-slate-400">{v.manufacturer || v.type}</p>
+          <p className="font-semibold text-slate-800 dark:text-slate-100">{v.product_name?.trim() ? displayProductName(v.product_name) : '—'}</p>
+          <p className="text-xs text-slate-400">{displayText(v.manufacturer) || v.type}</p>
         </div>
       ),
     },

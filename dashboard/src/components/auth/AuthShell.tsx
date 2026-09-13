@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, Lock } from 'lucide-react'
 import { AuditXMark } from '../brand/AuditXMark'
 
 const highlights = [
@@ -50,8 +50,9 @@ export default function AuthShell({ children }: { children: ReactNode }) {
           <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-8">
             {children}
           </div>
-          <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
-            🔒 Secured with Firebase Auth
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+            <Lock className="h-3 w-3" aria-hidden="true" />
+            Secured with Firebase Auth
           </p>
         </div>
       </main>

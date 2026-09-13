@@ -10,13 +10,19 @@ import {
 } from 'react'
 import {
   createUserWithEmailAndPassword,
+  getRedirectResult,
+  GoogleAuthProvider,
   onIdTokenChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithRedirect,
   signOut as fbSignOut,
   updateProfile as fbUpdateProfile,
   type User as FirebaseUser,
+  type UserCredential,
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
+import { useToast } from '../components/ui/Toast'
 import { auth, db, type AuthUser } from './firebase'
 import { COLLECTIONS } from './db'
 import {
@@ -42,11 +48,21 @@ interface SignUpResult {
   profile?: UserProfile
 }
 
+interface GoogleSignInResult {
+  error?: string
+  /** Popup was closed without completing sign-in — not an error. */
+  cancelled?: boolean
+  /** Popup was blocked and the flow switched to redirect (page navigates). */
+  redirecting?: boolean
+  profile?: UserProfile
+}
+
 interface AuthContextValue {
   user: AuthUser | null
   profile: UserProfile | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error?: string; profile?: UserProfile }>
+  signInWithGoogle: () => Promise<GoogleSignInResult>
   signUp: (input: SignUpInput) => Promise<SignUpResult>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -123,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const lastLoginDone = useRef(false)
   const tokenRefreshed = useRef(false)
+  const { toast } = useToast()
 
   const loadProfile = useCallback(async (currentUser: AuthUser) => {
     const row = await readUserProfileDoc(currentUser.id)
@@ -139,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await setDoc(doc(db, COLLECTIONS.USERS, fallback.uid), {
         full_name: fallback.name,
+        email: currentUser.email ?? '',
         organization: fallback.organization,
         role: 'user',
         status: 'active',
@@ -169,6 +187,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Initial session + profile load + realtime auth changes (token refresh picks
   // up freshly minted custom claims, so status/role changes take effect here).
   useEffect(() => {
+    // Pick up errors from a redirect-based Google sign-in (popup-blocked
+    // fallback) so users land back on /login with a clean message instead of
+    // silent failure. A successful redirect is handled by onIdTokenChanged below.
+    void getRedirectResult(auth).catch((e) => {
+      const code = (e as { code?: string } | null)?.code ?? ''
+      if (!code || code === 'auth/redirect-cancelled-by-user' || code === 'auth/popup-closed-by-user') return
+      toast('error', 'Unable to sign in with Google', friendlyAuthError(e))
+    })
+
     let active = true
     const unsubscribe = onIdTokenChanged(auth, (fbUser) => {
       const mapped = mapUser(fbUser)
@@ -225,6 +252,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }).catch(() => {})
         return { profile: await readCurrentProfile(mapped) }
       } catch (e) {
+        return { error: friendlyAuthError(e) }
+      }
+    },
+    [loadProfile],
+  )
+
+  const signInWithGoogle = useCallback(
+    async (): Promise<GoogleSignInResult> => {
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+      try {
+        let credential: UserCredential
+        try {
+          credential = await signInWithPopup(auth, provider)
+        } catch (e) {
+          const code = (e as { code?: string } | null)?.code ?? ''
+          // Popups can be blocked inside installed PWAs / embedded webviews; the
+          // redirect flow is the reliable fallback there.
+          if (
+            code === 'auth/popup-blocked' ||
+            code === 'auth/popup-iframe-initialization-failed' ||
+            code === 'auth/popup-iframe-not-ready' ||
+            code === 'auth/popup-request-timeout' ||
+            code === 'auth/operation-not-supported-in-this-environment'
+          ) {
+            await signInWithRedirect(auth, provider)
+            return { redirecting: true }
+          }
+          throw e
+        }
+
+        // Force an ID-token refresh so freshly minted custom claims (role/status)
+        // are present the moment the dashboard loads.
+        await credential.user.getIdToken(true)
+        const mapped = mapUser(credential.user)
+        if (!mapped) return { error: 'Sign in failed. Please try again.' }
+        // Keep the Firebase display name in sync with Google's (best-effort).
+        if (credential.user.displayName) {
+          void fbUpdateProfile(credential.user, { displayName: credential.user.displayName }).catch(() => {})
+        }
+        setUser(mapped)
+        await loadProfile(mapped)
+        void updateDoc(doc(db, COLLECTIONS.USERS, mapped.id), {
+          email: credential.user.email ?? '',
+          last_login: new Date().toISOString(),
+        }).catch(() => {})
+        return { profile: await readCurrentProfile(mapped) }
+      } catch (e) {
+        const code = (e as { code?: string } | null)?.code ?? ''
+        if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+          return { cancelled: true }
+        }
         return { error: friendlyAuthError(e) }
       }
     },
@@ -293,8 +372,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, profile, loading, signIn, signUp, signOut, refreshProfile, updateProfile }),
-    [user, profile, loading, signIn, signUp, signOut, refreshProfile, updateProfile],
+    () => ({ user, profile, loading, signIn, signInWithGoogle, signUp, signOut, refreshProfile, updateProfile }),
+    [user, profile, loading, signIn, signInWithGoogle, signUp, signOut, refreshProfile, updateProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -326,7 +405,19 @@ function friendlyAuthError(e: unknown): string {
     case 'auth/timeout':
       return 'Sign-in timed out. Check your connection and try again.'
     case 'auth/operation-not-allowed':
-      return 'Email/password sign-in is not enabled for this project.'
+      return 'This sign-in method isn\u2019t enabled for the project yet. Ask the administrator to switch it on in Firebase Authentication.'
+    case 'auth/unauthorized-domain':
+      return 'This domain isn\u2019t authorized for Google sign-in. Ask the administrator to add it in Firebase Console \u2192 Authentication \u2192 Settings \u2192 Authorized domains.'
+    case 'auth/unauthorized-continue-uri':
+      return 'This sign-in link isn\u2019t allowed for the current domain. Contact the administrator.'
+    case 'auth/app-not-authorized':
+      return 'This app is not authorized to use the Authentication service. Contact the administrator.'
+    case 'auth/operation-not-supported-in-this-environment':
+      return 'This device blocks the Google sign-in window. Use a regular desktop browser, or sign in with your email and password.'
+    case 'auth/invalid-oauth-client-id':
+    case 'auth/invalid-oauth-provider':
+    case 'auth/invalid-oauth-token':
+      return 'Google sign-in is misconfigured in the project. Contact the administrator.'
     case 'auth/invalid-api-key':
       return 'Sign-in is unavailable (bad API key). Contact the administrator.'
     case 'auth/internal-error':
@@ -342,10 +433,14 @@ function friendlyAuthError(e: unknown): string {
     case 'auth/expired-action-code':
       return 'This sign-in link has expired. Request a new one.'
     case 'auth/account-exists-with-different-credential':
-      return 'An account exists with this email but a different sign-in method. Try the original method.'
+      return 'An account already exists with this Google email. If it was created with a password, sign in with that email and password instead — or use "Forgot password?" to reset it.'
     case 'auth/session-expired':
       return 'Your session expired. Please sign in again.'
+    case 'auth/credential-already-in-use':
+      return 'This sign-in method is already linked to another account. Try signing in with a different Google account.'
+    case 'auth/invalid-recaptcha-token':
+      return 'Google\u2019s safety check failed. Refresh the page and try again.'
     default:
-      return 'Sign in failed. Please try again. If this keeps happening, check your internet connection and confirm the account exists.'
+      return 'Sign in failed with an unexpected error. Please try again — if this keeps happening, contact the administrator.'
   }
 }

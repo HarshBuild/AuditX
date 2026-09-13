@@ -10,6 +10,7 @@ import { scanStatusTone } from '../../lib/ui'
 import { SUPPORTED_LANGUAGES } from '../../i18n/report'
 import { downloadInspectionPdf } from '../../lib/pdf'
 import { formatDateTime } from '../../utils/format'
+import { displayProductName, displayText } from '../../lib/textnorm'
 import type { ScanRow } from '../../lib/types2'
 
 function verdictTone(s: ScanRow): 'emerald' | 'amber' | 'rose' | 'cyan' {
@@ -136,12 +137,12 @@ export default function ReportsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{s.product_name}</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled'}</p>
                     <ToneBadge tone={verdictTone(s)}>{s.verdict}</ToneBadge>
                     <ToneBadge tone={scanStatusTone(s.status)}>{s.status.replace('_', ' ')}</ToneBadge>
                   </div>
                   <p className="mt-0.5 text-xs text-slate-400">
-                    <span className="font-mono font-semibold">{s.id.slice(0, 10)}…</span> · {s.brand || s.manufacturer || '—'} · Score{' '}
+                    <span className="font-mono font-semibold">{s.id.slice(0, 10)}…</span> · {displayText(s.brand || s.manufacturer) || '—'} · Score{' '}
                     <b className="text-slate-600 dark:text-slate-300">{s.overall_score}/100</b> · Risk <b className="text-slate-600 dark:text-slate-300">{s.risk_score}</b> ·{' '}
                     {formatDateTime(s.created_at)}
                   </p>

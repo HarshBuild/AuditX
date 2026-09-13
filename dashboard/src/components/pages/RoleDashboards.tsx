@@ -37,6 +37,7 @@ import { scanStatusTone, severityTone, violationStatusTone } from '../../lib/ui'
 import type { ActivityLogRow, AdminRequestRow, ReportRow, ScanRow, ViolationRow } from '../../lib/types2'
 import { COLLECTIONS } from '../../lib/db'
 import { timeAgo } from '../../utils/format'
+import { displayProductName, displayText } from '../../lib/textnorm'
 import type { StatDefinition } from '../../types'
 
 /* ------------------------------------------------------------------ */
@@ -123,8 +124,8 @@ export function AdminDashboardPage() {
       label: 'Product',
       render: (s) => (
         <div>
-          <p className="font-semibold text-slate-800 dark:text-slate-100">{s.product_name}</p>
-          <p className="text-xs text-slate-400">{s.manufacturer || s.brand || '—'}</p>
+          <p className="font-semibold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled'}</p>
+          <p className="text-xs text-slate-400">{displayText(s.manufacturer || s.brand) || '—'}</p>
         </div>
       ),
     },
@@ -135,7 +136,7 @@ export function AdminDashboardPage() {
   ]
 
   const violationColumns: Array<DataColumn<ViolationRow>> = [
-    { key: 'product', label: 'Product', render: (v) => <span className="font-medium text-slate-800 dark:text-slate-100">{v.product_name}</span> },
+    { key: 'product', label: 'Product', render: (v) => <span className="font-medium text-slate-800 dark:text-slate-100">{v.product_name?.trim() ? displayProductName(v.product_name) : 'Untitled'}</span> },
     { key: 'type', label: 'Violation', render: (v) => <span className="text-slate-500 dark:text-slate-400">{v.type || '—'}</span> },
     { key: 'severity', label: 'Severity', className: 'hidden sm:table-cell', render: (v) => <ToneBadge tone={severityTone(v.severity)}>{severityLabel(v.severity)}</ToneBadge> },
     { key: 'status', label: 'Status', className: 'hidden md:table-cell', render: (v) => <ToneBadge tone={violationStatusTone(v.status)}>{v.status}</ToneBadge> },

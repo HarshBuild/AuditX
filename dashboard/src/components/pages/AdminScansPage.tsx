@@ -11,6 +11,7 @@ import Pagination from '../table/Pagination'
 import Button from '../ui/Button'
 import ScanDetailModal from './ScanDetailModal'
 import { formatDateTime } from '../../utils/format'
+import { displayProductName, displayText } from '../../lib/textnorm'
 
 function RiskBadge({ score }: { score: number | null }) {
   const risk = score ?? 100
@@ -142,8 +143,8 @@ export default function AdminScansPage() {
                   return (
                     <tr key={s.id} className="transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-slate-800 dark:text-slate-100">{s.product_name}</p>
-                        <p className="text-xs text-slate-400">{s.manufacturer || s.brand || '—'} · {s.category || 'Uncategorised'}</p>
+                        <p className="font-semibold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled'}</p>
+                        <p className="text-xs text-slate-400">{displayText(s.manufacturer || s.brand) || '—'} · {s.category || 'Uncategorised'}</p>
                       </td>
                       <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-200">{s.overall_score}<span className="text-xs font-medium text-slate-400">/100</span></td>
                       <td className="px-4 py-3"><RiskBadge score={s.risk_score} /></td>

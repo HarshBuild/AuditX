@@ -14,6 +14,7 @@ import { riskBand, riskTone } from '../../lib/risk'
 import { scanStatusTone } from '../../lib/ui'
 import type { ScanRow } from '../../lib/types2'
 import { timeAgo } from '../../utils/format'
+import { displayProductName, displayText } from '../../lib/textnorm'
 import type { StatDefinition } from '../../types'
 
 export default function UserDashboardPage() {
@@ -62,8 +63,8 @@ export default function UserDashboardPage() {
       label: 'Product',
       render: (s) => (
         <div>
-          <p className="font-semibold text-slate-800 dark:text-slate-100">{s.product_name}</p>
-          <p className="text-xs text-slate-400">{s.manufacturer || s.brand || '—'}</p>
+          <p className="font-semibold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled'}</p>
+          <p className="text-xs text-slate-400">{displayText(s.manufacturer || s.brand) || '—'}</p>
         </div>
       ),
     },

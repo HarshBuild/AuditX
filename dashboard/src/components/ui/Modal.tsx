@@ -59,7 +59,7 @@ export default function Modal({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={title || 'Dialog'}
         tabIndex={-1}
         className={cn(
           'relative w-full rounded-t-2xl bg-white shadow-2xl animate-slide-in outline-none sm:rounded-2xl dark:bg-slate-900 dark:ring-1 dark:ring-slate-800',

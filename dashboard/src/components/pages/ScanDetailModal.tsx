@@ -20,6 +20,7 @@ import type { ReportRow, ScanRow, ViolationRow } from '../../lib/types2'
 import ManualReviewModal from './ManualReviewModal'
 import InspectionReport from '../inspection/InspectionReport'
 import { formatDateTime } from '../../utils/format'
+import { displayProductName, displaySentence, displayText } from '../../lib/textnorm'
 
 function verdictTone(verdict: string): 'brand' | 'emerald' | 'amber' | 'rose' {
   if (verdict === 'COMPLIANT') return 'emerald'
@@ -88,8 +89,8 @@ export default function ScanDetailModal({
         open={!!scan}
         onClose={onClose}
         size="xl"
-        title={scan.product_name}
-        description={`${scan.brand || scan.manufacturer || 'Unknown'} · scanned ${formatDateTime(scan.created_at)}`}
+        title={scan.product_name?.trim() ? displayProductName(scan.product_name) : 'Untitled scan'}
+        description={`${displayText(scan.brand || scan.manufacturer) || 'Unknown'} · scanned ${formatDateTime(scan.created_at)}`}
         footer={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <select
@@ -156,15 +157,15 @@ export default function ScanDetailModal({
               </h3>
               <ToneBadge tone={verdictTone(scan.verdict)}>{scan.verdict}</ToneBadge>
             </header>
-            {scan.summary && <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{scan.summary}</p>}
+            {scan.summary && <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{displaySentence(scan.summary)}</p>}
             <ul className="mt-3 space-y-2">
               {(scan.rules ?? []).map((r, i) => (
                 <li key={i} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-950/50">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      <span className="font-mono text-brand-600 dark:text-brand-400">{r.rule_id}</span> · {r.field}
+                      <span className="font-mono text-brand-600 dark:text-brand-400">{r.rule_id}</span> · {displayText(r.field) || '—'}
                     </p>
-                    {r.issue && <p className="mt-0.5 text-xs text-slate-400">{r.issue}</p>}
+                    {r.issue && <p className="mt-0.5 text-xs text-slate-400">{displaySentence(r.issue)}</p>}
                   </div>
                   <RuleStatusBadge status={r.status} />
                 </li>
@@ -193,7 +194,7 @@ export default function ScanDetailModal({
               )}
               {scan.manufacturer && (
                 <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
-                  Manufacturer: <b className="text-slate-700 dark:text-slate-200">{scan.manufacturer}</b>
+                  Manufacturer: <b className="text-slate-700 dark:text-slate-200">{displayText(scan.manufacturer)}</b>
                 </p>
               )}
               {scan.location_name && (

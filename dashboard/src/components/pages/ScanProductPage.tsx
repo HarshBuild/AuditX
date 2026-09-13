@@ -10,6 +10,7 @@ import { detectBarcodeFromFile } from '../../lib/barcode'
 import { findProductByBarcode } from '../../lib/db'
 import { lookupBarcodeExternal } from '../../lib/services'
 import { SUPPORTED_LANGUAGES } from '../../i18n/report'
+import { displayProductName } from '../../lib/textnorm'
 import InspectionReport from '../inspection/InspectionReport'
 import type { ScanRow } from '../../lib/types2'
 import type { PanelPrior } from '../../lib/textract/types'
@@ -187,11 +188,11 @@ const prepared = await Promise.all(
       if (scan.pending) {
         toast('info', 'Analysis queued', 'AI function is not deployed yet — scan saved for staff review.')
       } else if (scan.scan.language_note?.includes('Gemini')) {
-        toast('success', 'Analyzed with AI', `Google Gemini read the label and scored "${scan.scan.product_name}" ${scan.scan.overall_score}/100.`)
+        toast('success', 'Analyzed with AI', `Google Gemini read the label and scored "${displayProductName(scan.scan.product_name)}" ${scan.scan.overall_score}/100.`)
       } else if (scan.scan.language_note?.includes('on-device')) {
-        toast('success', 'Analyzed locally', `Free OCR engine scored "${scan.scan.product_name}" ${scan.scan.overall_score}/100 — no server needed.`)
+        toast('success', 'Analyzed locally', `Free OCR engine scored "${displayProductName(scan.scan.product_name)}" ${scan.scan.overall_score}/100 — no server needed.`)
       } else {
-        toast('success', 'Analysis complete', `"${scan.scan.product_name}" scored ${scan.scan.overall_score}/100.`)
+        toast('success', 'Analysis complete', `"${displayProductName(scan.scan.product_name)}" scored ${scan.scan.overall_score}/100.`)
       }
     } catch (e) {
       const msg = (e as Error).message || 'Something went wrong during analysis.'

@@ -11,6 +11,7 @@ import html2canvas from 'html2canvas'
 import { translate } from '../i18n/report'
 import { riskBand, riskTone } from './risk'
 import { formatDateTime } from '../utils/format'
+import { displayProductName, displaySentence, displayText } from './textnorm'
 import type { ScanRow } from './types2'
 
 const t = (lang: string, key: Parameters<typeof translate>[1]) => translate(lang, key)
@@ -61,10 +62,10 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
     .map(
       (r) => `<tr>
         <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-family:monospace;color:#4338ca;white-space:nowrap;">${esc(r.rule_id)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;">${esc(r.field)}</td>
+        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;">${esc(displayText(r.field))}</td>
         <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;text-align:center;color:${r.status === 'PASS' ? '#059669' : r.status === 'FAIL' ? '#e11d48' : r.status === 'WARNING' ? '#d97706' : '#64748b'};font-weight:700;">${esc(r.status)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;color:#475569;max-width:220px;">${esc(r.extracted_text)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;color:#b91c1c;max-width:220px;">${esc(r.issue)}</td>
+        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;color:#475569;max-width:220px;">${esc(displayText(r.extracted_text))}</td>
+        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;color:#b91c1c;max-width:220px;">${esc(displaySentence(r.issue))}</td>
       </tr>`,
     )
     .join('')
@@ -72,7 +73,7 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
   const labelsRows = (scan.labels ?? [])
     .map(
       (lb) => `<tr>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;font-weight:600;">${esc(lb.label)}</td>
+        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;font-weight:600;">${esc(displayText(lb.label))}</td>
         <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:${scoreColor(lb.score)};font-weight:700;">${esc(lb.verdict)}</td>
         <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;text-align:center;color:#0f172a;font-weight:700;">${esc(lb.score)}/100</td>
       </tr>`,
@@ -80,7 +81,7 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
     .join('')
 
   const suggestions = (scan.assistant?.suggestions ?? [])
-    .map((s) => `<li style="margin:4px 0;font-size:10px;color:#0f172a;">${esc(s)}</li>`)
+    .map((s) => `<li style="margin:4px 0;font-size:10px;color:#0f172a;">${esc(displaySentence(s))}</li>`)
     .join('')
 
   const declarationLabels: { key: keyof NonNullable<ScanRow['extractions']>; label: string }[] = [
@@ -103,7 +104,7 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
       .map(
         (d) => `<tr>
         <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#475569;background:#f8fafc;font-weight:700;">${esc(d.label)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;">${esc(scan.extractions![d.key])}</td>
+        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;">${esc(displayText(scan.extractions![d.key]))}</td>
       </tr>`,
       )
       .join('')
@@ -130,10 +131,10 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
     <div style="padding:18px 26px;">
       <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px;">${esc(t(lang, 'compliance_details'))}</div>
       <table style="width:100%;border-collapse:collapse;">
-        ${row(t(lang, 'product'), scan.product_name)}
-        ${row(t(lang, 'brand'), scan.brand)}
-        ${row(t(lang, 'manufacturer'), scan.manufacturer)}
-        ${row(t(lang, 'category'), scan.category)}
+        ${row(t(lang, 'product'), scan.product_name?.trim() ? displayProductName(scan.product_name) : '')}
+        ${row(t(lang, 'brand'), displayText(scan.brand))}
+        ${row(t(lang, 'manufacturer'), displayText(scan.manufacturer))}
+        ${row(t(lang, 'category'), displayText(scan.category))}
         ${row(t(lang, 'barcode'), scan.barcode)}
         ${row(t(lang, 'scanned_on'), formatDateTime(scan.created_at))}
         ${row(t(lang, 'status'), String(scan.status ?? ''))}
@@ -183,13 +184,13 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
       ${scan.assistant?.summary || (scan.assistant?.suggestions ?? []).length > 0 ? `
       <div style="margin-top:16px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:14px;padding:14px 16px;">
         <div style="font-size:11px;font-weight:800;color:#4338ca;">${esc(t(lang, 'ai_assistant'))}</div>
-        <div style="font-size:10px;margin-top:6px;color:#1e1b4b;">${esc(scan.assistant?.summary ?? '')}</div>
+        <div style="font-size:10px;margin-top:6px;color:#1e1b4b;">${esc(displaySentence(scan.assistant?.summary ?? ''))}</div>
         ${(scan.assistant?.suggestions ?? []).length > 0 ? `<div style="font-size:9.5px;font-weight:700;color:#312e81;margin-top:8px;">${esc(t(lang, 'suggest_next'))}</div><ul style="margin:4px 0 0 16px;padding:0;">${suggestions}</ul>` : ''}
       </div>` : ''}
 
       <div style="margin-top:12px;border:1px solid #fde68a;background:#fffbeb;border-radius:14px;padding:12px 16px;">
         <div style="font-size:9.5px;font-weight:700;color:#b45309;">${esc(t(lang, 'language_note'))}</div>
-        <div style="font-size:9.5px;color:#78350f;margin-top:3px;">${esc(scan.language_note || t(lang, 'not_available'))}</div>
+        <div style="font-size:9.5px;color:#78350f;margin-top:3px;">${esc(displayText(scan.language_note) || t(lang, 'not_available'))}</div>
       </div>
 
       <div style="margin-top:16px;font-size:8.5px;color:#94a3b8;line-height:1.5;">
@@ -239,7 +240,7 @@ export async function downloadInspectionPdf(scan: ScanRow, lang: string): Promis
       offset += h
       firstPage = false
     }
-    const filename = `AuditX-Report-${(scan.product_name || 'scan').replace(/[^a-zA-Z0-9_-]+/g, '_')}-${lang.toUpperCase()}.pdf`
+    const filename = `AuditX-Report-${(scan.product_name?.trim() ? displayProductName(scan.product_name) : 'scan').replace(/[^a-zA-Z0-9_-]+/g, '_')}-${lang.toUpperCase()}.pdf`
     pdf.save(filename)
     return filename
   } finally {

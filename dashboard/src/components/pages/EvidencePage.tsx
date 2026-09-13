@@ -6,6 +6,7 @@ import { ErrorState } from '../ui/States'
 import { db, auth } from '../../lib/firebase'
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
 import { timeAgo } from '../../utils/format'
+import { displayProductName, displayText } from '../../lib/textnorm'
 
 interface EvidenceItem {
   id: string
@@ -152,13 +153,13 @@ export default function EvidencePage() {
               <div className="aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
                 <img
                   src={e.image_url}
-                  alt={e.product_name}
+                  alt={e.product_name?.trim() ? displayProductName(e.product_name) : 'Label evidence'}
                   className="h-full w-full object-cover transition-transform group-hover:scale-105"
                   loading="lazy"
                 />
               </div>
               <div className="p-2.5">
-                <p className="truncate text-xs font-semibold text-slate-700 dark:text-slate-200">{e.product_name || 'Untitled'}</p>
+                <p className="truncate text-xs font-semibold text-slate-700 dark:text-slate-200">{e.product_name?.trim() ? displayText(e.product_name) : 'Untitled'}</p>
                 <div className="mt-1 flex items-center justify-between">
                   <span className="text-[10px] text-slate-400">{timeAgo(e.created_at)}</span>
                   <ToneBadge tone={e.overall_score >= 80 ? 'emerald' : e.overall_score >= 50 ? 'amber' : 'rose'}>

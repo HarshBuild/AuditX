@@ -9,6 +9,7 @@ import { countScans, fetchScansForUser, scanRiskDistribution, listViolations, ty
 import { riskBand } from '../../lib/risk'
 import { ToneBadge } from '../ui/Badge'
 import { timeAgo } from '../../utils/format'
+import { displayProductName } from '../../lib/textnorm'
 
 export default function InspectorDashboardPage() {
   const { profile } = useAuth()
@@ -116,7 +117,7 @@ export default function InspectorDashboardPage() {
                   className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-left transition-colors hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:bg-slate-800/70"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">{s.product_name || 'Untitled scan'}</p>
+                    <p className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled scan'}</p>
                     <p className="text-xs text-slate-400">{timeAgo(s.created_at)}</p>
                   </div>
                   <ToneBadge tone={band === 'Low' ? 'emerald' : band === 'Medium' ? 'amber' : band === 'High' ? 'rose' : 'rose'}>{band} risk</ToneBadge>

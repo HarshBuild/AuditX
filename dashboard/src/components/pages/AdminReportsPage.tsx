@@ -7,6 +7,7 @@ import { useToast } from '../ui/Toast'
 import { listReports, updateReportStatus } from '../../lib/db'
 import type { ReportRow, ReportStatus } from '../../lib/types2'
 import { timeAgo } from '../../utils/format'
+import { displayProductName } from '../../lib/textnorm'
 
 const STATUS_OPTIONS: { label: string; value: string }[] = [
   { label: 'All', value: '' },
@@ -113,7 +114,7 @@ export default function AdminReportsPage() {
                     return (
                       <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                         <td className="max-w-[200px] truncate px-3 py-2 font-medium text-slate-700 dark:text-slate-200">{r.title}</td>
-                        <td className="max-w-[150px] truncate px-3 py-2 text-slate-500 dark:text-slate-400">{r.product_name || '—'}</td>
+                        <td className="max-w-[150px] truncate px-3 py-2 text-slate-500 dark:text-slate-400">{r.product_name?.trim() ? displayProductName(r.product_name) : '—'}</td>
                         <td className="px-3 py-2"><ToneBadge tone={ptone as 'emerald' | 'amber' | 'rose' | 'slate'}>{r.priority}</ToneBadge></td>
                         <td className="px-3 py-2"><ToneBadge tone={stone as 'emerald' | 'amber' | 'rose' | 'slate'}>{r.status}</ToneBadge></td>
                         <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">{timeAgo(r.created_at)}</td>

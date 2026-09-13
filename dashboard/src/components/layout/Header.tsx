@@ -113,7 +113,7 @@ export default function Header({
       </button>
 
       <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{title}</p>
+        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
         <p className="hidden text-xs text-slate-400 sm:block">AuditX / {title}</p>
       </div>
 
@@ -174,7 +174,10 @@ export default function Header({
         <Dropdown
           width="w-[min(16rem,calc(100vw-2rem))]"
           trigger={
-            <button className="flex items-center gap-2.5 rounded-lg p-1.5 pr-2 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800">
+            <button
+              aria-label={`Account menu for ${profile?.name ?? 'user'}`}
+              className="flex items-center gap-2.5 rounded-lg p-1.5 pr-2 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold text-white">
                 {initials}
               </span>
