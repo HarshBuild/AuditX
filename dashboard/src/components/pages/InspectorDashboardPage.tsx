@@ -114,7 +114,7 @@ export default function InspectorDashboardPage() {
                 <button
                   key={s.id}
                   onClick={() => navigate(`/scan-history?open=${s.id}`)}
-                  className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-left transition-colors hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:bg-slate-800/70"
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-left transition-colors hover:bg-slate-100 dark:border-white/10 dark:bg-navy-950/40 dark:hover:bg-slate-800/70"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled scan'}</p>

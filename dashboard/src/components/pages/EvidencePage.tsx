@@ -87,7 +87,7 @@ export default function EvidencePage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-white/10 dark:bg-navy-900">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -95,7 +95,7 @@ export default function EvidencePage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search evidence by product, manufacturer, location..."
-            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
           />
         </div>
         <div className="flex items-center gap-1.5">
@@ -139,7 +139,7 @@ export default function EvidencePage() {
             {(search || filter !== 'all') && (
               <button
                 onClick={() => { setSearch(''); setFilter('all') }}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Clear filters
               </button>
@@ -149,7 +149,7 @@ export default function EvidencePage() {
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
           {filtered.map((e) => (
-            <div key={e.id} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+            <div key={e.id} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow hover:shadow-md dark:border-white/10 dark:bg-navy-900">
               <div className="aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
                 <img
                   src={e.image_url}

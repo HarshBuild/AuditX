@@ -67,7 +67,7 @@ export default function AdminReportsPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); void reload(e.target.value, 1) }}
             placeholder="Search reports..."
-            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -98,7 +98,7 @@ export default function AdminReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800">
+                  <tr className="border-b border-slate-200 dark:border-white/10">
                     <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400">Title</th>
                     <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400">Product</th>
                     <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400">Priority</th>

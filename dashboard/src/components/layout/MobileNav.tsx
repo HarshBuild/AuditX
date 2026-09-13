@@ -51,15 +51,23 @@ export default function MobileNav({ path, onNavigate, onAdd, role }: MobileNavPr
         key={item.path}
         onClick={() => onNavigate(item.path)}
         aria-current={active ? 'page' : undefined}
-        className="flex min-w-0 flex-1 flex-col items-center gap-1 py-1.5"
+        className="relative flex min-w-0 flex-1 flex-col items-center gap-1 py-1.5"
       >
+        {active && (
+          <span
+            aria-hidden="true"
+            className="absolute left-1/2 top-0 h-[3px] w-8 -translate-x-1/2 rounded-b-full bg-gradient-to-r from-accent-500 to-brand-600 shadow-[0_1px_6px_rgb(79_155_255/0.8)]"
+          />
+        )}
         <span
           className={cn(
-            'flex w-full flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-semibold transition-colors',
-            active ? 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400' : 'text-slate-400',
+            'flex w-full flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-semibold transition-all duration-150',
+            active
+              ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
+              : 'text-slate-400 dark:text-slate-500',
           )}
         >
-          <Icon className="h-5 w-5" />
+          <Icon className={cn('h-5 w-5', active && 'scale-105')} />
           <span className="max-w-full truncate">{item.label}</span>
         </span>
       </button>
@@ -69,14 +77,14 @@ export default function MobileNav({ path, onNavigate, onAdd, role }: MobileNavPr
   return (
     <nav
       aria-label="Mobile navigation"
-      className="fixed inset-x-0 bottom-0 z-30 flex items-stretch justify-around gap-0.5 border-t border-slate-200 bg-white/95 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-900/95"
+      className="fixed inset-x-0 bottom-0 z-30 flex items-stretch justify-around gap-0.5 border-t border-slate-200/70 bg-white/90 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 backdrop-blur-xl lg:hidden dark:border-white/[0.06] dark:bg-navy-950/90"
     >
       {first.map(renderItem)}
       {showAdd ? (
         <button
           onClick={centerAction}
           aria-label="Scan product"
-          className="relative -mt-5 flex h-12 w-12 shrink-0 items-center justify-center self-start rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 ring-4 ring-slate-100 transition-transform active:scale-95 dark:ring-slate-900"
+          className="relative -mt-5 flex h-12 w-12 shrink-0 items-center justify-center self-start rounded-full bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 text-white shadow-[0_6px_20px_-4px_rgb(37_99_235/0.6),inset_0_1px_0_rgb(255_255_255/0.25)] ring-4 ring-slate-50 transition-transform active:scale-95 dark:ring-navy-950"
         >
           <Plus className="h-6 w-6" />
         </button>

@@ -115,7 +115,7 @@ export default function ProductDatabasePage() {
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search by name, barcode, manufacturer..."
-            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
           />
         </div>
         <Button icon={<Plus className="h-4 w-4" />} onClick={openNew}>Add Product</Button>
@@ -135,7 +135,7 @@ export default function ProductDatabasePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800">
+                  <tr className="border-b border-slate-200 dark:border-white/10">
                     <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400">Barcode</th>
                     <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400">Name</th>
                     <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400">Manufacturer</th>
@@ -180,7 +180,7 @@ export default function ProductDatabasePage() {
       {/* Create/Edit form dialog */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onClick={() => setFormOpen(false)}>
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-navy-900" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">{form.id ? 'Edit Product' : 'Add Product'}</h2>
             <div className="space-y-3">
               <Input label="Barcode *" name="barcode" placeholder="8901234567890" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} disabled={!!form.id} />
@@ -189,7 +189,7 @@ export default function ProductDatabasePage() {
               <Input label="Manufacturer" name="manufacturer" placeholder="Manufacturer name" value={form.manufacturer} onChange={(e) => setForm({ ...form, manufacturer: e.target.value })} />
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">Category</label>
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-white/15 dark:bg-navy-950 dark:text-slate-100">
                   {['Food', 'Cosmetic', 'Household', 'Electronics', 'Stationery', 'Other'].map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>

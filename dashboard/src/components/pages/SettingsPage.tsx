@@ -182,7 +182,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
               <p className="mt-1 text-xs text-slate-400">{profile?.email ?? ''}</p>
             </div>
           </div>
-          <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-sm dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-sm dark:border-white/10 dark:bg-navy-950/40">
             <p className="text-slate-500 dark:text-slate-400">
               Edit your name, organization and account details on your profile page.
             </p>
@@ -210,7 +210,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
                     'flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all',
                     active
                       ? 'border-brand-500 bg-brand-50 dark:bg-brand-500/10'
-                      : 'border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700',
+                      : 'border-slate-200 hover:border-slate-300 dark:border-white/10 dark:hover:border-slate-700',
                   )}
                 >
                   <Icon className={cn('h-6 w-6', active ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400')} />
@@ -227,7 +227,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
               <select
                 value={prefs.density}
                 onChange={(e) => setPrefs((p) => ({ ...p, density: e.target.value as UserPrefs['density'] }))}
-                className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-8 text-sm text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                className="h-9 w-full cursor-pointer appearance-none rounded-lg border border-slate-300 bg-white px-3 pr-8 text-sm text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
               >
                 <option value="comfortable">Comfortable</option>
                 <option value="compact">Compact</option>
@@ -238,7 +238,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
               <button
                 type="button"
                 onClick={() => setPrefs((p) => ({ ...p, notifications: !p.notifications }))}
-                className="flex h-9 items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                className="flex h-9 items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/15 dark:bg-navy-950 dark:text-slate-200 dark:hover:bg-slate-800/60"
               >
                 <span className="flex items-center gap-2">
                   <Bell className="h-4 w-4 text-slate-400" />
@@ -297,7 +297,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
               onChange={(e) => setGeminiKey(e.target.value)}
               placeholder="Paste your key (AIza…)"
               autoComplete="off"
-              className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:flex-1"
+              className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100 sm:flex-1"
             />
             <div className="flex flex-none gap-2">
               <Button onClick={() => void saveGeminiKey()} loading={savingKey}>
@@ -347,7 +347,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
               Update password
             </Button>
           </div>
-          <p className="mt-4 border-t border-slate-100 pt-4 text-xs text-slate-400 dark:border-slate-800">
+          <p className="mt-4 border-t border-slate-100 pt-4 text-xs text-slate-400 dark:border-white/10">
             Passwords are stored hashed by Firebase Auth — never in your profile document. Sign-in attempts are rate
             limited per IP by Firebase.
           </p>

@@ -82,18 +82,29 @@ function NavLink({
       onClick={() => onNavigate(item.path)}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none',
+        'group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 focus-visible:outline-none',
         collapsed && 'justify-center px-0',
         active
-          ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-200',
+          ? 'bg-white/10 text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.08)]'
+          : 'text-white/55 hover:bg-white/[0.06] hover:text-white',
       )}
     >
-      <Icon className={cn('h-[18px] w-[18px] shrink-0', active && 'text-brand-600 dark:text-brand-400')} />
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-gradient-to-b from-accent-400 to-brand-600 shadow-[0_0_8px_rgb(79_155_255/0.8)]"
+        />
+      )}
+      <Icon
+        className={cn(
+          'h-[18px] w-[18px] shrink-0 transition-transform duration-150',
+          active ? 'text-accent-300' : 'text-white/45 group-hover:text-white/80',
+          !collapsed && active && 'scale-110',
+        )}
+      />
       {!collapsed && <span className="truncate">{item.label}</span>}
-      {active && !collapsed && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-brand-500" />}
       {collapsed && (
-        <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 lg:block dark:bg-slate-800">
+        <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-navy-800 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 lg:block">
           {item.label}
         </span>
       )}
@@ -135,18 +146,18 @@ export default function Sidebar({
           <NavLink key={item.path} item={item} active={path === item.path} collapsed={collapsed} onNavigate={navigate} />
         ))}
       </nav>
-      <div className="space-y-1 border-t border-slate-100 p-3 dark:border-slate-800">
+      <div className="space-y-1 border-t border-white/10 p-3">
         <button
           onClick={onLogout}
           className={cn(
-            'group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10',
+            'group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-300/90 transition-colors hover:bg-rose-500/10 hover:text-rose-200',
             collapsed && 'justify-center px-0',
           )}
         >
           <LogOut className="h-[18px] w-[18px] shrink-0" />
           {!collapsed && <span className="truncate">Logout</span>}
           {collapsed && (
-            <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 lg:block dark:bg-slate-800">
+            <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-navy-800 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 lg:block">
               Logout
             </span>
           )}
@@ -154,7 +165,7 @@ export default function Sidebar({
         <button
           onClick={onToggleCollapsed}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-200',
+            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white',
             collapsed && 'justify-center px-0',
           )}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -171,18 +182,18 @@ export default function Sidebar({
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 lg:flex dark:border-slate-800 dark:bg-slate-900',
+          'sticky top-0 hidden h-screen shrink-0 flex-col bg-gradient-to-b from-navy-900 via-navy-950 to-[#070d1d] transition-[width] duration-200 lg:flex',
           collapsed ? 'w-[72px]' : 'w-60',
         )}
       >
-        <div className={cn('flex h-16 items-center border-b border-slate-100 px-4 dark:border-slate-800', collapsed && 'justify-center px-0')}>
+        <div className={cn('flex h-16 items-center gap-2.5 border-b border-white/10 px-4', collapsed && 'justify-center px-0')}>
           <LogoMark size={collapsed ? 'sm' : 'md'} />
           {!collapsed && (
-            <div className="ml-2.5 min-w-0">
-              <p className="text-sm font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                Audit<span className="text-brand-600 dark:text-brand-400">X</span>
+            <div className="min-w-0">
+              <p className="text-sm font-extrabold tracking-tight text-white">
+                Audit<span className="text-accent-400">X</span>
               </p>
-              <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">Compliance Suite</p>
+              <p className="text-[10px] font-medium uppercase tracking-widest text-white/40">Compliance Suite</p>
             </div>
           )}
         </div>
@@ -192,22 +203,22 @@ export default function Sidebar({
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 animate-fade-in bg-slate-950/50" onClick={onMobileClose} aria-hidden="true" />
-          <aside className="absolute inset-y-0 left-0 flex w-64 animate-drawer-in flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex h-16 items-center justify-between border-b border-slate-100 px-4 dark:border-slate-800">
+          <div className="absolute inset-0 animate-fade-in bg-navy-950/60 backdrop-blur-[2px]" onClick={onMobileClose} aria-hidden="true" />
+          <aside className="absolute inset-y-0 left-0 flex w-64 animate-drawer-in flex-col border-r border-white/10 bg-gradient-to-b from-navy-900 via-navy-950 to-[#070d1d]">
+            <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
               <div className="flex items-center gap-2.5">
                 <LogoMark size="sm" />
                 <div className="min-w-0">
-                  <p className="text-sm font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                    Audit<span className="text-brand-600 dark:text-brand-400">X</span>
+                  <p className="text-sm font-extrabold tracking-tight text-white">
+                    Audit<span className="text-accent-400">X</span>
                   </p>
-                  <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">Compliance Suite</p>
+                  <p className="text-[10px] font-medium uppercase tracking-widest text-white/40">Compliance Suite</p>
                 </div>
               </div>
               <button
                 onClick={onMobileClose}
                 aria-label="Close navigation"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="rounded-lg p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -217,10 +228,10 @@ export default function Sidebar({
                 <NavLink key={item.path} item={item} active={path === item.path} collapsed={false} onNavigate={navigate} />
               ))}
             </nav>
-            <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+            <div className="border-t border-white/10 p-3">
               <button
                 onClick={onLogout}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-300/90 transition-colors hover:bg-rose-500/10 hover:text-rose-200"
               >
                 <LogOut className="h-[18px] w-[18px] shrink-0" />
                 <span>Logout</span>

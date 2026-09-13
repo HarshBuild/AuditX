@@ -19,7 +19,7 @@ export default function NotificationsPanel({ notifications, onMarkAll, onMarkOne
   const unread = notifications.filter((n) => n.unread).length
   return (
     <div className="max-h-96 overflow-y-auto">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-white/10">
         <p className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
           <BellRing className="h-4 w-4 text-brand-600 dark:text-brand-400" />
           Notifications

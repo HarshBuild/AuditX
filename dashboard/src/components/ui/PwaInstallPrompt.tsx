@@ -146,7 +146,7 @@ export default function PwaInstallPrompt() {
         role="dialog"
         aria-modal="true"
         aria-label="Install AuditX App"
-        className="relative w-full max-w-md overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl animate-slide-in sm:rounded-2xl dark:border-slate-800 dark:bg-slate-900"
+        className="relative w-full max-w-md overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl animate-slide-in sm:rounded-2xl dark:border-white/10 dark:bg-navy-900"
       >
         <div className="bg-gradient-to-br from-brand-800 via-brand-700 to-brand-600 px-5 py-5 text-white">
           <div className="flex items-start justify-between gap-4">
@@ -194,7 +194,7 @@ export default function PwaInstallPrompt() {
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row">
             <button
               onClick={close}
-              className="inline-flex h-11 flex-1 items-center justify-center rounded-lg border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="inline-flex h-11 flex-1 items-center justify-center rounded-lg border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Not Now
             </button>

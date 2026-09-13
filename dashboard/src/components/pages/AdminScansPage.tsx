@@ -79,20 +79,20 @@ export default function AdminScansPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-white/10 dark:bg-navy-900">
         <div className="relative min-w-52 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1) }}
             placeholder="Search product, brand, manufacturer, barcode…"
-            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
           />
         </div>
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1) }}
-          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600 dark:border-white/15 dark:bg-navy-950 dark:text-slate-300"
           aria-label="Filter by status"
         >
           <option value="">All statuses</option>
@@ -105,7 +105,7 @@ export default function AdminScansPage() {
         <select
           value={risk}
           onChange={(e) => { setRisk(e.target.value); setPage(1) }}
-          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-600 dark:border-white/15 dark:bg-navy-950 dark:text-slate-300"
           aria-label="Filter by risk band"
         >
           <option value="">All risk bands</option>
@@ -123,10 +123,10 @@ export default function AdminScansPage() {
       ) : rows.length === 0 ? (
         <EmptyState icon={<ScanLine className="h-8 w-8" />} title="No scans found" message="Try adjusting the search or filters, or run a new scan." />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-white/10 dark:bg-navy-900">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-navy-900/60 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3">Product</th>
                   <th className="px-4 py-3">Score</th>

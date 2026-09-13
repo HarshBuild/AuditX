@@ -106,7 +106,7 @@ export default function ManualReviewModal({
               max={100}
               value={score}
               onChange={(e) => setScore(Number(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-0.5 text-center text-lg font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-0.5 text-center text-lg font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
             />
           </div>
         </div>
@@ -130,13 +130,13 @@ export default function ManualReviewModal({
                   value={c.field}
                   onChange={(e) => setCorrections((arr) => arr.map((x, j) => (j === i ? { ...x, field: e.target.value } : x)))}
                   placeholder="Field"
-                  className="w-2/5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-2/5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
                 />
                 <input
                   value={c.value}
                   onChange={(e) => setCorrections((arr) => arr.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
                   placeholder="Corrected value"
-                  className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
                 />
                 <button onClick={() => setCorrections((arr) => arr.filter((_, j) => j !== i))} className="text-slate-400 hover:text-rose-500" aria-label="Remove row">
                   <Trash2 className="h-4 w-4" />
@@ -165,12 +165,12 @@ export default function ManualReviewModal({
                   value={a.type}
                   onChange={(e) => setAdditions((arr) => arr.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}
                   placeholder="Type (e.g. 6(1)(e))"
-                  className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
                 />
                 <select
                   value={a.severity}
                   onChange={(e) => setAdditions((arr) => arr.map((x, j) => (j === i ? { ...x, severity: severityValue(e.target.value) } : x)))}
-                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs focus:outline-none dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -181,7 +181,7 @@ export default function ManualReviewModal({
                   value={a.description}
                   onChange={(e) => setAdditions((arr) => arr.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
                   placeholder="Description"
-                  className="min-w-40 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="min-w-40 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
                 />
                 <button onClick={() => setAdditions((arr) => arr.filter((_, j) => j !== i))} className="text-slate-400 hover:text-rose-500" aria-label="Remove violation">
                   <Trash2 className="h-4 w-4" />
@@ -197,7 +197,7 @@ export default function ManualReviewModal({
             <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Remove (reject) flagged violations</h4>
             <ul className="mt-2 space-y-1.5">
               {violations.map((v) => (
-                <li key={v.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-950/50">
+                <li key={v.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-navy-950/50">
                   <input
                     id={`rem-${v.id}`}
                     type="checkbox"
@@ -223,7 +223,7 @@ export default function ManualReviewModal({
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             placeholder="What did you verify manually?"
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
           />
         </section>
       </div>

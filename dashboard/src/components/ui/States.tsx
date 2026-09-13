@@ -2,14 +2,30 @@ import { type ReactNode } from 'react'
 import { AlertTriangle, FileSearch, RefreshCw, SearchX } from 'lucide-react'
 import { AuditXMark } from '../brand/AuditXMark'
 import Button from './Button'
+import { cn } from '../../utils/format'
 
 export function LoadingState({ label = 'Loading data…' }: { label?: string }) {
   return (
-    <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-slate-400" role="status">
-      <AuditXMark size="sm" className="animate-pulse" />
-      <p className="text-sm">{label}</p>
+    <div className="flex min-h-48 flex-col items-center justify-center gap-4 text-slate-400" role="status">
+      <span className="relative flex h-10 w-10 items-center justify-center">
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-full border-2 border-slate-200/80 dark:border-white/10"
+        />
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 animate-spin rounded-full border-2 border-brand-500 border-r-transparent border-t-transparent"
+        />
+        <AuditXMark size="sm" />
+      </span>
+      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p>
     </div>
   )
+}
+
+/** Shimmering skeleton placeholder — build loading layouts from it. */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden="true" className={cn('skeleton rounded-lg', className)} />
 }
 
 export function EmptyState({

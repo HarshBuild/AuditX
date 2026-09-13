@@ -120,10 +120,12 @@ export default function Workspace() {
         />
 
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-          <Outlet context={ctx} />
+          <div key={pathname} className="animate-page-in">
+            <Outlet context={ctx} />
+          </div>
         </main>
 
-        <footer className="px-3 pb-24 pt-4 text-center text-xs text-slate-400 dark:text-slate-500 sm:px-6 lg:px-8 lg:pb-6">
+        <footer className="px-3 pb-24 pt-4 text-center text-xs text-slate-400 sm:px-6 lg:px-8 lg:pb-6 dark:text-white/35">
           AuditX · Legal Metrology compliance dashboard · Role-Based Edition
         </footer>
       </div>

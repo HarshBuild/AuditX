@@ -26,7 +26,7 @@ export function AuditXMark({ size = 'md', className = '' }: { size?: AuditXSize;
   return (
     <div
       aria-hidden="true"
-      className={`flex ${TILE[size]} shrink-0 items-center justify-center bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 text-white shadow-sm ring-1 ring-brand-700/40 ${className}`}
+      className={`flex ${TILE[size]} shrink-0 items-center justify-center bg-gradient-to-br from-brand-400 via-brand-600 to-indigo-800 text-white shadow-md ring-1 ring-brand-700/40 ${className}`}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`${w} ${h}`}>
         {/* check mark — the completed audit */}

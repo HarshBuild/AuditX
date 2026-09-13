@@ -74,7 +74,7 @@ export default function HelpPage() {
                   <span className="flex min-w-0 items-center gap-2 text-slate-500 dark:text-slate-400">
                     <Keyboard className="h-4 w-4 shrink-0 text-slate-400" /> {s.action}
                   </span>
-                  <kbd className="shrink-0 whitespace-nowrap rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <kbd className="shrink-0 whitespace-nowrap rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-white/15 dark:bg-slate-800 dark:text-slate-300">
                     {s.keys}
                   </kbd>
                 </li>

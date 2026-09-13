@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { httpsCallable } from 'firebase/functions'
 import {
   AlertTriangle,
@@ -45,6 +45,41 @@ import { riskBand, riskTone } from '../../lib/risk'
 import { formatDateTime } from '../../utils/format'
 import { displayProductName, displaySentence, displayText } from '../../lib/textnorm'
 import type { EvidenceLink, ExtractedDeclarations, RuleCheck, ScanContext, ScanRow, StatusCounts } from '../../lib/types2'
+
+/* ------------------------------------------------------------------ */
+/* Animated stat counters                                              */
+/* ------------------------------------------------------------------ */
+
+/** Ease a number up to `value` on mount — disabled under reduced-motion. */
+function useAnimatedNumber(value: number, duration = 700): number {
+  const [display, setDisplay] = useState(0)
+  const raf = useRef(0)
+  useEffect(() => {
+    if (value <= 0) {
+      setDisplay(0)
+      return
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDisplay(value)
+      return
+    }
+    const start = performance.now()
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setDisplay(Math.round(eased * value))
+      if (p < 1) raf.current = requestAnimationFrame(tick)
+    }
+    raf.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf.current)
+  }, [value, duration])
+  return display
+}
+
+function AnimatedNumber({ value, className = '' }: { value: number; className?: string }) {
+  const n = useAnimatedNumber(value)
+  return <span className={className}>{n}</span>
+}
 
 /* ------------------------------------------------------------------ */
 /* Small presentational helpers                                        */
@@ -156,7 +191,7 @@ function ContextBadges({ ctx }: { ctx?: ScanContext }) {
   if (ctx.is_food) bits.push({ label: 'Food', tone: 'emerald' })
   if (ctx.exemptions && ctx.exemptions.length > 0) bits.push({ label: 'Exemptions', tone: 'amber', fmt: ctx.exemptions.join(', ') })
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 dark:border-white/[0.08] dark:bg-white/[0.03]">
       <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Context</span>
       {bits.map((b, i) => (
         <span key={i} className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
@@ -185,10 +220,12 @@ function MetricChip({ icon, label, value, tone }: { icon: React.ReactNode; label
     slate: 'text-slate-400 dark:text-slate-500',
   }[tone]
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+    <div className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 dark:border-white/[0.05] dark:bg-white/[0.03]">
       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${text}`}>{icon}</span>
       <div className="min-w-0">
-        <p className="text-lg font-extrabold leading-tight text-slate-900 dark:text-slate-100">{value}</p>
+        <p className="text-lg font-extrabold leading-tight text-slate-900 tabular-nums dark:text-slate-100">
+          <AnimatedNumber value={value} />
+        </p>
         <p className="text-[11px] font-semibold text-slate-400">{label}</p>
       </div>
     </div>
@@ -216,10 +253,11 @@ function ScoreHero({ scan, counts, sig }: { scan: ScanRow; counts: StatusCounts;
     : `This ${risk}/100 risk score is derived only from the mandatory-declaration checks that actually ran on your label photos. Deficiency = higher risk. Anything the engine could not read is marked "Unable to verify" — it is never counted as pass or fail.`
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="grid grid-cols-1 gap-0 lg:grid-cols-[auto_1fr_auto]">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-indigo-50/40 to-brand-50/60 shadow-card dark:border-white/[0.07] dark:from-navy-900 dark:via-navy-950 dark:to-[#111a31]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 bg-dots opacity-30 lg:block" />
+      <div className="relative grid grid-cols-1 gap-0 lg:grid-cols-[auto_1fr_auto]">
         {/* Risk score ring */}
-        <div className="p-6 lg:border-r lg:border-slate-100 lg:dark:border-slate-800">
+        <div className="p-6 lg:border-r lg:border-slate-200/70 lg:dark:border-white/10">
           <p className="mb-4 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Overall Risk Score</p>
           <div className="flex flex-wrap items-center gap-5">
           <div className="relative h-24 w-24 shrink-0 sm:h-32 sm:w-32">
@@ -228,7 +266,8 @@ function ScoreHero({ scan, counts, sig }: { scan: ScanRow; counts: StatusCounts;
               <circle
                 cx="64" cy="64" r={R} fill="none" strokeWidth="11"
                 strokeLinecap="round" strokeDasharray={`${CIRC}`} strokeDashoffset={`${CIRC * (1 - frac)}`}
-                className={`stroke-current ${tone.stroke}`}
+                className={`stroke-current ${tone.stroke} animate-gauge-fill`}
+                style={{ '--gauge-offset-start': `${CIRC}`, '--gauge-offset-end': `${CIRC * (1 - frac)}` } as React.CSSProperties}
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -239,7 +278,9 @@ function ScoreHero({ scan, counts, sig }: { scan: ScanRow; counts: StatusCounts;
                 </>
               ) : (
                 <>
-                  <span className={`text-4xl font-extrabold leading-none ${tone.text}`}>{risk}</span>
+                  <span className={`text-4xl font-extrabold leading-none tabular-nums ${tone.text}`}>
+                    <AnimatedNumber value={risk} />
+                  </span>
                   <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">risk / 100</span>
                 </>
               )}
@@ -288,7 +329,7 @@ function ScoreHero({ scan, counts, sig }: { scan: ScanRow; counts: StatusCounts;
         </div>
 
         {/* Key declarations snapshot */}
-        <div className="grid grid-cols-2 gap-2 border-t border-slate-200/80 p-6 lg:w-80 lg:border-l lg:border-t-0 dark:border-slate-800">
+        <div className="grid grid-cols-2 gap-2 border-t border-slate-200/80 p-6 lg:w-80 lg:border-l lg:border-t-0 lg:dark:border-white/10 dark:border-white/10">
           <SnapshotItem label="MRP" value={displayText((scan.extractions?.mrp ?? '').replace(/^mrp\.?\s*/i, ''))} ok={Boolean(scan.extractions?.mrp)} />
           <SnapshotItem label="Net qty" value={displayText((scan.extractions?.net_quantity ?? '').replace(/^net\s*(?:wt\.?|weight|qty\.?|quantity)?\s*[:.]?\s*/i, ''))} ok={Boolean(scan.extractions?.net_quantity)} />
           <SnapshotItem label="Mfg" value={displayText(scan.extractions?.mfg_date)} ok={Boolean(scan.extractions?.mfg_date)} />
@@ -304,7 +345,7 @@ function ScoreHero({ scan, counts, sig }: { scan: ScanRow; counts: StatusCounts;
 function SnapshotItem({ label, value, ok }: { label: string; value: string | null | undefined; ok: boolean }) {
   const shown = value?.trim() || ''
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+    <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 dark:border-white/[0.08] dark:bg-white/[0.03]">
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
       <p className={`mt-0.5 truncate text-xs font-semibold ${ok ? 'text-slate-700 dark:text-slate-200' : 'text-slate-300 dark:text-slate-500'}`} title={shown}>
         {ok ? shown : 'Not detected'}
@@ -358,7 +399,7 @@ function ComplianceOverview({ counts }: { counts: StatusCounts }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
       {items.map((it) => (
-        <div key={it.label} className="flex flex-col items-start gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+        <div key={it.label} className="flex flex-col items-start gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
           <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneText[it.tone]}`}>{it.icon}</span>
           <span className={`text-2xl font-extrabold leading-none text-slate-900 dark:text-slate-100`}>{it.value}</span>
           <span className="text-[11px] font-semibold leading-tight text-slate-400">{it.label}</span>
@@ -420,7 +461,7 @@ function ViolationCard({
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Actual finding</p>
           <p className="mt-0.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{desc}</p>
           {r.detected_value != null && r.detected_value !== '' && (
-            <p className="mt-1 rounded-lg bg-white/70 px-2 py-1 text-xs italic text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">“{displayText(r.detected_value)}”</p>
+            <p className="mt-1 rounded-lg bg-white/70 px-2 py-1 text-xs italic text-slate-500 dark:bg-navy-900/70 dark:text-slate-400">“{displayText(r.detected_value)}”</p>
           )}
         </div>
         <div className="sm:col-span-2">
@@ -482,7 +523,7 @@ function AiSummaryCard({ scan, counts, failCount }: { scan: ScanRow; counts: Sta
               <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
             </span>
           </summary>
-          <p className="mt-3 rounded-xl bg-white/70 px-3.5 py-3 text-sm leading-relaxed text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">{shown}</p>
+          <p className="mt-3 rounded-xl bg-white/70 px-3.5 py-3 text-sm leading-relaxed text-slate-700 dark:bg-navy-900/60 dark:text-slate-200">{shown}</p>
         </details>
       ) : (
         <p className="mt-4 text-base font-semibold leading-relaxed text-slate-800 dark:text-slate-100">{shown}</p>
@@ -492,7 +533,7 @@ function AiSummaryCard({ scan, counts, failCount }: { scan: ScanRow; counts: Sta
         <MetricChip icon={<Eye className="h-4 w-4" />} label="Needs verification" value={needVerify} tone="amber" />
         <MetricChip icon={<AlertTriangle className="h-4 w-4" />} label="Physical inspection" value={physical} tone="cyan" />
       </div>
-      <p className="mt-4 flex items-start gap-1.5 rounded-xl bg-white/70 px-3 py-2 text-xs text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+      <p className="mt-4 flex items-start gap-1.5 rounded-xl bg-white/70 px-3 py-2 text-xs text-slate-500 dark:bg-navy-900/60 dark:text-slate-400">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-500" />
         AI result should be treated as an inspection aid and verified against the physical package.
       </p>
@@ -536,8 +577,8 @@ function FinalAssessment({ scan, counts }: { scan: ScanRow; counts: StatusCounts
 
   return (
     <AnalyticsCard title="Final Assessment" subtitle="Professional conclusion based on the compliance checks">
-      <div className={`flex items-start gap-4 rounded-2xl border border-slate-200/80 p-4 dark:border-slate-800 ${bg}`}>
-        <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${textCol} bg-white shadow-sm dark:bg-slate-900`}>{icon}</span>
+      <div className={`flex items-start gap-4 rounded-2xl border border-slate-200/80 p-4 dark:border-white/10 ${bg}`}>
+        <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${textCol} bg-white shadow-sm dark:bg-navy-900`}>{icon}</span>
         <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">{text}</p>
       </div>
     </AnalyticsCard>
@@ -560,9 +601,9 @@ function EvidenceModal({ scan, imageIndex, title, onClose }: { scan: ScanRow; im
           {urls.map((u, i) => (
             <div
               key={i}
-              className={`overflow-hidden rounded-xl border ${i === imageIndex ? 'border-amber-400 ring-2 ring-amber-300/60' : 'border-slate-200 dark:border-slate-800'}`}
+              className={`overflow-hidden rounded-xl border ${i === imageIndex ? 'border-amber-400 ring-2 ring-amber-300/60' : 'border-slate-200 dark:border-white/10'}`}
             >
-              <img src={u} alt={`Product photo ${i + 1}`} className="h-44 w-full object-contain bg-slate-50 dark:bg-slate-950" />
+              <img src={u} alt={`Product photo ${i + 1}`} className="h-44 w-full object-contain bg-slate-50 mix-blend-multiply dark:bg-navy-950 dark:mix-blend-screen" />
               <div className="flex items-center justify-between px-3 py-2">
                 <span className="text-[11px] font-bold text-slate-400">Image {i + 1}</span>
                 {i === imageIndex && (
@@ -683,10 +724,10 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
           <span className="flex items-center gap-1"><XCircle className="h-3 w-3 text-rose-400" /> missing</span>
         </span>
       </div>
-      <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
+      <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/10">
         {rows.map((row, i) => (
-          <details key={row.key} className={`group ${i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}>
-            <summary className={`flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-2.5 ${row.status === 'miss' ? 'bg-rose-50/40 dark:bg-rose-500/5' : row.status === 'verify' ? 'bg-amber-50/30 dark:bg-amber-500/5' : 'bg-white dark:bg-slate-900'}`}>
+          <details key={row.key} className={`group ${i > 0 ? 'border-t border-slate-100 dark:border-white/10' : ''}`}>
+            <summary className={`flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-2.5 ${row.status === 'miss' ? 'bg-rose-50/40 dark:bg-rose-500/5' : row.status === 'verify' ? 'bg-amber-50/30 dark:bg-amber-500/5' : 'bg-white dark:bg-navy-900'}`}>
               <span className="flex h-6 w-6 shrink-0 items-center justify-center">{row.icon}</span>
               <span className="w-28 shrink-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:w-40">{row.label}</span>
               <span title={row.value} className={`min-w-0 flex-1 truncate text-sm ${row.status === 'miss' ? 'italic text-rose-400' : row.status === 'verify' ? 'italic text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
@@ -702,7 +743,7 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
               )}
               <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
             </summary>
-            <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Detected value</p>
@@ -728,7 +769,7 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
                 </div>
               </div>
               {row.value && (
-                <p className="mt-3 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs italic text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
+                <p className="mt-3 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs italic text-slate-500 dark:bg-navy-900/70 dark:text-slate-400">
                   Read from the label: “{row.value}”
                 </p>
               )}
@@ -767,7 +808,7 @@ function ProductDetails({ scan }: { scan: ScanRow }) {
         return (
           <div
             key={r.key}
-            className={`rounded-xl border p-3 ${verify ? 'border-amber-200 bg-amber-50/40 dark:border-amber-500/20 dark:bg-amber-500/5' : 'border-slate-100 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-950/40'}`}
+            className={`rounded-xl border p-3 ${verify ? 'border-amber-200 bg-amber-50/40 dark:border-amber-500/20 dark:bg-amber-500/5' : 'border-slate-100 bg-slate-50/60 dark:border-white/[0.08] dark:bg-white/[0.03]'}`}
           >
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{r.label}</p>
@@ -812,9 +853,9 @@ function RuleRow({ r, onViewEvidence }: { r: RuleCheck; onViewEvidence: (sourceI
   const isProblem = r.status === 'FAIL' || r.status === 'WARNING' || r.status === 'NOT_DETECTED'
   const border = r.status === 'FAIL' ? 'border-rose-200 dark:border-rose-500/20'
     : r.status === 'WARNING' || r.status === 'NOT_DETECTED' ? 'border-amber-200 dark:border-amber-500/20'
-    : 'border-slate-200/80 dark:border-slate-800'
+    : 'border-slate-200/80 dark:border-white/10'
   return (
-    <details className={`group rounded-xl border bg-white dark:bg-slate-900 ${border}`}>
+    <details className={`group rounded-xl border bg-white dark:bg-navy-900 ${border}`}>
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2.5 px-4 py-2.5">
         <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${isProblem ? 'bg-rose-50 text-rose-500 dark:bg-rose-500/10' : 'bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10'}`}>
           {isProblem ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
@@ -824,7 +865,7 @@ function RuleRow({ r, onViewEvidence }: { r: RuleCheck; onViewEvidence: (sourceI
         <span className="shrink-0"><RuleStatusBadge status={r.status} /></span>
         <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="grid grid-cols-1 gap-3 border-t border-slate-100 px-4 py-3 sm:grid-cols-2 dark:border-slate-800">
+      <div className="grid grid-cols-1 gap-3 border-t border-slate-100 px-4 py-3 sm:grid-cols-2 dark:border-white/10">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Requirement</p>
           <p className="mt-0.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{desc}</p>
@@ -876,7 +917,7 @@ function EvidenceChain({ chain }: { chain?: EvidenceLink[] }) {
     <AnalyticsCard title="Evidence Chain" subtitle="How each finding was verified">
       <div className="space-y-2">
         {chain.map((e, i) => (
-          <div key={i} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+          <div key={i} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <p className="min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200">
                 <span className="font-mono text-brand-600 dark:text-brand-400">{e.rule_id}</span> · {displaySentence(e.requirement)}
@@ -1095,7 +1136,7 @@ function ResultSummary({
           </p>
           <ul className="space-y-2">
             {sig.findings.map((f, i) => (
-              <li key={i} className="flex items-start gap-2 rounded-lg border border-slate-100 bg-white/60 px-2.5 py-1.5 text-sm leading-relaxed text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+              <li key={i} className="flex items-start gap-2 rounded-lg border border-slate-100 bg-white/60 px-2.5 py-1.5 text-sm leading-relaxed text-slate-600 dark:border-white/10 dark:bg-navy-900/40 dark:text-slate-300">
                 <SeverityBadge severity={f.severity} />
                 <span className="min-w-0 flex-1">{f.text}</span>
               </li>
@@ -1117,7 +1158,7 @@ function ResultSummary({
           </ul>
         </div>
 
-        <details className="group rounded-xl border border-slate-200/80 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-950/40">
+        <details className="group rounded-xl border border-slate-200/80 bg-slate-50/60 dark:border-white/[0.08] dark:bg-white/[0.03]">
           <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
             <Bot className="h-4 w-4 shrink-0 text-brand-500" /> AI explanation
             <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
@@ -1273,6 +1314,17 @@ export default function InspectionReport({
     void copyResult()
   }
 
+  const copyField = async (label: string, value: string) => {
+    const text = value?.trim()
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      toast('success', 'Copied', `${label} copied to clipboard.`)
+    } catch {
+      toast('error', 'Copy failed', 'Your browser blocked clipboard access.')
+    }
+  }
+
   const prodInfo: Array<{ label: string; value: string; confidence: FieldConf; state: 'ok' | 'verify' | 'miss'; node?: React.ReactNode }> = [
     { label: 'Product name', value: '', confidence: null, state: 'miss', node: <span className="font-semibold text-slate-800 dark:text-slate-100">{scan.product_name?.trim() ? displayProductName(scan.product_name) : 'Not detected'}</span> },
     { ...productFieldValue(scan, 'mrp'), label: 'MRP' },
@@ -1300,14 +1352,14 @@ export default function InspectionReport({
   return (
     <div className="animate-slide-in space-y-4">
       {/* Action bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-white/[0.07] dark:bg-navy-900/80">
         <div className="flex flex-wrap items-center gap-2">
           <Languages className="h-4 w-4 text-brand-500" />
           <select
             value={lang}
             onChange={(e) => setLang(e.target.value)}
             aria-label="Report language"
-            className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+            className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-200"
           >
             {SUPPORTED_LANGUAGES.map((l) => (
               <option key={l.code} value={l.code}>{l.name}</option>
@@ -1346,7 +1398,7 @@ export default function InspectionReport({
       </div>
 
       {/* Report header */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-brand-50/40 p-5 shadow-card sheen dark:border-white/[0.07] dark:from-navy-900 dark:to-[#101a31]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -1394,28 +1446,65 @@ export default function InspectionReport({
 
       {/* Product information */}
       <AnalyticsCard title="Detected Information" subtitle="Values read off the package label">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {prodInfo.map((p) => (
-            <div key={p.label} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{p.label}</p>
-              {p.node ? (
-                <div className="mt-1 text-sm">{p.node}</div>
-              ) : p.state === 'ok' ? (
-                <p className="mt-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200" title={p.value}>{p.value}</p>
-              ) : p.state === 'verify' ? (
-                <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="h-3.5 w-3.5" /> Unable to verify
-                </p>
-              ) : (
-                <p className="mt-1 text-sm font-semibold text-rose-400">Not detected</p>
-              )}
-              {p.confidence && p.state === 'ok' && (
-                <span className={`mt-1 block h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800`}>
-                  <span className={`block h-full rounded-full ${CONF_BAR[p.confidence]}`} style={{ width: `${CONF_PCT[p.confidence]}%` }} />
-                </span>
-              )}
-            </div>
-          ))}
+        <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/[0.08]">
+          <div className="hidden items-center gap-3 bg-slate-50/80 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:grid sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)_130px_120px_48px] dark:bg-white/[0.04] dark:text-slate-500">
+            <span>Property</span>
+            <span>Value</span>
+            <span>Confidence</span>
+            <span>Status</span>
+            <span className="text-right">Copy</span>
+          </div>
+          {prodInfo.map((p) => {
+            const copyValue = p.value || (p.label === 'Product name' ? String(scan.product_name ?? '') : '')
+            return (
+              <div
+                key={p.label}
+                className="grid grid-cols-1 gap-1.5 border-t border-slate-100 px-4 py-3 first:border-t-0 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)_130px_120px_48px] sm:items-center sm:gap-3 sm:py-2.5 dark:border-white/[0.06]"
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:text-xs">{p.label}</p>
+                <div className="min-w-0">
+                  {p.node ? (
+                    <div className="text-sm">{p.node}</div>
+                  ) : p.state === 'ok' ? (
+                    <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={p.value}>{p.value}</p>
+                  ) : p.state === 'verify' ? (
+                    <p className="flex items-center gap-1 text-sm font-semibold text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Unable to verify
+                    </p>
+                  ) : (
+                    <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">Not detected</p>
+                  )}
+                </div>
+                <div>
+                  {p.confidence && p.state === 'ok' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                        <span className={`block h-full rounded-full ${CONF_BAR[p.confidence]}`} style={{ width: `${CONF_PCT[p.confidence]}%` }} />
+                      </span>
+                      <span className="text-xs font-semibold capitalize text-slate-500 dark:text-slate-400">{p.confidence}</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400 dark:text-slate-500">—</span>
+                  )}
+                </div>
+                <div>
+                  <ToneBadge tone={p.state === 'ok' ? 'emerald' : p.state === 'verify' ? 'amber' : 'rose'}>
+                    {p.state === 'ok' ? 'Detected' : p.state === 'verify' ? 'Unverified' : 'Missing'}
+                  </ToneBadge>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void copyField(p.label, copyValue)}
+                    aria-label={`Copy ${p.label}`}
+                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-brand-600 dark:hover:bg-white/10 dark:hover:text-brand-300"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </AnalyticsCard>
 
@@ -1464,10 +1553,10 @@ export default function InspectionReport({
               <button
                 key={i}
                 onClick={() => openEvidence(i, 'Evidence from product label')}
-                className="group overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50 text-left transition-colors hover:border-brand-400 dark:border-slate-800 dark:bg-slate-950/40"
+                className="group overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50 text-left transition-colors hover:border-brand-400 dark:border-white/[0.08] dark:bg-white/[0.03]"
               >
                 <img src={u} alt={`Product photo ${i + 1}`} className="h-28 w-full object-contain mix-blend-multiply dark:mix-blend-screen" />
-                <div className="flex items-center justify-between border-t border-slate-100 px-2.5 py-1.5 dark:border-slate-800">
+                <div className="flex items-center justify-between border-t border-slate-100 px-2.5 py-1.5 dark:border-white/10">
                   <span className="text-[11px] font-bold text-slate-400">Image {i + 1}</span>
                   <Eye className="h-3.5 w-3.5 text-slate-300 group-hover:text-brand-500" />
                 </div>
@@ -1480,18 +1569,18 @@ export default function InspectionReport({
       {/* Source & Evidence — where every finding came from */}
       <AnalyticsCard title="Source & Evidence" subtitle="Provenance of every value in this report">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Analysis engine</p>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{analysis}</p>
             {analysisProviderName && (
               <p className="mt-0.5 text-[10px] text-slate-400">{analysisProviderName}</p>
             )}
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Photos analysed</p>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{photoCount > 0 ? `${photoCount} image${photoCount === 1 ? '' : 's'}` : '—'}</p>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">OCR source</p>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
               {ocrBlocks.length > 0 || ocrChars > 0
@@ -1499,20 +1588,20 @@ export default function InspectionReport({
                 : 'None captured'}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Rule checks run</p>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{(scan.rules ?? []).length}</p>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Evidence links</p>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{(scan.evidence_chain ?? []).length}</p>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Uncertain fields</p>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{(scan.uncertain ?? []).length}</p>
           </div>
         </div>
-        <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
+        <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500 dark:bg-navy-950/50 dark:text-slate-400">
           Every value in this report is drawn only from the {photoCount} photo{photoCount === 1 ? '' : 's'} captured and the text readable on the label.
           Declarations that could not be read are marked &quot;Unable to verify&quot; and are never counted as pass or fail.
         </p>
@@ -1533,10 +1622,10 @@ export default function InspectionReport({
                   <button
                     key={f.key}
                     onClick={() => setRuleFilter(f.key)}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
                       active
-                        ? 'bg-brand-600 text-white shadow-sm'
-                        : 'border border-slate-200 bg-white text-slate-500 hover:border-brand-300 hover:text-brand-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400 dark:hover:text-brand-400'
+                        ? 'bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-glow-sm'
+                        : 'border border-slate-200 bg-white text-slate-500 hover:border-brand-300 hover:text-brand-600 dark:border-white/10 dark:bg-navy-950 dark:text-slate-400 dark:hover:border-brand-500/40 dark:hover:text-brand-300'
                     }`}
                   >
                     {f.label} <span className="opacity-70">{count}</span>
@@ -1567,7 +1656,7 @@ export default function InspectionReport({
       <AnalyticsCard title={t('ai_assistant')} subtitle={t('suggest_next')}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-3">
-            <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.03]">
               <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
                 <Bot className="h-3.5 w-3.5" /> {t('assistant_summary')}
               </p>
@@ -1587,7 +1676,7 @@ export default function InspectionReport({
             )}
           </div>
 
-          <div className="flex flex-col rounded-xl border border-slate-200/80 p-4 dark:border-slate-800">
+          <div className="flex flex-col rounded-xl border border-slate-200/80 p-4 dark:border-white/10">
             <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
               <MessageSquareText className="h-3.5 w-3.5" /> {t('ask_assistant')}
             </p>
@@ -1599,14 +1688,14 @@ export default function InspectionReport({
                   if (e.key === 'Enter') void ask()
                 }}
                 placeholder={t('ask_placeholder')}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
               />
               <Button icon={asking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} onClick={() => void ask()} disabled={asking}>
                 {t('ask_button')}
               </Button>
             </div>
             {answer && (
-              <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-950/50">
+              <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-navy-950/50">
                 {(() => {
                   const sentences = formatAnswer(answer)
                   return sentences.length > 1 ? (
@@ -1642,7 +1731,7 @@ export default function InspectionReport({
         <AnalyticsCard title={t('labels_detected')} subtitle="Multi-label detection">
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {(scan.labels ?? []).map((lb, i) => (
-              <li key={i} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+              <li key={i} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
                 <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                   <Tag className="h-3.5 w-3.5 shrink-0 text-brand-500" /> <span className="truncate">{displayText(lb.label)}</span>
                 </span>
@@ -1662,13 +1751,13 @@ export default function InspectionReport({
             <div className="space-y-2">
               {ocrBlocks.map((block, i) => (
                 <details key={i} className="group">
-                  <summary className="flex cursor-pointer select-none flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
+                  <summary className="flex cursor-pointer select-none flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                     <span className="min-w-0">Image {i + 1} — {block.position} ({block.text.length} chars)</span>
                     {block.languages.length > 0 && <span className="ml-1 shrink-0 text-slate-400">[{block.languages.join(', ')}]</span>}
                     <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
                   </summary>
-                  <p className="mt-2 break-words rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
+                  <p className="mt-2 break-words rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:bg-navy-950/50 dark:text-slate-400">
                     {block.text}
                   </p>
                 </details>
@@ -1677,12 +1766,12 @@ export default function InspectionReport({
           )}
           {scan.ocr?.text && (
             <details className="group mt-2">
-              <summary className="flex cursor-pointer select-none items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
+              <summary className="flex cursor-pointer select-none items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300">
                 <Barcode className="h-3.5 w-3.5 text-slate-400" />
                 {t('extracted_text')} ({scan.ocr.text.length} chars)
                 <ChevronDown className="ml-auto h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180" />
               </summary>
-              <p className="mt-2 break-words rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
+              <p className="mt-2 break-words rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:bg-navy-950/50 dark:text-slate-400">
                 {scan.ocr.text}
               </p>
             </details>
@@ -1691,7 +1780,7 @@ export default function InspectionReport({
       )}
 
       {/* Analysis footer */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-slate-200/80 bg-slate-50/60 px-4 py-2.5 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-slate-200/80 bg-slate-50/60 px-4 py-2.5 text-xs text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-400">
         <span className="flex items-center gap-1.5 font-semibold text-slate-600 dark:text-slate-300">
           <Bot className="h-3.5 w-3.5 text-brand-500" /> Analysis
         </span>

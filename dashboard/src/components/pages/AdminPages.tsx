@@ -79,7 +79,7 @@ export function ViolationsPage() {
         {v.status !== 'Rejected' && (
           <button
             onClick={() => void setStatus(v, 'Rejected')}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 dark:border-white/15 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             Reject
           </button>
@@ -99,7 +99,7 @@ export function ViolationsPage() {
         </div>
         <button
           onClick={() => void load()}
-          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60"
+          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-slate-800/60"
         >
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
@@ -198,7 +198,7 @@ export function ManufacturersPage() {
         </div>
         <button
           onClick={() => void load()}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60"
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-slate-800/60"
         >
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>

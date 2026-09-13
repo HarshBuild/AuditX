@@ -251,7 +251,7 @@ export function AdminDashboardPage() {
                 <Link
                   key={l.path}
                   to={l.path}
-                  className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card transition-colors hover:border-brand-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-500/40"
+                  className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card transition-colors hover:border-brand-300 dark:border-white/10 dark:bg-navy-900 dark:hover:border-brand-500/40"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
                     <Icon className="h-5 w-5" />
@@ -382,7 +382,7 @@ export function SuperAdminDashboardPage() {
                 <Link
                   key={l.path}
                   to={l.path}
-                  className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card transition-colors hover:border-brand-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-500/40"
+                  className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card transition-colors hover:border-brand-300 dark:border-white/10 dark:bg-navy-900 dark:hover:border-brand-500/40"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
                     <Icon className="h-5 w-5" />

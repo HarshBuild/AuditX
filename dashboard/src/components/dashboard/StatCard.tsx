@@ -14,7 +14,7 @@ const accentMap: Record<StatDefinition['accent'], string> = {
 export default function StatCard({ stat }: { stat: StatDefinition }) {
   const Icon = stat.icon
   return (
-    <div className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lifted dark:border-slate-800 dark:bg-slate-900">
+    <div className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card ring-1 ring-slate-900/[0.03] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lifted dark:border-white/[0.07] dark:bg-navy-900 dark:ring-white/[0.02]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">

@@ -41,7 +41,7 @@ export default function DataTable<T>({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-left dark:border-slate-800">
+          <tr className="border-b border-slate-200 text-left dark:border-white/[0.07]">
             {columns.map((col) => {
               const active = sortKey === col.key
               return (
@@ -78,14 +78,14 @@ export default function DataTable<T>({
             })}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
+        <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
           {rows.map((row) => (
             <tr
               key={rowKey(row)}
               onClick={() => onRowClick?.(row)}
               className={cn(
                 'transition-colors',
-                onRowClick && 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40',
+                onRowClick && 'cursor-pointer hover:bg-brand-50/40 dark:hover:bg-white/[0.04]',
               )}
             >
               {columns.map((col) => (

@@ -45,7 +45,7 @@ export default function Pagination({
           onClick={() => onPage(page - 1)}
           disabled={page <= 1}
           aria-label="Previous page"
-          className="rounded-lg border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+          className="rounded-lg border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-white/15 dark:text-slate-400 dark:hover:bg-slate-800"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -74,7 +74,7 @@ export default function Pagination({
           onClick={() => onPage(page + 1)}
           disabled={page >= pages}
           aria-label="Next page"
-          className="rounded-lg border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+          className="rounded-lg border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-white/15 dark:text-slate-400 dark:hover:bg-slate-800"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
@@ -82,7 +82,7 @@ export default function Pagination({
           value={pageSize}
           onChange={(e) => onPageSize(Number(e.target.value))}
           aria-label="Rows per page"
-          className="ml-2 h-8 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          className="ml-2 h-8 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 dark:border-white/15 dark:bg-navy-900 dark:text-slate-300"
         >
           {[8, 12, 20].map((n) => (
             <option key={n} value={n}>

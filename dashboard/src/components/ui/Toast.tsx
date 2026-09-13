@@ -57,7 +57,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="pointer-events-auto flex w-full max-w-sm animate-toast-in items-start gap-3 rounded-xl border border-slate-200 bg-white p-3.5 shadow-lifted dark:border-slate-800 dark:bg-slate-900"
+            className="pointer-events-auto flex w-full max-w-sm animate-toast-in items-start gap-3 rounded-xl border border-slate-200/80 bg-white/95 p-3.5 shadow-[0_12px_32px_-8px_rgb(11_19_36/0.2)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl dark:border-white/10 dark:bg-navy-900/95 dark:ring-white/5"
           >
             <div className="mt-0.5 shrink-0">{icons[t.kind]}</div>
             <div className="min-w-0 flex-1">

@@ -48,7 +48,7 @@ const POSITIONS = ['front', 'back', 'side', 'other'] as const
 
 /** Compact field styling shared by every input/select on the capture form. */
 const fieldCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-shadow focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100 dark:placeholder:text-slate-500'
 
 export default function ScanProductPage() {
   const { toast } = useToast()
@@ -322,8 +322,12 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
 
   return (
     <div className="space-y-4 sm:space-y-5">
-      <div>
-        <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl dark:text-slate-100">Scan Product Label</h1>
+      <div className="flex flex-col gap-2">
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-brand-700 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-300">
+          <Sparkles className="h-3 w-3" />
+          AI-Powered Inspection
+        </span>
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl dark:text-slate-100">Scan Product Label</h1>
         <p className="mt-0.5 max-w-2xl text-[13px] leading-snug text-slate-500 sm:mt-1 sm:text-sm dark:text-slate-400">
           Photograph the label front, back and sides — the AI combines every photo into one multi-language inspection.
         </p>
@@ -380,52 +384,83 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
               <CameraCapture open={cameraOpen} onCapture={(r) => void addFiles([r.file])} onClose={() => setCameraOpen(false)} />
 
               {phase === 'analyzing' && (
-                <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-500/20 dark:bg-brand-500/10">
-                  <p className="flex items-center gap-2 text-sm font-bold text-brand-800 dark:text-brand-200">
-                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand-600" />
-                    Processing your label
-                  </p>
-                  <ol className="mt-3 space-y-1.5">
-                    {STAGES.map((s, i) => {
-                      const Icon = s.icon
-                      const done = i < progressStep
-                      const active = i === progressStep && !done
-                      return (
-                        <li key={s.label} className="flex items-center gap-2.5 text-sm">
-                          <span
-                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                              active
-                                ? 'bg-brand-600 text-white'
-                                : done
-                                  ? 'bg-emerald-500 text-white'
-                                  : 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
-                            }`}
-                          >
-                            {active ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : done ? (
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                            ) : (
-                              <Icon className="h-3.5 w-3.5" />
-                            )}
-                          </span>
-                          <span
-                            className={active ? 'font-semibold text-brand-800 dark:text-brand-200' : done ? 'text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}
-                          >
-                            {s.label}
-                          </span>
-                          {active && (
-                            <span className="ml-auto hidden h-1.5 w-20 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/15 sm:block">
-                              <span className="block h-full w-full animate-pulse rounded-full bg-brand-500" />
+                <div className="mb-4 overflow-hidden rounded-2xl border border-brand-200/80 bg-gradient-to-br from-brand-50/80 via-white to-indigo-50/60 shadow-glow-sm dark:border-brand-500/20 dark:from-navy-900 dark:via-navy-950 dark:to-[#121b33]">
+                  <div className="relative px-4 pt-4 sm:px-5 sm:pt-5">
+                    <div className="flex items-center gap-3">
+                      <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                        <span aria-hidden="true" className="absolute inset-0 animate-pulse-glow rounded-full bg-brand-500/25" />
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-0 animate-spin rounded-full border-2 border-brand-500 border-b-transparent"
+                        />
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-md">
+                          <ScanSearch className="h-4 w-4" />
+                        </span>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
+                          Processing your label
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          AI is reading and scoring your photos — step {Math.min(progressStep + 1, STAGES.length)} of {STAGES.length}
+                        </p>
+                      </div>
+                      <span className="ml-auto shrink-0 rounded-full bg-white/80 px-2.5 py-1 text-xs font-bold text-brand-700 ring-1 ring-brand-200 dark:bg-navy-900/80 dark:text-brand-300 dark:ring-brand-500/25">
+                        {Math.round((Math.min(progressStep + 1, STAGES.length) / STAGES.length) * 100)}%
+                      </span>
+                    </div>
+
+                    <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/80 ring-1 ring-brand-200/60 dark:bg-navy-900 dark:ring-brand-500/15">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-accent-500 via-brand-500 to-brand-600 shadow-[0_0_10px_rgb(59_130_246/0.8)] transition-[width] duration-500 ease-out"
+                        style={{ width: `${Math.round((Math.min(progressStep + 1, STAGES.length) / STAGES.length) * 100)}%` }}
+                      />
+                    </div>
+
+                    <ol className="mt-4 space-y-1.5">
+                      {STAGES.map((s, i) => {
+                        const Icon = s.icon
+                        const done = i < progressStep
+                        const active = i === progressStep && !done
+                        return (
+                          <li key={s.label} className="flex items-center gap-2.5 text-sm">
+                            <span
+                              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-all duration-300 ${
+                                active
+                                  ? 'bg-gradient-to-br from-accent-500 to-brand-600 text-white shadow-glow-sm'
+                                  : done
+                                    ? 'bg-emerald-500 text-white'
+                                    : 'bg-slate-200/80 text-slate-400 dark:bg-navy-900 dark:text-slate-500'
+                              }`}
+                            >
+                              {active ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : done ? (
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              ) : (
+                                <Icon className="h-3.5 w-3.5" />
+                              )}
                             </span>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ol>
-                  <div className="mt-3 flex items-start gap-2 text-xs text-brand-600/80 dark:text-brand-300/70">
-                    <ScanText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>Each step runs only when the previous step actually completes. Complex labels can take a minute — your photos are not uploaded unless you save the scan.</span>
+                            <span
+                              className={active ? 'font-semibold text-slate-900 dark:text-slate-100' : done ? 'text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}
+                            >
+                              {s.label}
+                            </span>
+                            {active && (
+                              <span className="ml-auto hidden h-1.5 w-24 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/15 sm:block">
+                                <span className="block h-full w-1/2 animate-scan-line-progress rounded-full bg-gradient-to-r from-transparent via-accent-400 to-brand-500" />
+                              </span>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ol>
+                    <div className="mt-4 flex items-start gap-2 rounded-xl bg-white/70 p-3 text-xs text-slate-600 dark:bg-navy-900/70 dark:text-slate-400">
+                      <ScanText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600 dark:text-brand-400" />
+                      <span>
+                        Each step runs only when the previous step actually completes. Complex labels can take a minute — your photos are not uploaded unless you save the scan.
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -459,18 +494,27 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                     onDragOver={onDragOver}
                     onDrop={onDrop}
                     disabled={busy || phase === 'reading'}
-                    className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 py-6 text-slate-400 transition-colors hover:border-brand-400 hover:text-brand-500 disabled:opacity-50 dark:border-slate-700"
+                    className="group relative mt-3 flex w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 px-6 py-8 text-slate-400 transition-all duration-200 hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-500 disabled:opacity-50 dark:border-white/15 dark:bg-navy-900/40 dark:hover:border-brand-500/50 dark:hover:bg-brand-500/[0.05]"
                   >
+                    {dragActive && (
+                      <span aria-hidden="true" className="pointer-events-none absolute inset-0 animate-pulse-glow rounded-2xl ring-2 ring-accent-400/70" />
+                    )}
                     {dragActive ? (
                       <>
-                        <UploadCloud className="h-6 w-6 text-brand-500" />
-                        <span className="text-[13px] font-semibold text-brand-600 dark:text-brand-300">Drop photos to add them</span>
+                        <UploadCloud className="h-7 w-7 animate-float text-brand-500" />
+                        <span className="text-[13px] font-bold text-brand-700 dark:text-brand-300">Drop photos to add them</span>
                       </>
                     ) : (
                       <>
-                        <ImagePlus className="h-6 w-6" />
-                        <span className="text-[13px] font-semibold">Or drag &amp; drop label photos here</span>
-                        <span className="text-[11px]">Front + back + side panels give the most accurate reading.</span>
+                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 text-white shadow-glow transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:scale-105">
+                          <ScanLine className="h-6 w-6" />
+                        </span>
+                        <span className="text-sm font-bold text-slate-800 group-hover:text-brand-700 dark:text-slate-100 dark:group-hover:text-brand-300">
+                          Or drag &amp; drop label photos here
+                        </span>
+                        <span className="max-w-sm text-[11px] text-slate-400">
+                          Front + back + side panels give the most accurate reading. JPG, PNG or WEBP · up to {MAX_SCAN_IMAGES} photos.
+                        </span>
                       </>
                     )}
                   </button>
@@ -494,7 +538,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
                     {picked.map((p, i) => (
-                      <div key={i} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800">
+                      <div key={i} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-white/10">
                         <img src={p.dataUrl} alt={`Label ${i + 1}`} className="h-24 w-full object-cover sm:h-28" />
                         {p.quality && (p.quality.blurry || p.quality.dark) && (
                           <div className="absolute left-1.5 top-1.5 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
@@ -513,7 +557,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                           value={p.position}
                           onChange={(e) => setPosition(i, e.target.value)}
                           aria-label={`Position for photo ${i + 1}`}
-                          className="absolute bottom-1.5 left-1.5 h-7 rounded-md border border-slate-300 bg-white px-1.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                          className="absolute bottom-1.5 left-1.5 h-7 rounded-md border border-slate-300 bg-white px-1.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-900 dark:text-slate-200"
                         >
                           {POSITIONS.map((pos) => (
                             <option key={pos} value={pos}>{pos.toUpperCase()}</option>
@@ -525,7 +569,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                       <button
                         type="button"
                         onClick={openGallery}
-                        className="flex h-24 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 transition-colors hover:border-brand-400 hover:text-brand-500 dark:border-slate-700 sm:h-28"
+                        className="flex h-24 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/50 text-slate-400 transition-all duration-200 hover:border-brand-400 hover:bg-brand-50/40 hover:shadow-glow-sm hover:text-brand-500 dark:border-white/15 dark:bg-navy-900/40 dark:hover:border-brand-500/50 sm:h-28"
                       >
                         <ImagePlus className="h-5 w-5" />
                         <span className="text-xs font-semibold">Add more</span>
@@ -559,7 +603,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                   className={fieldCls}
                 />
               </div>
-              <details className="group rounded-xl border border-slate-200/80 px-3 py-1.5 dark:border-slate-800">
+              <details className="group rounded-xl border border-slate-200/80 px-3 py-1.5 dark:border-white/10">
                 <summary className="flex cursor-pointer select-none items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                   Additional details
                   <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
@@ -585,7 +629,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                       if (e.key === 'Enter') void lookupCatalogue()
                     }}
                     placeholder="e.g. 8901234567890"
-                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                   <Button
                     variant="outline"
@@ -656,17 +700,17 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
 
       <AnalyticsCard title="How it works" subtitle="Front + back + sides = one inspection">
         <div className="grid grid-cols-1 gap-3 text-sm text-slate-500 dark:text-slate-400 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-white/10 dark:bg-navy-950/40">
             <ScanLine className="h-5 w-5 text-brand-500" />
             <p className="mt-2 font-semibold text-slate-800 dark:text-slate-100">1 · Capture</p>
             <p className="mt-1 text-xs">Photograph the mandatory-declarations block — front, back and any side panels. Drag &amp; drop or tap to add up to 6 photos.</p>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-white/10 dark:bg-navy-950/40">
             <Sparkles className="h-5 w-5 text-brand-500" />
             <p className="mt-2 font-semibold text-slate-800 dark:text-slate-100">2 · Sharpen + OCR + engine</p>
             <p className="mt-1 text-xs">Each image is sharpened and binarised, text is read field-by-field across every photo (multi-image voting), then a deterministic Rule 6 engine checks the declarations.</p>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-white/10 dark:bg-navy-950/40">
             <ScanLine className="h-5 w-5 text-brand-500" />
             <p className="mt-2 font-semibold text-slate-800 dark:text-slate-100">3 · Result &amp; export</p>
             <p className="mt-1 text-xs">See the compliance score, per-declaration confidence, pass/fail checks and evidence — then export a multi-language PDF.</p>

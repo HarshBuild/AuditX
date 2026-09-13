@@ -10,9 +10,9 @@ export function LogoMark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
 
 export function FullPageLoader({ label = 'Verifying your session…' }: { label?: string }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-100 dark:bg-slate-950" role="status">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-100 dark:bg-navy-950" role="status">
       <LogoMark size="lg" />
-      <span className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600 dark:border-slate-700 dark:border-t-brand-400" />
+      <span className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600 dark:border-white/15 dark:border-t-brand-400" />
       <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
     </div>
   )

@@ -11,8 +11,8 @@ html.dark {
 }
 
 body {
-  @apply antialiased text-slate-800 bg-slate-100 dark:text-slate-200 dark:bg-slate-950;
-  font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans Devanagari', sans-serif;
+  @apply antialiased text-slate-800 bg-slate-50 dark:text-slate-200 dark:bg-navy-950;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans Devanagari', sans-serif;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   overscroll-behavior-y: none;
 }
@@ -76,7 +76,66 @@ canvas {
 }
 
 :focus-visible {
-  @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-950;
+  @apply outline-none ring-2 ring-accent-500 ring-offset-2 ring-offset-white dark:ring-offset-navy-950;
+}
+
+/* ---------- Premium surfaces & helpers ---------- */
+
+/* Skeleton loading shimmer (pair with bg-slate-100 dark:bg-slate-800) */
+.skeleton {
+  @apply relative overflow-hidden bg-slate-200/80 dark:bg-slate-800/80;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.55),
+    transparent
+  );
+  animation: skeleton-sweep 1.5s infinite;
+}
+html.dark .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(148 163 184 / 0.12), transparent);
+}
+
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Brand gradient text for hero headings / big numbers */
+.text-gradient {
+  @apply bg-clip-text text-transparent;
+  background-image: linear-gradient(135deg, #2563eb 0%, #4f9bff 50%, #7c8cff 100%);
+}
+
+/* Accent glow behind AI / scanning visuals */
+.glow-ring {
+  box-shadow: 0 0 0 1px rgb(59 130 246 / 0.25), 0 0 24px -4px rgb(37 99 235 / 0.4);
+}
+
+/* Subtle dotted grid used behind hero-ish blocks */
+.bg-dots {
+  background-image: radial-gradient(rgb(148 163 184 / 0.22) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+/* Very subtle diagonal sheen for gradient hero tiles */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 20%, rgb(255 255 255 / 0.12) 46%, transparent 60%);
+  pointer-events: none;
 }
 
 /* Slim scrollbars */

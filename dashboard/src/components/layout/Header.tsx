@@ -104,11 +104,12 @@ export default function Header({
   }, [])
 
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center gap-1.5 border-b border-slate-200 bg-white/80 px-3 backdrop-blur sm:h-14 sm:gap-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900/80">
+    <header className="sticky top-0 z-30 flex h-12 items-center gap-1.5 border-b border-slate-200/70 bg-white/70 px-3 backdrop-blur-xl sm:h-14 sm:gap-3 sm:px-6 dark:border-white/[0.06] dark:bg-navy-950/70">
+
       <button
         onClick={onMenu}
         aria-label="Open navigation menu"
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800"
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-white/10"
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -131,7 +132,7 @@ export default function Header({
 
 {recPath && (
         <div className="relative ml-auto hidden max-w-sm flex-1 md:block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
           <input
             ref={searchRef}
             type="search"
@@ -143,9 +144,9 @@ export default function Header({
             }}
             placeholder="Search records…"
             aria-label="Global search"
-            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-12 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-transparent focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
+            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-100/70 pl-9 pr-12 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-all focus:border-transparent focus:bg-white focus:shadow-glow-sm focus:ring-2 focus:ring-accent-500 dark:border-white/10 dark:bg-navy-900/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-navy-900"
           />
-          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400 lg:block dark:border-slate-700 dark:bg-slate-900">
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400 lg:block dark:border-white/10 dark:bg-navy-900">
             ⌘K
           </kbd>
         </div>
@@ -156,7 +157,7 @@ export default function Header({
           onClick={onCycleTheme}
           aria-label={`Switch theme (currently ${resolvedDark ? 'dark' : 'light'})`}
           title={`Theme: ${theme} (${resolvedDark ? 'dark' : 'light'})`}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
         >
           {resolvedDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </button>
@@ -167,13 +168,13 @@ export default function Header({
             <button
               aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
               className={cn(
-                'relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800',
-                unread > 0 && 'text-brand-600 dark:text-brand-400',
+                'relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10',
+                unread > 0 && 'text-brand-600 dark:text-brand-300',
               )}
             >
               {unread > 0 ? <BellRing className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
               {unread > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-rose-600 px-1 text-[10px] font-bold text-white shadow-sm">
                   {unread}
                 </span>
               )}
@@ -188,9 +189,9 @@ export default function Header({
           trigger={
             <button
               aria-label={`Account menu for ${profile?.name ?? 'user'}`}
-              className="flex h-9 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 sm:pr-2"
+              className="flex h-9 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-white/10 sm:pr-2"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 text-xs font-bold text-white shadow-sm ring-1 ring-white/40 dark:ring-white/10">
                 {initials}
               </span>
               <span className="hidden text-left sm:block">

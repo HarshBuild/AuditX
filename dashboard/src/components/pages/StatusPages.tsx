@@ -26,8 +26,8 @@ function StatusPage({
         : 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400'
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 px-4 dark:bg-slate-950">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-8 text-center shadow-card dark:border-slate-800 dark:bg-slate-900">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 px-4 dark:bg-navy-950">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-8 text-center shadow-card dark:border-white/10 dark:bg-navy-900">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-white">
           {icon}
         </div>
