@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Package, Plus, Pencil, Trash2, Search, Loader2 } from 'lucide-react'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import { useToast } from '../ui/Toast'
-import { listProducts } from '../../lib/db'
+import { subscribeProducts } from '../../lib/db'
 import { upsertProduct, deleteProduct } from '../../lib/services'
 import type { ProductRow } from '../../lib/types2'
 import { timeAgo } from '../../utils/format'
@@ -16,10 +16,11 @@ const EMPTY: ProductRow = {
   created_at: '', updated_at: '',
 }
 
+const productSearchable = (p: ProductRow) => [p.name, p.brand, p.manufacturer, p.barcode, p.category].join(' | ')
+
 export default function ProductDatabasePage() {
   const { toast } = useToast()
   const [products, setProducts] = useState<ProductRow[]>([])
-  const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -28,25 +29,38 @@ export default function ProductDatabasePage() {
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null)
 
-  async function reload(q?: string, p?: number) {
-    setLoading(true)
-    try {
-      const res = await listProducts({ page: p ?? page, pageSize: 20, query: q ?? search })
-      setProducts(res.data)
-      setCount(res.count)
-    } catch (e) {
-      toast('error', 'Load failed', (e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    // Live Firestore subscription — product changes (scans, other admins)
+    // appear immediately without a manual reload.
+    const unsub = subscribeProducts(
+      (rows) => {
+        setProducts(rows)
+        setLoading(false)
+      },
+      (err) => {
+        setLoading(false)
+        toast('error', 'Load failed', (err as Error).message)
+      },
+    )
+    return unsub
+  }, [toast])
 
-  useEffect(() => { void reload() }, [])
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) => productSearchable(p).toLowerCase().includes(q))
+  }, [products, search])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / 20))
+  const clampedPage = Math.min(page, totalPages)
+  const rows = useMemo(
+    () => filtered.slice((clampedPage - 1) * 20, clampedPage * 20),
+    [filtered, clampedPage],
+  )
 
   const handleSearch = (v: string) => {
     setSearch(v)
     setPage(1)
-    void reload(v, 1)
   }
 
   const openNew = () => { setForm(EMPTY); setFormOpen(true) }
@@ -73,7 +87,6 @@ export default function ProductDatabasePage() {
       })
       toast('success', 'Saved', form.id ? 'Product updated.' : 'Product created.')
       setFormOpen(false)
-      await reload()
     } catch (e) {
       toast('error', 'Save failed', (e as Error).message)
     } finally {
@@ -87,13 +100,10 @@ export default function ProductDatabasePage() {
       await deleteProduct(deleteTarget.id)
       toast('success', 'Deleted', 'Product removed.')
       setDeleteTarget(null)
-      await reload()
     } catch (e) {
       toast('error', 'Delete failed', (e as Error).message)
     }
   }
-
-  const totalPages = Math.max(1, Math.ceil(count / 20))
 
   return (
     <div className="space-y-4">
@@ -111,7 +121,7 @@ export default function ProductDatabasePage() {
         <Button icon={<Plus className="h-4 w-4" />} onClick={openNew}>Add Product</Button>
       </div>
 
-      <AnalyticsCard title="Product Database" subtitle={`${count} products registered`}>
+      <AnalyticsCard title="Product Database" subtitle={`${filtered.length} products registered`}>
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-brand-500" /></div>
         ) : products.length === 0 ? (
@@ -136,7 +146,7 @@ export default function ProductDatabasePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {products.map((p) => (
+                  {rows.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">{p.barcode}</td>
                       <td className="px-3 py-2 font-medium text-slate-700 dark:text-slate-200">{p.name}</td>
@@ -158,9 +168,9 @@ export default function ProductDatabasePage() {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-3 flex items-center justify-center gap-2">
-                <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => { setPage(page - 1); void reload(search, page - 1) }}>Previous</Button>
-                <span className="text-xs text-slate-500">Page {page} of {totalPages}</span>
-                <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => { setPage(page + 1); void reload(search, page + 1) }}>Next</Button>
+                <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
+                <span className="text-xs text-slate-500">Page {clampedPage} of {totalPages}</span>
+                <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
               </div>
             )}
           </>

@@ -156,6 +156,9 @@ export default function CameraCapture({
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
       const blob = dataUrlToBlob(dataUrl)
       const file = new File([blob], `label-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      // Release the camera while the shot is reviewed (battery + privacy).
+      stopStream()
+      setTorchOn(false)
       setShot({ file, dataUrl })
     } catch {
       setError('Could not capture the frame. Point the camera at the label and try again.')
@@ -166,6 +169,9 @@ export default function CameraCapture({
     if (!shot) return
     onCapture(shot)
     setShot(null)
+    // Camera is already stopped after the capture — start a fresh preview so
+    // the next photo (front / back / side) is one tap away.
+    void start()
   }
 
   if (!open) return null
@@ -229,7 +235,10 @@ export default function CameraCapture({
           <div className="flex items-center justify-center gap-3 px-4 py-4">
             <button
               type="button"
-              onClick={() => setShot(null)}
+              onClick={() => {
+                setShot(null)
+                void start()
+              }}
               className="flex items-center gap-2 rounded-lg border border-slate-600 px-5 py-2.5 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-800"
             >
               <RotateCcw className="h-4 w-4" /> Retake

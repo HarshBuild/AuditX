@@ -32,6 +32,7 @@ import {
   getCountFromServer,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   updateDoc,
@@ -385,4 +386,25 @@ export async function findProductByBarcode(barcode: string): Promise<ProductRow 
   const snapshot = await getDocs(query(ref, where('barcode', '==', barcode), limit(1)))
   if (snapshot.empty) return null
   return docToRow<ProductRow>(snapshot.docs[0])
+}
+
+/**
+ * Realtime subscription over the product database (most recent 2000 docs).
+ * Products created by scans or other managers appear live on the admin panel
+ * without a manual reload. Returns an unsubscribe function.
+ */
+export function subscribeProducts(
+  onChange: (rows: ProductRow[]) => void,
+  onError?: (err: Error) => void,
+): () => void {
+  const ref = query(collection(db, COLLECTIONS.PRODUCTS), orderBy('created_at', 'desc'), limit(2000))
+  return onSnapshot(
+    ref,
+    (snap) => {
+      onChange(snap.docs.map((d) => docToRow<ProductRow>(d)))
+    },
+    (err) => {
+      onError?.(err as Error)
+    },
+  )
 }

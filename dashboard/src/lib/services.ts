@@ -26,6 +26,7 @@ import {
 import { auth, db } from './firebase'
 import { COLLECTIONS } from './db'
 import { syncUserClaims } from './claims'
+import { CONFIG } from './config'
 import type { ManualResult, ScanRow, Severity } from './types2'
 
 /* ------------------------------------------------------------------ */
@@ -518,6 +519,17 @@ export async function upsertProduct(input: {
   const barcode = input.barcode.trim()
   if (!barcode) throw new Error('Barcode is required')
 
+  try {
+    const productId = await apiUpsertProduct(input)
+    void logActivity(actor, 'product.upserted_via_api', 'product', productId, { barcode, api: true })
+    return productId
+  } catch (e) {
+    // Only a network-level failure (backend unreachable, e.g. local dev) falls
+    // back to the direct Firestore write. Server-side errors (auth, validation,
+    // 403/500) are NOT retried — they surface to the admin as the real cause.
+    if (!(e instanceof TypeError)) throw e
+  }
+
   const existing = await findProductByBarcodeInternal(barcode)
   const now = new Date().toISOString()
   const data = {
@@ -547,11 +559,77 @@ export async function upsertProduct(input: {
 
 export async function deleteProduct(productId: string) {
   const actor = await requireManager()
+  try {
+    await apiDeleteProduct(productId)
+    void logActivity(actor, 'product.deleted_via_api', 'product', productId, { api: true })
+    return
+  } catch (e) {
+    if (!(e instanceof TypeError)) throw e
+  }
   const snap = await getDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
   if (!snap.exists()) throw new Error('Product not found')
   const { deleteDoc } = await import('firebase/firestore')
   await deleteDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
   void logActivity(actor, 'product.deleted', 'product', productId, { barcode: snap.data()?.barcode })
+}
+
+/* Admin-SDK product writes via the AuditX Express API. The backend's
+   firebase-admin writes are exempt from client Firestore rules, so a working
+   admin account can never be hit by "Missing or insufficient permissions". */
+async function apiUpsertProduct(input: {
+  barcode: string
+  name: string
+  brand?: string
+  manufacturer?: string
+  category?: string
+  net_quantity?: string
+  mrp?: string
+  consumer_care?: string
+  country_of_origin?: string
+  best_before_label?: string
+}): Promise<string> {
+  if (!auth.currentUser) throw new Error('Not signed in for product API')
+  const idToken = await auth.currentUser.getIdToken(true)
+  const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
+  const res = await fetch(`${base}/api/products`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) {
+    let detail = ''
+    try {
+      detail = ((await res.json()) as { error?: string }).error ?? ''
+    } catch {
+      /* ignore */
+    }
+    throw Object.assign(new Error(`Product save failed (${res.status}${detail ? ` — ${detail}` : ''})`), {
+      name: 'HttpError',
+    })
+  }
+  const data = (await res.json()) as { ok: boolean; product_id: string }
+  return String(data.product_id ?? '')
+}
+
+async function apiDeleteProduct(productId: string): Promise<void> {
+  const idToken = await auth.currentUser?.getIdToken(true)
+  if (!idToken) throw new Error('Not signed in for product API')
+  const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
+  const res = await fetch(`${base}/api/products/${encodeURIComponent(productId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${idToken}` },
+  })
+  if (!res.ok) {
+    let detail = ''
+    try {
+      detail = ((await res.json()) as { error?: string }).error ?? ''
+    } catch {
+      /* ignore */
+    }
+    throw Object.assign(new Error(`Product delete failed (${res.status}${detail ? ` — ${detail}` : ''})`), {
+      name: 'HttpError',
+    })
+  }
 }
 
 async function findProductByBarcodeInternal(barcode: string) {

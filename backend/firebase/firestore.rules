@@ -206,7 +206,12 @@ service cloud.firestore {
     match /products/{productId} {
       allow get:    if isActive();
       allow list:   if isSignedIn();
-      allow create, update, delete: if isManager();
+      /* Manager writes are also accepted via custom claims: claims are minted
+         from the users/{uid} document (bootstrap + /api/set-claims), so the two
+         are equivalent — and claims keep working even inside the claim-lag /
+         doc-bootstrap window. The authoritative path for product writes is the
+         server route (Admin SDK); this rule keeps the client fallback safe. */
+      allow create, update, delete: if isManager() || claimsManager();
     }
 
     /* ------------------------------------------------------------------ */

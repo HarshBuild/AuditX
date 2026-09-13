@@ -1,11 +1,12 @@
 import { type ReactNode } from 'react'
-import { AlertTriangle, FileSearch, Inbox, RefreshCw, SearchX } from 'lucide-react'
+import { AlertTriangle, FileSearch, RefreshCw, SearchX } from 'lucide-react'
+import { AuditXMark } from '../brand/AuditXMark'
 import Button from './Button'
 
 export function LoadingState({ label = 'Loading data…' }: { label?: string }) {
   return (
     <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-slate-400" role="status">
-      <span className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600 dark:border-slate-700 dark:border-t-brand-400" />
+      <AuditXMark size="sm" className="animate-pulse" />
       <p className="text-sm">{label}</p>
     </div>
   )
@@ -25,7 +26,7 @@ export function EmptyState({
   return (
     <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-6 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-        {icon ?? <Inbox className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
+        {icon ?? <AuditXMark size="sm" />}
       </div>
       <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</p>
       <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">{message}</p>
