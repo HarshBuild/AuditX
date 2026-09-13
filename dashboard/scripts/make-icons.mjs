@@ -180,7 +180,7 @@ const ACCENT = [0xbf, 0xdb, 0xfe] // brand-200
  */
 function renderIcon(size, maskable) {
   const SS = 3 // supersample factor per axis
-  const px = new Float32Array(size * size * 4)
+  const px = new Uint8Array(size * size * 4)
   const fullBleed = maskable
   // Art is inset so the maskable safe zone (center 80%) is respected.
   const artScale = maskable ? 0.8 : 1
@@ -231,7 +231,7 @@ function renderIcon(size, maskable) {
       px[i + 3] = Math.round(acc[3] / n)
     }
   }
-  return encodePng(size, size, Buffer.from(px.buffer))
+  return encodePng(size, size, Buffer.from(px))
 }
 
 /* ---------------- emitting ---------------- */
