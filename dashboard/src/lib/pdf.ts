@@ -1,8 +1,16 @@
 /*
- * AuditX — multi-language PDF report generator.
+ * AuditX — multi-language PDF report generator (premium enterprise theme).
  * Renders the full inspection report as styled HTML (so Indic scripts render
  * correctly in the browser), rasterizes it with html2canvas and saves it as a
  * paginated A4 PDF via jsPDF.
+ *
+ * Layout: an executive cover page, then content pages carrying a thin native
+ * header/footer (drawn with jsPDF primitives — identical on every page) and a
+ * refined inside-canvas editorial layout: kickers, hairline rules, premium
+ * cards, minimal tables, status chips and a compliance progress bar.
+ *
+ * NOTE: this module only styles the PDF. All data, calculations, extraction
+ * results, verdicts, scores and rule logic are untouched.
  */
 
 /* eslint-disable no-console */
@@ -14,12 +22,37 @@ import { formatDateTime } from '../utils/format'
 import { displayProductName, displaySentence, displayText } from './textnorm'
 import type { ScanRow } from './types2'
 
+/* ------------------------------------------------------------------ */
+/* Premium palette                                                     */
+/* ------------------------------------------------------------------ */
+
+const NAVY = '#0B1F3A' // deep midnight navy — primary
+const CHARCOAL = '#232B36' // rich charcoal — headings
+const BODY = '#3A4454' // body text
+const IVORY = '#F7F5F0' // soft off-white page background
+const CARD = '#FFFFFF' // card surface
+const BORDER = '#E5E8EE' // hairline border
+const HAIRLINE = '#ECEEF3' // finer hairline
+const SILVER = '#8B95A5' // muted secondary text
+const BLUE = '#2E5BFF' // refined electric blue accent
+const GREEN = '#1F8A5C'
+const GREEN_BG = '#EAF4EF'
+const AMBER = '#B97618'
+const AMBER_BG = '#F8F0E1'
+const RED = '#C0392B'
+const RED_BG = '#FAECEA'
+const SLATE = '#64748B'
+const SLATE_BG = '#F1F3F6'
+
+const FONT =
+  "'Inter', -apple-system, 'Segoe UI', 'Helvetica Neue', Roboto, 'Noto Sans', Arial, sans-serif"
+
 const t = (lang: string, key: Parameters<typeof translate>[1]) => translate(lang, key)
 
 function scoreColor(n: number): string {
-  if (n >= 80) return '#059669'
-  if (n >= 50) return '#d97706'
-  return '#e11d48'
+  if (n >= 80) return GREEN
+  if (n >= 50) return AMBER
+  return RED
 }
 
 function esc(s: unknown): string {
@@ -37,7 +70,81 @@ function riskKeyFor(band: string): CopyKey {
   return valid.includes(key as CopyKey) ? (key as CopyKey) : 'risk_medium'
 }
 
-function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): string {
+function toneColor(tone: string): string {
+  if (tone === 'emerald') return GREEN
+  if (tone === 'amber') return AMBER
+  if (tone === 'rose') return RED
+  return SLATE
+}
+
+function chip(status: string): string {
+  const map: Record<string, [string, string]> = {
+    PASS: [GREEN, GREEN_BG],
+    FAIL: [RED, RED_BG],
+    WARNING: [AMBER, AMBER_BG],
+    NOT_DETECTED: [SLATE, SLATE_BG],
+    NOT_VERIFIABLE: [SLATE, SLATE_BG],
+    NOT_APPLICABLE: [SLATE, SLATE_BG],
+    REQUIRES_PHYSICAL_INSPECTION: [SLATE, SLATE_BG],
+  }
+  const [fg, bg] = map[status] ?? [SLATE, SLATE_BG]
+  return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:7.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;background:${bg};color:${fg};white-space:nowrap;">${esc(status)}</span>`
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared editorial building blocks                                    */
+/* ------------------------------------------------------------------ */
+
+function section(kicker: string, title: string): string {
+  return `
+    <div style="margin-bottom:14px;">
+      <div style="font-size:7.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:${BLUE};margin-bottom:5px;">${esc(kicker)}</div>
+      <div style="display:flex;align-items:baseline;gap:12px;">
+        <div style="font-size:15px;font-weight:800;letter-spacing:-.2px;color:${CHARCOAL};">${esc(title)}</div>
+        <div style="flex:1;height:1px;background:${HAIRLINE};"></div>
+      </div>
+    </div>`
+}
+
+function card(inner: string): string {
+  return `<div style="background:${CARD};border:1px solid ${BORDER};border-radius:10px;box-shadow:0 1px 2px rgba(11,31,58,.04);padding:16px 18px;">${inner}</div>`
+}
+
+function detailRow(label: string, value: string): string {
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:8.5px 0;border-bottom:1px solid ${HAIRLINE};">
+      <span style="font-size:9px;font-weight:600;letter-spacing:.4px;color:${SILVER};flex:0 0 38%;">${esc(label)}</span>
+      <span style="font-size:9.5px;font-weight:600;color:${CHARCOAL};text-align:right;word-break:break-word;flex:1;">${value || esc(t('en', 'not_available'))}</span>
+    </div>`
+}
+
+function table(headers: string[], rows: string): string {
+  const ths = headers
+    .map(
+      (h) =>
+        `<th style="text-align:left;font-size:7.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${SILVER};padding:0 0 8px;border-bottom:1px solid ${BORDER};">${esc(h)}</th>`,
+    )
+    .join('')
+  return `
+    <table style="width:100%;border-collapse:collapse;">
+      <thead><tr>${ths}</tr></thead>
+      <tbody>${rows || `<tr><td colspan="${headers.length}" style="padding:10px 0;font-size:9.5px;color:${SILVER};">${esc(t('en', 'no_rules'))}</td></tr>`}</tbody>
+    </table>`
+}
+
+function td(content: string, opts: { width?: string; right?: boolean; color?: string; bold?: boolean; top?: boolean } = {}): string {
+  const w = opts.width ? `width:${opts.width};` : ''
+  const align = opts.right ? 'right' : 'left'
+  const color = opts.color ?? CHARCOAL
+  const weight = opts.bold ? '700' : '500'
+  return `<td style="${w}text-align:${align};font-size:9.5px;font-weight:${weight};color:${color};padding:9px 0;border-bottom:1px solid ${HAIRLINE};vertical-align:top;word-break:break-word;">${content}</td>`
+}
+
+/* ------------------------------------------------------------------ */
+/* Content pages                                                       */
+/* ------------------------------------------------------------------ */
+
+function buildReportHtml(scan: ScanRow, lang: string): string {
   const risk = scan.risk_score ?? 100 - scan.overall_score
   const band = riskBand(risk)
   const verdictMap: Record<string, string> = {
@@ -49,39 +156,31 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
   const verdictText = verdictMap[scan.verdict] ?? scan.verdict
   const verdictColor =
     scan.verdict === 'NON_COMPLIANT'
-      ? '#e11d48'
+      ? RED
       : scan.verdict === 'PARTIALLY_COMPLIANT' || scan.verdict === 'REQUIRES_PHYSICAL_INSPECTION'
-        ? '#d97706'
-        : '#059669'
-  const label = `#${scan.id.slice(0, 8)}`
-  const row = (k: string, v: string) =>
-    `<tr><td style="width:38%;padding:6px 10px;border:1px solid #e2e8f0;font-size:9.5px;color:#475569;background:#f8fafc;font-weight:600;">${k}</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-size:10px;color:#0f172a;">${v || t(lang, 'not_available')}</td></tr>`
+        ? AMBER
+        : GREEN
+  const riskToneName = riskTone(band)
+  const bandText = `${esc(risk)}/100 · ${esc(t(lang, riskKeyFor(band)))}`
 
   const rulesRows = (scan.rules ?? [])
     .slice(0, 80)
     .map(
-      (r) => `<tr>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-family:monospace;color:#4338ca;white-space:nowrap;">${esc(r.rule_id)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;">${esc(displayText(r.field))}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;text-align:center;color:${r.status === 'PASS' ? '#059669' : r.status === 'FAIL' ? '#e11d48' : r.status === 'WARNING' ? '#d97706' : '#64748b'};font-weight:700;">${esc(r.status)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;color:#475569;max-width:220px;">${esc(displayText(r.extracted_text))}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;color:#b91c1c;max-width:220px;">${esc(displaySentence(r.issue))}</td>
-      </tr>`,
+      (r) => `<tr>${td(`<span style="font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:8.5px;font-weight:600;color:${BLUE};">${esc(r.rule_id)}</span>`, { width: '9%' })}${td(esc(displayText(r.field)), { width: '18%', color: CHARCOAL, bold: true })}${td(chip(r.status), { width: '15%' })}${td(esc(displayText(r.extracted_text)), { width: '28%', color: BODY })}${td(esc(displaySentence(r.issue)), { width: '30%', color: BODY })}</tr>`,
     )
     .join('')
 
   const labelsRows = (scan.labels ?? [])
     .map(
-      (lb) => `<tr>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;font-weight:600;">${esc(displayText(lb.label))}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:${scoreColor(lb.score)};font-weight:700;">${esc(lb.verdict)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;text-align:center;color:#0f172a;font-weight:700;">${esc(lb.score)}/100</td>
-      </tr>`,
+      (lb) => `<tr>${td(esc(displayText(lb.label)), { width: '46%', color: CHARCOAL, bold: true })}${td(chip(lb.verdict), { width: '27%' })}${td(`<span style="font-weight:800;color:${scoreColor(lb.score)};">${esc(lb.score)}/100</span>`, { width: '27%', right: true })}</tr>`,
     )
     .join('')
 
   const suggestions = (scan.assistant?.suggestions ?? [])
-    .map((s) => `<li style="margin:4px 0;font-size:10px;color:#0f172a;">${esc(displaySentence(s))}</li>`)
+    .map(
+      (s) =>
+        `<li style="margin:6px 0;font-size:9.5px;line-height:1.5;color:${BODY};">${esc(displaySentence(s))}</li>`,
+    )
     .join('')
 
   const declarationLabels: { key: keyof NonNullable<ScanRow['extractions']>; label: string }[] = [
@@ -100,150 +199,241 @@ function buildReportHtml(scan: ScanRow, lang: string, generatedAt: string): stri
     { key: 'consumer_care', label: 'Consumer care' },
   ]
   const declarationRows = (scan.extractions
-    ? declarationLabels.filter((d) => scan.extractions![d.key])
-      .map(
-        (d) => `<tr>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#475569;background:#f8fafc;font-weight:700;">${esc(d.label)}</td>
-        <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9.5px;color:#0f172a;">${esc(displayText(scan.extractions![d.key]))}</td>
-      </tr>`,
-      )
-      .join('')
+    ? declarationLabels
+        .filter((d) => scan.extractions![d.key])
+        .map(
+          (d) =>
+            `<tr>${td(`<span style="font-weight:600;color:${SILVER};">${esc(d.label)}</span>`, { width: '42%' })}${td(esc(displayText(scan.extractions![d.key])), { width: '58%', color: CHARCOAL, bold: true })}</tr>`,
+        )
+        .join('')
     : '')
 
+  const score = Math.max(0, Math.min(100, scan.overall_score))
+  const scoreFill = scoreColor(scan.overall_score)
+
   return `
-  <div style="font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans',Arial,sans-serif;width:780px;background:#ffffff;color:#0f172a;">
-    <div style="background:linear-gradient(90deg,#1d4ed8,#6366f1);color:#fff;padding:20px 26px;display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;opacity:.85;">${esc(label)}</div>
-        <div style="font-size:19px;font-weight:800;margin-top:3px;">${esc(t(lang, 'report_title'))}</div>
-        <div style="font-size:10px;opacity:.9;margin-top:2px;">${esc(t(lang, 'report_subtitle'))}</div>
+  <div style="box-sizing:border-box;width:794px;background:${IVORY};color:${BODY};font-family:${FONT};padding:52px 56px 92px;">
+
+    <div style="margin-bottom:34px;">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px;">
+        <span style="font-size:13px;font-weight:800;letter-spacing:-.2px;color:${NAVY};">Audit<span style="color:${BLUE};">X</span></span>
+        <span style="font-size:8px;letter-spacing:1.6px;text-transform:uppercase;color:${SILVER};">Legal Metrology Inspection</span>
       </div>
-      <div style="text-align:right">
-        <div style="font-size:26px;font-weight:900;line-height:1;">Audit<span style="color:#c7d2fe">X</span></div>
-        <div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;opacity:.8;">Legal Metrology Suite</div>
-      </div>
-    </div>
-    <div style="display:flex;justify-content:space-between;padding:10px 26px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;">
-      <span>${esc(t(lang, 'report_generated'))}: ${esc(generatedAt)}</span>
-      <span>Language: ${esc(lang.toUpperCase())}</span>
+      <div style="height:1px;background:${BORDER};"></div>
     </div>
 
-    <div style="padding:18px 26px;">
-      <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px;">${esc(t(lang, 'compliance_details'))}</div>
-      <table style="width:100%;border-collapse:collapse;">
-        ${row(t(lang, 'product'), scan.product_name?.trim() ? displayProductName(scan.product_name) : '')}
-        ${row(t(lang, 'brand'), displayText(scan.brand))}
-        ${row(t(lang, 'manufacturer'), displayText(scan.manufacturer))}
-        ${row(t(lang, 'category'), displayText(scan.category))}
-        ${row(t(lang, 'barcode'), scan.barcode)}
-        ${row(t(lang, 'scanned_on'), formatDateTime(scan.created_at))}
-        ${row(t(lang, 'status'), String(scan.status ?? ''))}
-      </table>
+    ${section('Executive Summary', esc(t(lang, 'report_title')))}
 
-      <div style="display:flex;gap:12px;margin:16px 0;">
-        <div style="flex:1;border:2px solid ${scoreColor(scan.overall_score)};border-radius:14px;padding:14px;text-align:center;">
-          <div style="font-size:30px;font-weight:800;color:${scoreColor(scan.overall_score)};">${esc(scan.overall_score)}/100</div>
-          <div style="font-size:9px;color:#64748b;margin-top:2px;">${esc(t(lang, 'overall_score'))}</div>
-        </div>
-        <div style="flex:1;border:1px solid #e2e8f0;border-radius:14px;padding:14px;text-align:center;">
-          <div style="font-size:26px;font-weight:800;color:${verdictColor};">${esc(verdictText)}</div>
-          <div style="font-size:9px;color:#64748b;margin-top:2px;">${esc(t(lang, 'verdict'))}</div>
-        </div>
-        <div style="flex:1;border:1px solid #e2e8f0;border-radius:14px;padding:14px;text-align:center;">
-          <div style="font-size:26px;font-weight:800;color:${riskTone(band) === 'rose' ? '#e11d48' : riskTone(band) === 'amber' ? '#d97706' : '#059669'};">${esc(risk)} · ${esc(t(lang, riskKeyFor(band)))}</div>
-          <div style="font-size:9px;color:#64748b;margin-top:2px;">${esc(t(lang, 'risk_score') + ' / ' + t(lang, 'risk_band'))}</div>
+    <div style="display:flex;gap:14px;margin:4px 0 6px;">
+      <div style="flex:1;background:${CARD};border:1px solid ${BORDER};border-radius:10px;box-shadow:0 1px 2px rgba(11,31,58,.04);padding:18px 18px 16px;">
+        <div style="font-size:30px;font-weight:800;letter-spacing:-1px;color:${scoreFill};line-height:1;">${esc(scan.overall_score)}<span style="font-size:13px;font-weight:700;color:${SILVER};">/100</span></div>
+        <div style="font-size:7.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:${SILVER};margin-top:8px;">${esc(t(lang, 'overall_score'))}</div>
+        <div style="height:5px;border-radius:999px;background:#ECEFF4;margin-top:12px;overflow:hidden;">
+          <div style="height:5px;border-radius:999px;background:${scoreFill};width:${score}%;"></div>
         </div>
       </div>
+      <div style="flex:1;background:${CARD};border:1px solid ${BORDER};border-radius:10px;box-shadow:0 1px 2px rgba(11,31,58,.04);padding:18px 18px 16px;">
+        <div style="font-size:19px;font-weight:800;letter-spacing:-.3px;color:${verdictColor};line-height:1.15;">${esc(verdictText)}</div>
+        <div style="font-size:7.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:${SILVER};margin-top:9px;">${esc(t(lang, 'verdict'))}</div>
+      </div>
+      <div style="flex:1;background:${CARD};border:1px solid ${BORDER};border-radius:10px;box-shadow:0 1px 2px rgba(11,31,58,.04);padding:18px 18px 16px;">
+        <div style="font-size:17px;font-weight:800;letter-spacing:-.3px;color:${toneColor(riskToneName)};line-height:1.15;">${bandText}</div>
+        <div style="font-size:7.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:${SILVER};margin-top:9px;">${esc(t(lang, 'risk_score') + ' / ' + t(lang, 'risk_band'))}</div>
+      </div>
+    </div>
 
-      ${declarationRows ? `
-        <div style="font-size:12px;font-weight:800;color:#0f172a;margin:14px 0 8px;">${esc('Extracted Declarations')}</div>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Declaration</td><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Value</td></tr>
-          ${declarationRows}
-        </table>` : ''}
+    <div style="margin-top:34px;margin-bottom:12px;">${section('Product & Scan', esc(t(lang, 'compliance_details')))}</div>
+    ${card(
+      detailRow(t(lang, 'product'), scan.product_name?.trim() ? displayProductName(scan.product_name) : '') +
+        detailRow(t(lang, 'brand'), displayText(scan.brand)) +
+        detailRow(t(lang, 'manufacturer'), displayText(scan.manufacturer)) +
+        detailRow(t(lang, 'category'), displayText(scan.category)) +
+        detailRow(t(lang, 'barcode'), scan.barcode) +
+        detailRow(t(lang, 'scanned_on'), formatDateTime(scan.created_at)) +
+        detailRow(t(lang, 'status'), String(scan.status ?? '')),
+    )}
 
-      ${scan.labels && scan.labels.length > 0 ? `
-        <div style="font-size:12px;font-weight:800;color:#0f172a;margin:14px 0 8px;">${esc(t(lang, 'labels_detected'))}</div>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Label</td><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">Verdict</td><td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;text-align:center;">Score</td></tr>
-          ${labelsRows}
-        </table>` : ''}
+    <div style="margin-top:34px;margin-bottom:12px;">
+      ${section('Label Data', 'Extracted Declarations')}
+    </div>
+    ${card(declarationRows ? table(['Declaration', 'Value'], declarationRows) : `<div style="font-size:9.5px;color:${SILVER};">${esc(t(lang, 'not_available'))}</div>`)}
 
-      <div style="font-size:12px;font-weight:800;color:#0f172a;margin:14px 0 8px;">${esc(t(lang, 'rule_checks'))}</div>
-      <table style="width:100%;border-collapse:collapse;">
-        <tr>
-          <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">${esc(t(lang, 'rule'))}</td>
-          <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">${esc(t(lang, 'mandatory_declaration'))}</td>
-          <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">${esc(t(lang, 'status'))}</td>
-          <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">${esc(t(lang, 'extracted'))}</td>
-          <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:9px;font-weight:700;background:#f8fafc;color:#475569;">${esc(t(lang, 'issue'))}</td>
-        </tr>
-        ${rulesRows || `<tr><td colspan="5" style="padding:8px;border:1px solid #e2e8f0;font-size:9.5px;color:#64748b;">${esc(t(lang, 'no_rules'))}</td></tr>`}
-      </table>
+    ${scan.labels && scan.labels.length > 0 ? `
+      <div style="margin-top:34px;margin-bottom:12px;">${section('Label Verification', esc(t(lang, 'labels_detected')))}</div>
+      ${card(table(['Detected label', 'Verdict', 'Score'], labelsRows))}
+    ` : ''}
 
-      ${scan.assistant?.summary || (scan.assistant?.suggestions ?? []).length > 0 ? `
-      <div style="margin-top:16px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:14px;padding:14px 16px;">
-        <div style="font-size:11px;font-weight:800;color:#4338ca;">${esc(t(lang, 'ai_assistant'))}</div>
-        <div style="font-size:10px;margin-top:6px;color:#1e1b4b;">${esc(displaySentence(scan.assistant?.summary ?? ''))}</div>
-        ${(scan.assistant?.suggestions ?? []).length > 0 ? `<div style="font-size:9.5px;font-weight:700;color:#312e81;margin-top:8px;">${esc(t(lang, 'suggest_next'))}</div><ul style="margin:4px 0 0 16px;padding:0;">${suggestions}</ul>` : ''}
+    <div style="margin-top:34px;margin-bottom:12px;">${section('Regulatory Review', esc(t(lang, 'rule_checks')))}</div>
+    ${card(table(['Rule', 'Declaration', 'Status', 'Extracted', 'Findings'], rulesRows))}
+
+    ${scan.assistant?.summary || (scan.assistant?.suggestions ?? []).length > 0 ? `
+      <div style="margin-top:34px;margin-bottom:12px;">${section('AI Analysis', esc(t(lang, 'ai_assistant')))}</div>
+      <div style="background:${CARD};border:1px solid ${BORDER};border-left:3px solid ${BLUE};border-radius:10px;box-shadow:0 1px 2px rgba(11,31,58,.04);padding:14px 18px;">
+        <div style="font-size:10px;line-height:1.55;color:${BODY};">${esc(displaySentence(scan.assistant?.summary ?? ''))}</div>
+        ${(scan.assistant?.suggestions ?? []).length > 0 ? `<div style="font-size:7.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:${BLUE};margin-top:12px;">${esc(t(lang, 'suggest_next'))}</div><ul style="margin:4px 0 0 16px;padding:0;">${suggestions}</ul>` : ''}
       </div>` : ''}
 
-      <div style="margin-top:12px;border:1px solid #fde68a;background:#fffbeb;border-radius:14px;padding:12px 16px;">
-        <div style="font-size:9.5px;font-weight:700;color:#b45309;">${esc(t(lang, 'language_note'))}</div>
-        <div style="font-size:9.5px;color:#78350f;margin-top:3px;">${esc(displayText(scan.language_note) || t(lang, 'not_available'))}</div>
-      </div>
+    <div style="margin-top:18px;background:transparent;border:1px solid ${BORDER};border-radius:10px;padding:12px 16px;">
+      <div style="font-size:7.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:${SILVER};">${esc(t(lang, 'language_note'))}</div>
+      <div style="font-size:9.5px;color:${BODY};margin-top:4px;line-height:1.5;">${esc(displayText(scan.language_note) || t(lang, 'not_available'))}</div>
+    </div>
 
-      <div style="margin-top:16px;font-size:8.5px;color:#94a3b8;line-height:1.5;">
-        ${esc(t(lang, 'inspector_note'))}
+    <div style="margin-top:22px;font-size:8px;line-height:1.6;color:${SILVER};">
+      ${esc(t(lang, 'inspector_note'))}
+    </div>
+  </div>`
+}
+
+/* ------------------------------------------------------------------ */
+/* Cover page                                                          */
+/* ------------------------------------------------------------------ */
+
+function buildCoverHtml(scan: ScanRow, lang: string, generatedAt: string): string {
+  const label = `#${scan.id.slice(0, 8)}`
+  return `
+  <div style="box-sizing:border-box;width:794px;height:1123px;background:${IVORY};color:${BODY};font-family:${FONT};padding:64px 68px;position:relative;overflow:hidden;">
+    <div style="position:absolute;right:-70px;bottom:-70px;width:230px;height:230px;border-radius:50%;border:1px solid ${BORDER};"></div>
+    <div style="position:absolute;right:76px;bottom:76px;width:10px;height:10px;border-radius:50%;background:${BLUE};"></div>
+    <div style="position:absolute;right:-40px;bottom:-40px;width:140px;height:140px;border-radius:50%;border:1px solid ${BORDER};"></div>
+
+    <div style="display:flex;align-items:baseline;justify-content:space-between;">
+      <span style="font-size:15px;font-weight:800;letter-spacing:-.3px;color:${NAVY};">Audit<span style="color:${BLUE};">X</span></span>
+      <span style="font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:${SILVER};">Legal Metrology Suite</span>
+    </div>
+    <div style="height:1px;background:${BORDER};margin-top:14px;"></div>
+
+    <div style="margin-top:230px;">
+      <div style="font-size:8px;font-weight:700;letter-spacing:2.4px;text-transform:uppercase;color:${BLUE};">Packaged Commodities · Inspection Report</div>
+      <div style="font-size:34px;font-weight:800;letter-spacing:-1px;line-height:1.1;color:${CHARCOAL};margin-top:18px;">${esc(t(lang, 'report_title'))}</div>
+      <div style="font-size:12.5px;font-weight:400;color:${SILVER};margin-top:12px;">${esc(t(lang, 'report_subtitle'))}</div>
+    </div>
+
+    <div style="width:52px;height:3px;background:${BLUE};margin-top:34px;border-radius:999px;"></div>
+
+    <div style="display:flex;gap:48px;margin-top:34px;">
+      <div>
+        <div style="font-size:7px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${SILVER};">Report ID</div>
+        <div style="font-size:12px;font-weight:700;color:${CHARCOAL};margin-top:5px;">${esc(label)}</div>
       </div>
-      <div style="margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;">
-        <span>AuditX v3.0 · Legal Metrology Inspection Suite</span>
-        <span>${esc(label)}</span>
+      <div>
+        <div style="font-size:7px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${SILVER};">Generated</div>
+        <div style="font-size:12px;font-weight:700;color:${CHARCOAL};margin-top:5px;">${esc(generatedAt)}</div>
+      </div>
+      <div>
+        <div style="font-size:7px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:${SILVER};">Language</div>
+        <div style="font-size:12px;font-weight:700;color:${CHARCOAL};margin-top:5px;">${esc(lang.toUpperCase())}</div>
+      </div>
+    </div>
+
+    <div style="position:absolute;left:68px;right:68px;bottom:46px;">
+      <div style="height:1px;background:${BORDER};"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:7.5px;letter-spacing:1px;text-transform:uppercase;color:${SILVER};">
+        <span>Generated by AuditX AI · Vision Extraction + Legal Metrology Rules</span>
+        <span>Confidential — inspection aid, not a legal certificate</span>
       </div>
     </div>
   </div>`
 }
 
-export async function downloadInspectionPdf(scan: ScanRow, lang: string): Promise<string> {
-  const container = document.createElement('div')
-  container.setAttribute('aria-hidden', 'true')
-  container.style.position = 'fixed'
-  container.style.left = '-10000px'
-  container.style.top = '0'
-  container.style.background = '#ffffff'
-  container.style.zIndex = '-1'
-  container.innerHTML = buildReportHtml(scan, lang, formatDateTime(new Date().toISOString()))
-  document.body.appendChild(container)
+/* ------------------------------------------------------------------ */
+/* PDF assembly                                                        */
+/* ------------------------------------------------------------------ */
 
-  try {
-    const canvas = await html2canvas(container, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      logging: false,
-      windowWidth: 820,
-    })
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
-    const pdfW = pdf.internal.pageSize.getWidth()
-    const pdfH = pdf.internal.pageSize.getHeight()
-    const scale = pdfW / canvas.width
-    const pageHeightPx = Math.floor(pdfH / scale)
-    let offset = 0
-    let firstPage = true
-    while (offset < canvas.height) {
-      if (!firstPage) pdf.addPage()
-      const h = Math.min(pageHeightPx, canvas.height - offset)
-      const slice = document.createElement('canvas')
-      slice.width = canvas.width
-      slice.height = h
-      slice.getContext('2d')?.drawImage(canvas, 0, offset, canvas.width, h, 0, 0, canvas.width, h)
-      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, h * scale)
-      offset += h
-      firstPage = false
-    }
-    const filename = `AuditX-Report-${(scan.product_name?.trim() ? displayProductName(scan.product_name) : 'scan').replace(/[^a-zA-Z0-9_-]+/g, '_')}-${lang.toUpperCase()}.pdf`
-    pdf.save(filename)
-    return filename
-  } finally {
-    container.remove()
+const HEADER_PT = 64
+const FOOTER_PT = 40
+
+export async function downloadInspectionPdf(scan: ScanRow, lang: string): Promise<string> {
+  const generatedAt = formatDateTime(new Date().toISOString())
+  const reportId = `#${scan.id.slice(0, 8)}`
+
+  const mount = (html: string, w: number, h: number | undefined) => {
+    const el = document.createElement('div')
+    el.setAttribute('aria-hidden', 'true')
+    el.style.position = 'fixed'
+    el.style.left = '-10000px'
+    el.style.top = '0'
+    el.style.zIndex = '-1'
+    el.style.width = `${w}px`
+    if (h) el.style.height = `${h}px`
+    el.innerHTML = html
+    document.body.appendChild(el)
+    return el
   }
+
+  const render = async (el: HTMLElement, bg: string) =>
+    html2canvas(el, { scale: 2, backgroundColor: bg, logging: false, windowWidth: el.offsetWidth })
+
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+  const pdfW = pdf.internal.pageSize.getWidth()
+  const pdfH = pdf.internal.pageSize.getHeight()
+
+  /* ---- Cover page ---- */
+  const coverEl = mount(buildCoverHtml(scan, lang, generatedAt), 794, 1123)
+  const coverCanvas = await render(coverEl, IVORY)
+  coverEl.remove()
+  const coverScale = pdfW / coverCanvas.width
+  pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pdfW, coverCanvas.height * coverScale)
+
+  /* ---- Content pages ---- */
+  const contentEl = mount(buildReportHtml(scan, lang), 794, undefined)
+  const canvas = await render(contentEl, IVORY)
+  contentEl.remove()
+
+  const scale = pdfW / canvas.width
+  const step = Math.floor((pdfH - HEADER_PT - FOOTER_PT) / scale)
+  const pages: number[] = []
+  let offset = 0
+  while (offset < canvas.height) {
+    pages.push(offset)
+    offset += step
+  }
+  const totalPages = pages.length
+
+  const header = () => {
+    const x = 56
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    pdf.setTextColor(11, 31, 58)
+    pdf.text('Audit', x, 40)
+    const aw = pdf.getTextWidth('Audit')
+    pdf.setTextColor(46, 91, 255)
+    pdf.text('X', x + aw + 0.5, 40)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(8)
+    pdf.setTextColor(139, 149, 165)
+    pdf.text('\u00a0\u00a0\u00b7 Legal Metrology Inspection Report', x + pdf.getTextWidth('AuditX') + 4, 40)
+    pdf.setTextColor(139, 149, 165)
+    pdf.text(reportId, pdfW - 56, 40, { align: 'right' })
+    pdf.setDrawColor(236, 238, 243)
+    pdf.setLineWidth(0.6)
+    pdf.line(56, 60, pdfW - 56, 60)
+  }
+
+  const footer = (pageIdx: number) => {
+    pdf.setDrawColor(236, 238, 243)
+    pdf.setLineWidth(0.6)
+    pdf.line(56, pdfH - 34, pdfW - 56, pdfH - 34)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(139, 149, 165)
+    pdf.text('AuditX | Legal Metrology Inspection Report', 56, pdfH - 20)
+    pdf.text(generatedAt, pdfW / 2, pdfH - 20, { align: 'center' })
+    pdf.text(`Page ${pageIdx + 1} of ${totalPages}`, pdfW - 56, pdfH - 20, { align: 'right' })
+  }
+
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0) pdf.addPage()
+    const h = Math.min(step, canvas.height - pages[i])
+    const slice = document.createElement('canvas')
+    slice.width = canvas.width
+    slice.height = h
+    slice.getContext('2d')?.drawImage(canvas, 0, pages[i], canvas.width, h, 0, 0, canvas.width, h)
+    pdf.addImage(slice.toDataURL('image/jpeg', 0.95), 'JPEG', 0, HEADER_PT, pdfW, h * scale)
+    header()
+    footer(i)
+  }
+
+  const filename = `AuditX-Report-${(scan.product_name?.trim() ? displayProductName(scan.product_name) : 'scan').replace(/[^a-zA-Z0-9_-]+/g, '_')}-${lang.toUpperCase()}.pdf`
+  pdf.save(filename)
+  return filename
 }
