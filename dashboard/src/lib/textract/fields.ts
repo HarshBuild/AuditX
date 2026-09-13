@@ -15,6 +15,7 @@
  *     names, never to numeric/money fields
  */
 import type { Extractions } from '../compliance/types'
+import { quantitySpans } from '../compliance/validators'
 import {
   BBox,
   ConfidenceWeights,
@@ -102,9 +103,7 @@ export function validateField(key: KeyOfExtractions, value: string): boolean {
       return digits > 0 && Number.isFinite(amount) && !justLabel && !isBarcodeLen
     }
     case 'net_quantity': {
-      const hasNumber = /\d/.test(value)
-      const hasUnit = /\b(?:g|kg|gm|gram|grams|mg|ml|l|litre|liter|pcs|pieces?|nos?|sheets?|rolls?|dozen|pairs?)\b/i.test(value)
-      return hasNumber && hasUnit
+      return quantitySpans(value).length > 0
     }
     case 'mfg_date':
     case 'best_before': {

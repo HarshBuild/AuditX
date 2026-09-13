@@ -33,53 +33,71 @@ export function validateMRP(raw: string | null): Validation {
   return { ok: true, reason: 'MRP declared with symbol and tax-inclusive wording.', normalized: v }
 }
 
-/** Detect a unit keyword and normalize it to its canonical symbol. */
-export function detectUnit(raw: string | null): { kind: 'weight' | 'volume' | 'length' | 'area' | 'number' | 'unknown'; unit?: string } {
-  const v = num(raw)
-  if (!v) return { kind: 'unknown' }
-  const q = v.toLowerCase()
-  const hit = (patterns: string[], fallback: string) => {
-    const m = q.match(new RegExp(`\\b(${patterns.join('|')})`, 'i'))
-    return m ? { unit: m[1].toLowerCase(), kind: fallback as 'weight' | 'volume' | 'length' | 'area' | 'number' } : null
-  }
-  const order: Array<{ patterns: string[]; kind: 'weight' | 'volume' | 'length' | 'area' | 'number' }> = [
-    { patterns: ['tonne', 'ton'], kind: 'weight' },
-    { patterns: ['kg'], kind: 'weight' },
-    { patterns: ['mg'], kind: 'weight' },
-    { patterns: ['gm', 'gram', 'grams', 'g'], kind: 'weight' },
-    { patterns: ['millilitre', 'milliliter', 'ml'], kind: 'volume' },
-    { patterns: ['centilitre', 'centiliter', 'cl'], kind: 'volume' },
-    { patterns: ['litre', 'liter', 'ltr', 'l '], kind: 'volume' },
-    { patterns: ['sq cm', 'sq m', 'sq ft', 'sq.'], kind: 'area' },
-    { patterns: ['centimetre', 'centimeter', 'cm'], kind: 'length' },
-    { patterns: ['metre', 'meter', ' m', 'm'], kind: 'length' },
-    { patterns: ['pcs', 'pieces', 'piece', 'nos', 'numbers', 'number'], kind: 'number' },
-    { patterns: ['sheets', 'sheet'], kind: 'number' },
-    { patterns: ['rolls', 'roll'], kind: 'number' },
-    { patterns: ['count'], kind: 'number' },
-    { patterns: ['pairs', 'pair'], kind: 'number' },
-    { patterns: ['dozen'], kind: 'number' },
-  ]
-  for (const o of order) {
-    const r = hit(o.patterns, o.kind)
-    if (r) return { kind: o.kind, unit: r.unit }
-  }
-  return { kind: 'unknown' }
+export interface QuantitySpan {
+  amount: string
+  unit: string
+  kind: 'weight' | 'volume' | 'length' | 'area' | 'number'
+  start: number
 }
 
-/** Net quantity must carry a standard unit from the dictionary (Rules 11, 12, 13). */
+/**
+ * Fourth Schedule unit dictionary (Rule 13). Longer/spelled-out forms first so
+ * "millilitre" wins over "m", "milligram" over "m", "gram" over "g", etc.
+ * Units are matched adjacent to a number (e.g. "100g", "900ml", "1L") without
+ * requiring a word boundary before them — compact dense label printing is the
+ * norm on Indian packaged goods and must not be treated as unreadable.
+ */
+const QUANTITY_UNITS: Array<{ kind: QuantitySpan['kind']; p: string[] }> = [
+  { kind: 'area', p: ['sq\\.?\\s*cm', 'square centimetres?', 'sq\\.?\\s*m', 'square metres?', 'sq\\.?\\s*ft', 'square feet'] },
+  { kind: 'weight', p: ['tonnes?', 'tons?', 'kilograms?', 'kg', 'milligrams?', 'mg', 'grams?', 'gms?', 'gm', 'g'] },
+  { kind: 'volume', p: ['millilitres?', 'milliliters?', 'mls?', 'ml', 'centilitres?', 'centiliters?', 'cls?', 'cl', 'litres?', 'liters?', 'litres?', 'liters?', 'litre', 'liter', 'ltrs?', 'ltr', 'l'] },
+  { kind: 'length', p: ['centimetres?', 'centimeters?', 'cms?', 'cm', 'millimetres?', 'millimeters?', 'mms?', 'mm', 'metres?', 'meters?', 'mtrs?', 'mtr', 'm'] },
+  { kind: 'number', p: ['pieces?', 'pcs?', 'nos\\.?', 'numbers?', 'counts?', 'sheets?', 'leaves', 'rolls?', 'pairs?', 'dozens?', 'packs?', 'pkts?'] },
+]
+
+const QUANTITY_TAIL = '(?![a-z])'
+
+export function quantitySpans(raw: string | null): QuantitySpan[] {
+  const v = (num(raw) ?? '').replace(/,/g, '').toLowerCase()
+  if (!v) return []
+  const spans: QuantitySpan[] = []
+  for (const g of QUANTITY_UNITS) {
+    const rx = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${g.p.join('|')})${QUANTITY_TAIL}`, 'gi')
+    let m: RegExpExecArray | null
+    while ((m = rx.exec(v)) !== null) {
+      spans.push({ amount: m[1], unit: m[2], kind: g.kind, start: m.index })
+      if (m.index === rx.lastIndex) rx.lastIndex++
+    }
+  }
+  spans.sort((a, b) => a.start - b.start || b.unit.length - a.unit.length)
+  return spans
+}
+
+/** Detect a unit keyword and normalize it to its canonical symbol. */
+export function detectUnit(raw: string | null): { kind: 'weight' | 'volume' | 'length' | 'area' | 'number' | 'unknown'; unit?: string } {
+  const spans = quantitySpans(raw)
+  if (spans.length === 0) return { kind: 'unknown' }
+  const last = spans[spans.length - 1]
+  return { kind: last.kind, unit: last.unit }
+}
+
+/**
+ * Net quantity must carry a standard unit from the dictionary (Rules 11, 12, 13).
+ * On multi-unit lines like "5 x 100 g" the right-most quantity pair is the
+ * actual net declaration ("5" is the pack count, not the net quantity).
+ */
 export function validateQuantity(raw: string | null): Validation {
   const v = num(raw)
   if (!v) return { ok: false, reason: 'Net quantity not detected (NOT_DETECTED).' }
   if (VAGUE_QUANTITY_WORDS.some((w) => v.toLowerCase().includes(w))) {
     return { ok: false, reason: `Vague expression "${v}" — Rules 11 & 12 prohibit "approximately/about/minimum" style net-quantity declarations.` }
   }
-  const d = detectUnit(v)
-  if (d.kind === 'unknown') {
+  const spans = quantitySpans(v)
+  if (spans.length === 0) {
     return { ok: false, reason: `"${v}" lacks a standard unit from the Fourth Schedule (g/kg/ml/L/cm/m/pcs…).`, normalized: v }
   }
-  const amount = v.match(/\d+(?:\.\d+)?/)?.[0] ?? ''
-  return { ok: true, reason: `Net quantity declared in a standard unit (${d.kind}).`, normalized: `${amount}${amount && d.unit ? ' ' : ''}${d.unit ?? ''}`.trim(), kind: d.kind }
+  const s = spans[spans.length - 1]
+  return { ok: true, reason: `Net quantity declared in a standard unit (${s.kind}).`, normalized: `${s.amount} ${s.unit}`.trim(), kind: s.kind }
 }
 
 /** A unit must be allowed for the commodity's sold-by type (Rule 13). */
@@ -105,9 +123,21 @@ export function validateDate(raw: string | null): Validation {
   const okFormat =
     /\b\d{1,2}[\s\/\-.]\d{1,2}[\s\/\-.]\d{2,4}\b/.test(v) ||                 // DD/MM/YYYY
     /\b\d{1,2}[\s\/\-.]\d{2,4}\b/.test(v) ||                                  // MM/YYYY
-    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s*\d{1,2},?\s*\d{4}\b/i.test(v) // Jan 2025 / Jan 1, 2025
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s*(?:\d{1,2},?\s*)?\d{4}\b/i.test(v) // Jun 2026 / June 2026 / Jan 1, 2026
   if (!okFormat) return { ok: false, reason: `"${v}" is not a recognizable DD/MM/YYYY, Month-YYYY or shelf-life format.` }
-  // Basic plausibility: month 1-12.
+  // Strict day/month bounds when the format is DD/MM/YYYY (the common case).
+  const dmy = v.trim().match(/^(\d{1,2})[\s\/\-.](\d{1,2})[\s\/\-.](\d{2,4})$/)
+  if (dmy) {
+    const d = +dmy[1]
+    const mo = +dmy[2]
+    const year = dmy[3].length === 2 ? 2000 + +dmy[3] : +dmy[3]
+    const daysInMonth = new Date(year, mo, 0).getDate()
+    if (mo < 1 || mo > 12 || d < 1 || d > daysInMonth) {
+      return { ok: false, reason: `"${v}" has an out-of-range or impossible day/month (${d}/${mo}).` }
+    }
+    return { ok: true, reason: 'Date format recognized and day/month plausible.' }
+  }
+  // Basic plausibility for the remaining shapes: month 1-12 / month name.
   const m = v.match(/(?:0?[1-9]|1[0-2])(?=[\s\/\-.]\d)/) || v.match(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*/i)
   if (!m) return { ok: false, reason: `"${v}" does not contain a valid month.` }
   return { ok: true, reason: 'Date format recognized and month plausible.' }
