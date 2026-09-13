@@ -125,6 +125,18 @@ function analysisLabel(engine: ScanRow['engine'] | undefined): string {
   return ANALYSIS_LABEL[engine ?? 'unknown'] ?? ANALYSIS_LABEL.unknown
 }
 
+const ANALYSIS_PROVIDER: Record<string, string> = {
+  cloud_function: 'AuditX cloud functions',
+  gemini: 'Google Gemini (vision extraction)',
+  local: 'On-device OCR (Tesseract)',
+  queued: 'Queued — staff review',
+  unknown: '',
+}
+
+function analysisProvider(engine: ScanRow['engine'] | undefined): string {
+  return ANALYSIS_PROVIDER[engine ?? 'unknown'] ?? ''
+}
+
 function ContextBadges({ ctx }: { ctx?: ScanContext }) {
   if (!ctx) return null
   const bits: Array<{ label: string; tone: 'emerald' | 'amber' | 'rose' | 'cyan' | 'slate'; fmt?: string }> = [
@@ -1062,11 +1074,15 @@ export default function InspectionReport({
   const failCount = counts.failed ?? 0
   const hasLowConfidence = failCount > 0 || (scan.uncertain ?? []).length > 0
   const ocrBlocks = scan.ocr_blocks ?? []
-  const photoCount = (scan.image_urls ?? []).length
+  const evidencePhotoSources = new Set<number>()
+  for (const e of scan.evidence_chain ?? []) if (typeof e.source_image === 'number') evidencePhotoSources.add(e.source_image)
+  for (const f of Object.values(scan.extraction_fields ?? {})) if (typeof f?.source_image === 'number') evidencePhotoSources.add(f.source_image)
+  const photoCount = Math.max((scan.image_urls ?? []).length, evidencePhotoSources.size)
   const ocrChars = (scan.ocr?.text ?? '').length
   const failRules = (scan.rules ?? []).filter((r) => r.status === 'FAIL')
   const reviewRules = (scan.rules ?? []).filter((r) => r.status === 'WARNING' || r.status === 'NOT_DETECTED')
   const analysis = analysisLabel(scan.engine)
+  const analysisProviderName = analysisProvider(scan.engine)
   const sig = analyzeResultSignals(scan, counts)
 
   const exportPdf = async () => {
@@ -1364,6 +1380,9 @@ export default function InspectionReport({
           <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Analysis engine</p>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{analysis}</p>
+            {analysisProviderName && (
+              <p className="mt-0.5 text-[10px] text-slate-400">{analysisProviderName}</p>
+            )}
           </div>
           <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Photos analysed</p>

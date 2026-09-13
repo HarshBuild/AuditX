@@ -20,7 +20,7 @@ import { db, auth } from './firebase'
 import { PerfRun, tim, timSync } from './perf'
 import { COLLECTIONS } from './db'
 import { CONFIG } from './config'
-import { dataUrlToInline, extractJson, geminiGenerateContent, type GemPart } from './gemini'
+import { dataUrlToInline, extractJson, geminiApiKey, geminiGenerateContent, type GemPart } from './gemini'
 import type { LocalScanInput } from './localEngine'
 import type {
   AIIinsight,
@@ -81,7 +81,7 @@ function detectedFrom(out: ComplianceOutcome): DetectedSummary {
  */
 export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Promise<ScanRow> {
   const lang = input.lang ?? 'en'
-  if (!CONFIG.GEMINI_API_KEY) throw new Error('Gemini API key is not configured.')
+  if (!geminiApiKey()) throw new Error('Gemini API key is not configured.')
 
   const prompt = buildExtractionPrompt(lang)
   const parts: GemPart[] = [{ text: prompt }]

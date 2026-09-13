@@ -13,7 +13,7 @@
 import type { ScanRow } from './types2'
 import { CONFIG } from './config'
 import { SUPPORTED_LANGUAGES } from '../i18n/report'
-import { extractJson, geminiGenerateContent } from './gemini'
+import { extractJson, geminiApiKey, geminiGenerateContent } from './gemini'
 
 const MAX_TOKENS = 900
 
@@ -85,7 +85,7 @@ const SYSTEM_PROMPT =
  * Gemini is not configured/unreachable so callers can fall back locally.
  */
 export async function askGeminiAssistant(scan: ScanRow, question: string, lang: string): Promise<string | null> {
-  if (!CONFIG.GEMINI_API_KEY) return null
+  if (!geminiApiKey()) return null
 
   const userMsg =
     `Scan data (JSON):\n${buildContext(scan)}\n\n` +

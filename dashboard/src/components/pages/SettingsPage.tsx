@@ -9,7 +9,9 @@ import {
   Moon,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   Sun,
+  Trash2,
   UserCircle2,
 } from 'lucide-react'
 import {
@@ -24,6 +26,7 @@ import { ToneBadge } from '../ui/Badge'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../lib/auth'
 import { auth } from '../../lib/firebase'
+import { geminiApiKey, geminiGenerateContent } from '../../lib/gemini'
 import { roleLabel, defaultPrefs, type UserPrefs } from '../../lib/rbac'
 import type { ThemeMode } from '../../hooks/useTheme'
 import { cn } from '../../utils/format'
@@ -55,6 +58,37 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
   const [changingPw, setChangingPw] = useState(false)
+  const [geminiKey, setGeminiKey] = useState(() => geminiApiKey())
+  const [hasKey, setHasKey] = useState(Boolean(geminiApiKey()))
+  const [savingKey, setSavingKey] = useState(false)
+  const [keyMsg, setKeyMsg] = useState<string | null>(null)
+
+  const saveGeminiKey = async () => {
+    const k = geminiKey.trim()
+    if (!k) return
+    setSavingKey(true)
+    localStorage.setItem('mc_gemini_api_key', k)
+    setHasKey(true)
+    try {
+      await geminiGenerateContent({ parts: [{ text: 'Reply with exactly: OK' }], maxOutputTokens: 8 })
+      setKeyMsg('Key verified — scans will now use Google Gemini vision extraction.')
+      toast('success', 'Gemini key saved & verified', 'High-accuracy AI analysis is active on this device.')
+    } catch (e) {
+      const msg = (e as { message?: string }).message ?? 'Connection failed.'
+      setKeyMsg(`Key saved, but the verification call failed: ${msg}`)
+      toast('error', 'Key saved but not verified', msg)
+    } finally {
+      setSavingKey(false)
+    }
+  }
+
+  const clearGeminiKey = () => {
+    localStorage.removeItem('mc_gemini_api_key')
+    setGeminiKey('')
+    setHasKey(false)
+    setKeyMsg('Key cleared — scans will use the free on-device OCR engine.')
+    toast('success', 'Gemini key cleared', 'Scans will fall back to the on-device OCR engine.')
+  }
 
   useEffect(() => {
     if (profile?.prefs) setPrefs((p) => ({ ...p, ...profile.prefs }))
@@ -233,6 +267,65 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
           </div>
         </AnalyticsCard>
       </div>
+
+      <AnalyticsCard
+        title="AI Analysis Engine"
+        subtitle="Improve scan accuracy — connect Google Gemini for label reading"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold text-slate-800 dark:text-slate-100">
+              {hasKey ? 'Google Gemini — connected' : 'On-device OCR (Tesseract) is active'}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Without a Gemini key, scans run on the free on-device OCR engine, which often reads dense/small label
+              print poorly and reports those declarations as "not detected". A Gemini key enables high-accuracy vision
+              extraction on this device.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Gemini API key</label>
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+            <input
+              type="password"
+              value={geminiKey}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              placeholder="Paste your key (AIza…)"
+              autoComplete="off"
+              className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:flex-1"
+            />
+            <div className="flex flex-none gap-2">
+              <Button onClick={() => void saveGeminiKey()} loading={savingKey}>
+                <Sparkles className="h-4 w-4" /> Save &amp; verify
+              </Button>
+              {hasKey && (
+                <Button variant="outline" onClick={() => void clearGeminiKey()}>
+                  <Trash2 className="h-4 w-4" /> Clear
+                </Button>
+              )}
+            </div>
+          </div>
+          {keyMsg && (
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{keyMsg}</p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <a
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+            >
+              Get a free Gemini API key →
+            </a>
+            <span className="text-slate-400">Stored only in this browser (localStorage) — never uploaded.</span>
+          </div>
+        </div>
+      </AnalyticsCard>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <AnalyticsCard title="Account security" subtitle="Keep your sign-in protected">

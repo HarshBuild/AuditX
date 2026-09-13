@@ -20,7 +20,8 @@ export interface GemPart {
 }
 
 export function geminiApiKey(): string {
-  return (CONFIG.GEMINI_API_KEY ?? '').trim()
+  const env = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
+  return (env ?? localStorage.getItem('mc_gemini_api_key') ?? '').trim()
 }
 
 /** Turn a data URL ("data:image/jpeg;base64,...") or bare base64 into an inline_data part. */
