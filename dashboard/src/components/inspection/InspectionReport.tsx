@@ -7,20 +7,25 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Copy,
   Download,
   ExternalLink,
   Eye,
+  FilePen,
   FileQuestion,
   FileText,
   Hash,
   HelpCircle,
   Info,
   Languages,
+  ListChecks,
   Loader2,
   MessageSquareText,
   MinusCircle,
   Package,
+  RefreshCw,
   Send,
+  Share2,
   ShoppingBag,
   Tag,
   XCircle,
@@ -754,7 +759,233 @@ function resolveCounts(scan: ScanRow): StatusCounts {
   }
 }
 
-export default function InspectionReport({ scan, onScanAnother }: { scan: ScanRow; onScanAnother?: () => void }) {
+/* ------------------------------------------------------------------ */
+/* Qualitative result status                                           */
+/* ------------------------------------------------------------------ */
+
+export type ResultStatus = 'verified' | 'needs_review' | 'insufficient'
+
+export interface ResultSignals {
+  status: ResultStatus
+  statusLabel: string
+  cause: string
+  findings: string[]
+  recs: string[]
+  limitations: string[]
+  explanation: string
+}
+
+/**
+ * Derive an honest, qualitative result status and the supporting key
+ * findings / recommendations / limitations — ALL from real scan signals
+ * (rule outcomes, extraction coverage, OCR legibility, uncertain fields).
+ * No pseudo-AI confidence percentages are invented anywhere here.
+ */
+function analyzeResultSignals(scan: ScanRow, counts: StatusCounts): ResultSignals {
+  const name = scan.product_name?.trim() ? displayProductName(scan.product_name) : 'this product'
+  const rules = scan.rules ?? []
+  const failRules = rules.filter((r) => r.status === 'FAIL')
+  const reviewRules = rules.filter((r) => r.status === 'WARNING' || r.status === 'NOT_DETECTED')
+  const physRules = rules.filter((r) => r.status === 'REQUIRES_PHYSICAL_INSPECTION')
+  const uncertain = (scan.uncertain ?? []).filter(Boolean)
+  const extractions = scan.extractions ?? {}
+  const extractionCount = Object.values(extractions).filter((v) => typeof v === 'string' && v.trim()).length
+  const hasReading = Boolean(
+    scan.ocr_text?.trim() ||
+    scan.ocr?.text?.trim() ||
+    extractionCount > 0 ||
+    rules.length > 0,
+  )
+  const failCount = counts.failed ?? 0
+  const reviewCount = (counts.warnings ?? 0) + (counts.not_detected ?? 0) + (counts.not_verifiable ?? 0)
+  const physCount = counts.requires_physical_inspection ?? 0
+  const barcodeReview = scan.barcode_check?.needs_review
+
+  // 1) Insufficient data — nothing reliable came off the label.
+  if (!hasReading) {
+    return {
+      status: 'insufficient',
+      statusLabel: 'Insufficient Data',
+      cause: 'We couldn\'t verify this result reliably — not enough readable information was extracted from the label photos.',
+      findings: ['Not enough readable label text was extracted to run the Legal Metrology checks.'],
+      recs: ['Retake the label with steady hands, even light and the declarations block in frame, then scan again.'],
+      limitations: [
+        'Extraction comes from the label photos only — small print is missed when lighting or focus is poor.',
+        'Results are indicative, not a legal certificate.',
+      ],
+      explanation: `The photos of ${name} produced no reliable structured data, so there is nothing to verify. A retake with the mandatory-declarations block in sharp focus usually fixes this.`,
+    }
+  }
+
+  const findings: string[] = []
+  for (const r of failRules) findings.push(`${r.field || r.rule_id} — ${r.requirement || r.reason || 'mandatory declaration missing'}`)
+  for (const r of reviewRules) findings.push(r.status === 'WARNING' ? `Needs verification — ${r.field || r.rule_id}` : `Not detected — ${r.field || r.rule_id}`)
+  if (uncertain.length > 0) findings.push(`Not readable from the photos — ${uncertain.map((k) => k.replace(/_/g, ' ')).join('; ')}`)
+  if (physCount > 0) findings.push(`Physical inspection required — ${physRules.map((r) => r.field || r.rule_id).join('; ')}`)
+  if (barcodeReview) findings.push('Barcode needs verification — the decoded value does not match the label reading.')
+  if (findings.length === 0 && extractionCount > 0) findings.push('All checked mandatory declarations were detected on the label.')
+  const findingsSlice = findings.slice(0, 5)
+
+  const recs: string[] = []
+  for (const r of [...failRules, ...reviewRules]) {
+    const rec = recommendationFor(r)
+    if (rec && !recs.includes(rec)) recs.push(rec)
+  }
+  if (physCount > 0) recs.push('Verify the physical package for anything that cannot be confirmed from photos (seals, dimensions, ink permanence).')
+  if (uncertain.length > 0) recs.push('Re-read the low-confidence declarations on the physical label before acting on this report.')
+  if (recs.length === 0) recs.push('No corrective action required from the photo-based checks.')
+  const recsSlice = recs.slice(0, 4)
+
+  const limitations = [
+    'Extraction comes from the label photos only — small print is missed when lighting or focus is poor.',
+    'Values flagged "not detected" or "needs review" should be verified on the physical label.',
+  ]
+  if (physCount > 0) limitations.push('Physical parameters (seals, dimensions, ink permanence) cannot be verified from photos.')
+  if (barcodeReview) limitations.push('The barcode could not be confirmed from the image — verify it mechanically before relying on it.')
+  limitations.push('Results are indicative, not a legal certificate — confirm with the inspecting authority for an official position.')
+
+  let status: ResultStatus
+  let statusLabel: string
+  let cause: string
+  if (failCount === 0 && reviewCount === 0 && physCount === 0) {
+    status = 'verified'
+    statusLabel = 'Verified'
+    cause = `Every checked declaration was detected and consistent with the label — the result could be verified from the photos.`
+  } else {
+    status = 'needs_review'
+    statusLabel = 'Needs Review'
+    cause =
+      failCount > 0
+        ? `${failCount} mandatory declaration${failCount > 1 ? 's' : ''} ${failCount > 1 ? 'are' : 'is'} missing or incorrect on the label.`
+        : `${reviewCount} item${reviewCount === 1 ? '' : 's'} could not be fully verified from the photos and need${reviewCount === 1 ? 's' : ''} a manual look.`
+  }
+
+  const explanation =
+    scan.summary?.trim()
+      ? displaySentence(scan.summary)
+      : `${name} was checked against the Legal Metrology (Packaged Commodities) Rules 2011. ${cause} ${failCount === 0 && reviewCount === 0 ? 'No corrective action is indicated.' : 'Review the flagged items below.'}`
+
+  return {
+    status,
+    statusLabel,
+    cause,
+    findings: findingsSlice,
+    recs: recsSlice,
+    limitations,
+    explanation,
+  }
+}
+
+const STATUS_STYLES: Record<ResultStatus, { wrap: string; icon: string; label: string }> = {
+  verified: {
+    wrap: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-500/20 dark:bg-emerald-500/5',
+    icon: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+    label: 'text-emerald-700 dark:text-emerald-300',
+  },
+  needs_review: {
+    wrap: 'border-amber-200 bg-amber-50/60 dark:border-amber-500/20 dark:bg-amber-500/5',
+    icon: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+    label: 'text-amber-700 dark:text-amber-300',
+  },
+  insufficient: {
+    wrap: 'border-rose-200 bg-rose-50/60 dark:border-rose-500/20 dark:bg-rose-500/5',
+    icon: 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
+    label: 'text-rose-700 dark:text-rose-300',
+  },
+}
+
+function ResultSummary({
+  sig,
+  onTryAgain,
+}: {
+  sig: ResultSignals
+  onTryAgain?: () => void
+}) {
+  const tone = STATUS_STYLES[sig.status]
+  const StatusIcon = sig.status === 'verified' ? CheckCircle2 : sig.status === 'needs_review' ? AlertTriangle : FileQuestion
+  return (
+    <AnalyticsCard title="Result Summary" subtitle="Primary status, key findings and limits of this inspection">
+      <div className="space-y-4">
+        <div className={`flex flex-wrap items-start gap-3 rounded-xl border p-3.5 ${tone.wrap}`}>
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}>
+            <StatusIcon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Result status</p>
+              <span className={`text-sm font-extrabold uppercase tracking-wide ${tone.label}`}>{sig.statusLabel}</span>
+            </div>
+            <p className="mt-1 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{sig.cause}</p>
+          </div>
+          {sig.status === 'insufficient' && onTryAgain && (
+            <Button variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={onTryAgain}>
+              Try Again
+            </Button>
+          )}
+        </div>
+
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
+            <ListChecks className="h-3.5 w-3.5" /> Key findings
+          </p>
+          <ul className="space-y-1.5">
+            {sig.findings.map((f, i) => (
+              <li key={i} className="flex gap-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${sig.status === 'verified' ? 'bg-emerald-500' : sig.status === 'needs_review' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
+            <RefreshCw className="h-3.5 w-3.5" /> Recommendations
+          </p>
+          <ul className="space-y-1.5">
+            {sig.recs.map((r, i) => (
+              <li key={i} className="flex gap-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+                <span>{r}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <details className="group rounded-xl border border-slate-200/80 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-950/40">
+          <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <Bot className="h-4 w-4 shrink-0 text-brand-500" /> AI explanation
+            <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+          </summary>
+          <p className="px-3 pb-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{sig.explanation}</p>
+        </details>
+
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
+            <FileQuestion className="h-3.5 w-3.5" /> Limitations
+          </p>
+          <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            {sig.limitations.map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </AnalyticsCard>
+  )
+}
+
+export default function InspectionReport({
+  scan,
+  onScanAnother,
+  onEditInput,
+  onRegenerate,
+}: {
+  scan: ScanRow
+  onScanAnother?: () => void
+  onEditInput?: () => void
+  onRegenerate?: () => void
+}) {
   const { toast } = useToast()
   const [lang, setLang] = useState('en')
   const [exporting, setExporting] = useState(false)
@@ -776,14 +1007,15 @@ export default function InspectionReport({ scan, onScanAnother }: { scan: ScanRo
   const failRules = (scan.rules ?? []).filter((r) => r.status === 'FAIL')
   const reviewRules = (scan.rules ?? []).filter((r) => r.status === 'WARNING' || r.status === 'NOT_DETECTED')
   const analysis = analysisLabel(scan.engine)
+  const sig = analyzeResultSignals(scan, counts)
 
   const exportPdf = async () => {
     setExporting(true)
     try {
       const name = await downloadInspectionPdf(scan, lang)
       toast('success', 'PDF saved', name)
-    } catch (e) {
-      toast('error', 'PDF failed', (e as Error).message)
+    } catch {
+      toast('error', 'PDF failed', 'The report could not be exported right now. Try again.')
     } finally {
       setExporting(false)
     }
@@ -805,12 +1037,12 @@ export default function InspectionReport({ scan, onScanAnother }: { scan: ScanRo
       const fn = httpsCallable<{ scanId: string; question: string; lang: string }, { answer: string }>(functions, 'complianceAssistant')
       const res = await fn({ scanId: scan.id, question: q, lang })
       setAnswer(res.data.answer)
-    } catch (e) {
+    } catch {
       const fallback = localAssistantAnswer(scan, q)
       if (fallback) {
         setAnswer(fallback)
       } else {
-        toast('error', 'Assistant unavailable', (e as Error).message ?? 'Cloud Functions may not be deployed yet.')
+        toast('error', 'Assistant unavailable', 'The assistant could not be reached right now. Try again in a moment.')
       }
     } finally {
       setAsking(false)
@@ -821,6 +1053,53 @@ export default function InspectionReport({ scan, onScanAnother }: { scan: ScanRo
     const idx = sourceImage != null && sourceImage >= 0 ? sourceImage : 0
     if (label) setEvidenceTitle(label)
     setEvidenceIdx(idx)
+  }
+
+  /** Plain-text copy of the report — used by both Copy Result and Share. */
+  const buildPlainText = () => {
+    const line = '─'.repeat(28)
+    const name = scan.product_name?.trim() ? displayProductName(scan.product_name) : 'Unnamed product'
+    const lines = [
+      'AuditX — Inspection Result',
+      line,
+      `Product: ${name}`,
+      ...(scan.manufacturer?.trim() ? [`Manufacturer: ${displayText(scan.manufacturer)}`] : []),
+      ...(scan.barcode ? [`Barcode: ${scan.barcode}`] : []),
+      `Compliance score: ${score}/100 — ${verdictLabel}`,
+      `Result status: ${sig.statusLabel} — ${sig.cause}`,
+      '',
+      'Key findings:',
+      ...(sig.findings.length > 0 ? sig.findings : ['No individual finding recorded.']),
+      '',
+      'Recommendations:',
+      ...sig.recs,
+      '',
+      'The analysis is based on the label photos only and is indicative, not a legal certificate.',
+    ]
+    return lines.join('\n')
+  }
+
+  const copyResult = async () => {
+    try {
+      await navigator.clipboard.writeText(buildPlainText())
+      toast('success', 'Result copied', 'The report text is on your clipboard.')
+    } catch {
+      toast('error', 'Copy failed', 'Your browser blocked clipboard access — use Download Report instead.')
+    }
+  }
+
+  const shareResult = async () => {
+    const text = buildPlainText()
+    const title = `AuditX — ${scan.product_name?.trim() ? displayProductName(scan.product_name) : 'Inspection result'}`
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title, text })
+        return
+      } catch {
+        // User cancelled or sharing unsupported — fall back to copy.
+      }
+    }
+    void copyResult()
   }
 
   const prodInfo: Array<{ label: string; value: string; confidence: FieldConf; state: 'ok' | 'verify' | 'miss'; node?: React.ReactNode }> = [
@@ -868,11 +1147,27 @@ export default function InspectionReport({ scan, onScanAnother }: { scan: ScanRo
           <Button variant="outline" icon={<Eye className="h-4 w-4" />} onClick={() => openEvidence(0, 'Evidence from product label')} disabled={(scan.image_urls ?? []).length === 0}>
             View Evidence
           </Button>
+          {onEditInput && (
+            <Button variant="outline" icon={<FilePen className="h-4 w-4" />} onClick={onEditInput}>
+              Edit Input
+            </Button>
+          )}
+          {onRegenerate && (
+            <Button variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={onRegenerate}>
+              Regenerate
+            </Button>
+          )}
           {onScanAnother && (
             <Button variant="outline" icon={<ShoppingBag className="h-4 w-4" />} onClick={onScanAnother}>
               Scan Another Product
             </Button>
           )}
+          <Button variant="outline" icon={<Copy className="h-4 w-4" />} onClick={() => void copyResult()}>
+            Copy Result
+          </Button>
+          <Button variant="outline" icon={<Share2 className="h-4 w-4" />} onClick={() => void shareResult()}>
+            Share
+          </Button>
           <Button variant="primary" icon={exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} onClick={() => void exportPdf()} disabled={exporting}>
             {exporting ? t('downloading') : 'Download Report'}
           </Button>
@@ -924,6 +1219,9 @@ export default function InspectionReport({ scan, onScanAnother }: { scan: ScanRo
 
       {/* Compliance score + overall status */}
       <ScoreHero scan={scan} counts={counts} />
+
+      {/* Qualitative result status + key findings + recommendations */}
+      <ResultSummary sig={sig} onTryAgain={onRegenerate} />
 
       {/* Product information */}
       <AnalyticsCard title="Product Information" subtitle="Values read off the package label">

@@ -7,13 +7,14 @@
  *
  * Strategy:
  *  - install:  precache the app shell (index.html + manifest + icons)
- *  - fetch:    navigations serve the cached shell first (instant start,
- *              offline-capable), then revalidate from the network in the
- *              background; static assets use stale-while-revalidate.
+ *  - fetch:    navigations go network-first (fresh shell wins when online;
+ *              the cached shell is the offline fallback), so an updated deploy
+ *              is picked up on the very next load instead of serving a stale
+ *              app shell forever. Static assets use stale-while-revalidate.
  *  - activate: purge outdated cache versions after each deploy.
  */
 
-const VERSION = 'auditx-v1'
+const VERSION = 'auditx-v2'
 const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png']
 
 self.addEventListener('install', (event) => {
@@ -41,13 +42,19 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return // never intercept API/CDN origins
 
-  // Navigation requests: app shell from cache first, revalidate in background.
+  // Navigation requests: network-first — a freshly deployed shell wins whenever
+  // the user is online, and the precached shell covers offline use.
   if (request.mode === 'navigate') {
     event.respondWith(
-      caches
-        .match('./index.html')
-        .then((cached) => cached || fetch(request))
-        .catch(() => fetch(request)),
+      fetch(request)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone()
+            caches.open(VERSION).then((cache) => cache.put('./index.html', copy))
+          }
+          return res
+        })
+        .catch(() => caches.match('./index.html')),
     )
     return
   }

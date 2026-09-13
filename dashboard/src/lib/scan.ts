@@ -270,7 +270,7 @@ function buildScanRow(scanId: string, out: ScanAnalysisOutput, lang: string, met
     created_at: new Date().toISOString(),
     user_id: uid,
     engine,
-    product_name: out.result.product_name ?? meta.product_name ?? 'Unknown',
+    product_name: out.result.product_name ?? meta.product_name ?? '',
     brand: out.result.brand ?? '',
     manufacturer: meta.manufacturer ?? out.result.brand ?? '',
     category: typeof out.result.category === 'string' ? out.result.category : 'General',
@@ -330,11 +330,19 @@ export async function attachScanPhotos(scanId: string, files: File[]): Promise<s
  * on-device free OCR engine → staff-review queue. Persistence is
  * best-effort everywhere, so a result row is always returned and the user
  * never hits a hard analysis error.
+ *
+ * `onStage` (optional) reports the REAL pipeline milestone at the seam where
+ * it happens so the UI can show an honest step tracker — never an estimate:
+ *   2 extracting → 3 analyzing → 4 aggregating the final result.
  */
-export async function runScanAnalysis(input: ScanAnalysisInput): Promise<{ scan: ScanRow; pending: boolean }> {
+export async function runScanAnalysis(
+  input: ScanAnalysisInput,
+  onStage?: (stage: number) => void,
+): Promise<{ scan: ScanRow; pending: boolean }> {
   const fn = httpsCallable<ScanAnalysisRequest, ScanAnalysisOutput>(functions, 'scanAnalysis')
   let out: ScanAnalysisOutput
   try {
+    onStage?.(2)
     const res = await fn({
       images: (input.images ?? []).map((src) => ({ data: src })),
       lang: input.lang ?? 'en',
@@ -344,10 +352,13 @@ export async function runScanAnalysis(input: ScanAnalysisInput): Promise<{ scan:
     })
     out = res.data
     if (!out?.ok || !out.scan_id) throw new Error('Empty AI response from server.')
+    onStage?.(3)
+    onStage?.(4)
     return { scan: buildScanRow(out.scan_id, out, input.lang ?? 'en', input), pending: false }
   } catch (_fnErr) {
     // 1) Google Gemini AI analysis (high-accuracy vision extraction + rules).
     try {
+      onStage?.(2)
       const geminiScan = await runGeminiScan({
         images: input.images,
         hiResImages: input.hiResImages,
@@ -357,10 +368,13 @@ export async function runScanAnalysis(input: ScanAnalysisInput): Promise<{ scan:
         barcode: input.barcode,
         positions: input.positions,
       })
+      onStage?.(3)
+      onStage?.(4)
       return { scan: geminiScan, pending: false }
     } catch (_geminiErr) {
       // 2) Free on-device analysis (Tesseract) before falling back to manual review.
       try {
+        onStage?.(2)
     const localScan = await runLocalScan({
       images: input.images,
       hiResImages: input.hiResImages,
@@ -370,11 +384,15 @@ export async function runScanAnalysis(input: ScanAnalysisInput): Promise<{ scan:
       barcode: input.barcode,
       positions: input.positions,
     })
+    onStage?.(3)
+    onStage?.(4)
     return { scan: localScan, pending: false }
   } catch (_localErr) {
       // Local OCR failed. Both the server and on-device paths are
       // unavailable right now — always queue the photo for staff review so
       // the scan is never lost and the user never hits a dead-end.
+      onStage?.(3)
+      onStage?.(4)
       const product = input.product_name?.trim() || 'Label scan'
       let scanId = `local-pending-${Date.now()}`
       try {

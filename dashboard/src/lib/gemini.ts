@@ -82,13 +82,58 @@ export async function geminiGenerateContent(opts: {
   }
 }
 
+/** Replace unescaped control characters inside JSON string literals. */
+function jsonStringSafe(text: string): string {
+  let out = ''
+  let inStr = false
+  let esc = false
+  for (const ch of text) {
+    if (inStr) {
+      if (esc) {
+        out += ch
+        esc = false
+        continue
+      }
+      if (ch === '\\') {
+        out += ch
+        esc = true
+        continue
+      }
+      if (ch === '"') {
+        inStr = false
+        out += ch
+        continue
+      }
+      if (ch === '\n' || ch === '\r' || ch === '\t') {
+        out += ch === '\n' ? '\\n' : ch === '\t' ? '\\t' : '\\r'
+        continue
+      }
+      out += ch
+      continue
+    }
+    if (ch === '"') inStr = true
+    out += ch
+  }
+  return out
+}
+
 /** Extract the first JSON object from model output (tolerates fences/verbosity). */
 export function extractJson(text: string): any {
   const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-  try {
-    return JSON.parse(cleaned)
-  } catch {
-    const m = cleaned.match(/\{[\s\S]*\}/)
-    return m ? JSON.parse(m[0]) : null
+  for (const candidate of [cleaned, jsonStringSafe(cleaned)]) {
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      /* try the next candidate */
+    }
   }
+  const m = cleaned.match(/\{[\s\S]*\}/)
+  if (m) {
+    try {
+      return JSON.parse(jsonStringSafe(m[0]))
+    } catch {
+      return null
+    }
+  }
+  return null
 }

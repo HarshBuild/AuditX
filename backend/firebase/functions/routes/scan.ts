@@ -235,7 +235,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
     // 4️⃣ Build result object (same shape as Firebase functions scanAnalysis)
     const result = {
-      product_name: ex.commodity_name ?? productName ?? 'Unknown',
+      product_name: ex.commodity_name ?? productName ?? '',
       brand: ex.manufacturer ?? brand ?? '',
       manufacturer: ex.manufacturer ?? '',
       barcode: engineInputs.barcode ?? '',
@@ -307,7 +307,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       })
       await db.collection('notifications').add({
         user_id: (req as any).uid, type: 'scan', title: 'Analysis completed',
-        body: `${result.product_name} scored ${result.overall_score}/100 — ${result.verdict}.`,
+        body: `${result.product_name || 'Product'} scored ${result.overall_score}/100 — ${result.verdict}.`,
         link: '/scan-history', read: false, read_at: null, data: { scan_id: scanRef.id },
         created_at: new Date().toISOString(),
       })

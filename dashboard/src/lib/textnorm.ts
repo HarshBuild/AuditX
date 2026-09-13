@@ -47,6 +47,81 @@ export function stripHidden(s: string): string {
   return s.replace(HIDDEN_RE, '')
 }
 
+/**
+ * Repair JSON/transport escaping artifacts: a value double-stringified on the
+ * wire arrives as literal `\n` / `\t` / `\r` (two characters) that should read
+ * as real separators, and stray backslashes before quotes as plain quotes.
+ */
+export function repairEscapes(s: string): string {
+  return s
+    .replace(/\\n/g, ' ')
+    .replace(/\\t/g, ' ')
+    .replace(/\\r/g, '')
+    .replace(/\\(["'\\/])/g, '$1')
+}
+
+/**
+ * Decode common UTF-8-read-as-Latin-1 mojibake (Ã© → é, â€™ → ’, â€œ → “,
+ * â€“ → –, â€¦ → …, etc.) instead of discarding the text. A general decoder:
+ * Latin-1 bytes that were originally 2/3-byte UTF-8 are re-read as code points.
+ * Returns a string with characters decoded; undecodable control chars are
+ * dropped. Only touches the C2–F4 high-byte range, so valid Indic text is
+ * never affected.
+ */
+export function decodeMojibake(s: string): string {
+  if (!s) return s
+  if (!/[\u0080-\u00FF]/.test(s)) return s
+  const bytes = Array.from(s, (ch) => ch.charCodeAt(0))
+  const out: string[] = []
+  let i = 0
+  while (i < bytes.length) {
+    const b0 = bytes[i]
+    let cp = -1
+    let len = 1
+    if (b0 >= 0xc2 && b0 <= 0xdf && i + 1 < bytes.length) {
+      const b1 = bytes[i + 1]
+      if (b1 >= 0x80 && b1 <= 0xbf) {
+        cp = ((b0 & 0x1f) << 6) | (b1 & 0x3f)
+        len = 2
+      }
+    } else if (b0 >= 0xe0 && b0 <= 0xef && i + 2 < bytes.length) {
+      const b1 = bytes[i + 1]
+      const b2 = bytes[i + 2]
+      if (b1 >= 0x80 && b1 <= 0xbf && b2 >= 0x80 && b2 <= 0xbf) {
+        cp = ((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f)
+        len = 3
+      }
+    }
+    if (cp >= 0) {
+      // Keep printable decoded characters (incl. NBSP → collapses to a space);
+      // swallow C0/C1 control artifacts.
+      if (!(cp < 0x20 || (cp >= 0x7f && cp <= 0x9f))) out.push(String.fromCodePoint(cp))
+      i += len
+      continue
+    }
+    out.push(String.fromCharCode(b0))
+    i += 1
+  }
+  return out.join('')
+}
+
+/**
+ * Rejoin OCR letter-staggering ("S  u  r  f" from a second-guessed reading)
+ * into a real word. Only fires when the text is mostly single characters, so
+ * normal label words and Indic scripts are never merged.
+ */
+export function rejoinStaggered(s: string): string {
+  if (!s) return s
+  if (INDIC_SCRIPTS.test(s)) return s
+  const toks = s.split(/\s+/).filter(Boolean)
+  if (toks.length < 6) return s
+  const tokenChars = /^[A-Za-z0-9₹%.,:/\-()']+$/
+  if (!toks.every((t) => tokenChars.test(t))) return s
+  const singles = toks.filter((t) => t.length === 1).length
+  if (singles / toks.length >= 0.6) return toks.join('')
+  return s
+}
+
 /** Collapse every run of whitespace (incl. unicode spaces) to a single space. */
 export function collapseWhitespace(s: string): string {
   return s.replace(/[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+/g, ' ').trim()
@@ -108,8 +183,10 @@ export function isGarbled(s: string): boolean {
 export function displayText(raw: unknown, limit = 500): string {
   const src = String(raw ?? '').trim()
   if (!src) return ''
-  let s = unescapeEntities(normalizeUnicode(stripHidden(src)))
+  let s = repairEscapes(unescapeEntities(normalizeUnicode(stripHidden(src))))
+  s = decodeMojibake(s)
   s = collapseWhitespace(s)
+  s = rejoinStaggered(s)
   // Strip stray JSON/markdown fences some models leak into string fields.
   s = s.replace(/^```json\s*/i, '').replace(/^```/, '').replace(/```$/, '').trim()
   if (isGarbled(s)) return UNREADABLE_TEXT

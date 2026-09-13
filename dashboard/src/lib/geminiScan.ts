@@ -153,7 +153,7 @@ export async function runGeminiScan(input: LocalScanInput): Promise<ScanRow> {
     uncertain: summary.counts.uncertain,
   }
 
-  const productName = parsed.ex.commodity_name ?? input.product_name ?? 'Unknown'
+  const productName = parsed.ex.commodity_name ?? input.product_name ?? ''
   const brand = parsed.brand ?? ''
 
   const exForStore: Record<string, string> = {}

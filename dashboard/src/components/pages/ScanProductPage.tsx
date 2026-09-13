@@ -1,11 +1,30 @@
 import { useState } from 'react'
-import { AlertTriangle, Camera, ImagePlus, Loader2, RefreshCw, ScanLine, Sparkles, X, CheckCircle2, Barcode, UploadCloud } from 'lucide-react'
+import {
+  AlertTriangle,
+  BadgeCheck,
+  Barcode,
+  Camera,
+  CheckCircle2,
+  FileInput,
+  FileOutput,
+  FileSearch,
+  ImagePlus,
+  Loader2,
+  RefreshCw,
+  ScanLine,
+  ScanSearch,
+  ScanText,
+  ShieldCheck,
+  Sparkles,
+  UploadCloud,
+  X,
+} from 'lucide-react'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
 import Button from '../ui/Button'
 import CameraCapture from '../ui/CameraCapture'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../lib/auth'
-import { prepareImageFile, runScanAnalysis, attachScanPhotos, MAX_SCAN_IMAGES, type ImageQuality } from '../../lib/scan'
+import { prepareImageFile, loadImageBitmap, runScanAnalysis, attachScanPhotos, MAX_SCAN_IMAGES, type ImageQuality } from '../../lib/scan'
 import { detectBarcodeFromFile } from '../../lib/barcode'
 import { findProductByBarcode } from '../../lib/db'
 import { lookupBarcodeExternal } from '../../lib/services'
@@ -41,16 +60,25 @@ export default function ScanProductPage() {
   const [result, setResult] = useState<{ scan: ScanRow; pending: boolean } | null>(null)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
+  const [failKind, setFailKind] = useState<'no-text' | 'other' | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [progressStep, setProgressStep] = useState(0)
-  const noTextHint = analyzeError ? /no readable text/i.test(analyzeError) : false
+  const noTextHint = failKind === 'no-text'
 
-  const PROGRESS_STEPS = [
-    'Preparing images…',
-    'Reading label text (OCR)…',
-    'Extracting declarations…',
-    'Checking Legal Metrology rules…',
-  ]
+  /**
+   * Real processing milestones. Stages advance ONLY when the corresponding
+   * pipeline seam is reached — never on a fake countdown or percentage.
+   */
+  const STAGES = [
+    { label: 'Input received', icon: FileInput },
+    { label: 'Validating input', icon: ShieldCheck },
+    { label: 'Extracting information', icon: FileSearch },
+    { label: 'Analyzing data', icon: ScanSearch },
+    { label: 'Validating result', icon: BadgeCheck },
+    { label: 'Preparing final report', icon: FileOutput },
+  ] as const
+
+  const advanceStage = (s: number) => setProgressStep((p) => Math.max(p, s))
 
   const addFiles = async (files: File[]) => {
     if (!files || files.length === 0) return
@@ -153,7 +181,41 @@ const prepared = await Promise.all(
   const setPosition = (i: number, pos: string) =>
     setPicked((prev) => prev.map((p, idx) => (idx === i ? { ...p, position: pos } : p)))
 
+  /**
+   * Pre-scan input validation. Runs BEFORE any AI/OCR work — analysis never
+   * starts on invalid input. Friendly, concrete messages only.
+   */
+  const validateBeforeScan = async (): Promise<{ ok: boolean; message?: string }> => {
+    if (picked.length === 0) {
+      return { ok: false, message: 'Add at least one label photo to continue.' }
+    }
+    if (productName.trim().length > 120) {
+      return { ok: false, message: 'Product name looks too long — shorten it to 120 characters or less.' }
+    }
+    if (manufacturer.trim().length > 100) {
+      return { ok: false, message: 'Manufacturer name looks too long — shorten it to 100 characters or less.' }
+    }
+    for (const p of picked) {
+      if (!p.file.type.startsWith('image/')) {
+        return { ok: false, message: 'One of the selected files is not a supported image.' }
+      }
+      if (!p.dataUrl || !p.hiResUrl) {
+        return { ok: false, message: 'One of the photos failed to load — remove it and add it again.' }
+      }
+      // Corrupt / non-decodable photo guard: confirm the hi-res copy still
+      // decodes to a real bitmap before handing it to the AI pipeline.
+      try {
+        const bitmap = await loadImageBitmap(p.hiResUrl)
+        bitmap.close()
+      } catch {
+        return { ok: false, message: 'One of the photos could not be read — it may be corrupted. Remove it and try again.' }
+      }
+    }
+    return { ok: true }
+  }
+
   const analyze = async () => {
+    if (busy) return
     if (picked.length === 0) {
       toast('error', 'No photos', 'Add at least one label photo to analyze.')
       return
@@ -162,20 +224,32 @@ const prepared = await Promise.all(
     setPhase('analyzing')
     setResult(null)
     setAnalyzeError(null)
+    setFailKind(null)
     setProgressStep(0)
-    const stepTimer = window.setInterval(() => {
-      setProgressStep((s) => (s >= 3 ? 3 : s + 1))
-    }, 7000)
     try {
-      const scan = await runScanAnalysis({
-        images: picked.map((p) => p.dataUrl),
-        hiResImages: picked.map((p) => p.hiResUrl),
-        lang,
-        product_name: productName.trim() || undefined,
-        manufacturer: manufacturer.trim() || undefined,
-        barcode: barcode.trim() || undefined,
-        positions: picked.map((p) => p.position as PanelPrior),
-      })
+      advanceStage(0)
+      advanceStage(1)
+      const check = await validateBeforeScan()
+      if (!check.ok) {
+        setAnalyzeError(check.message ?? 'Your input could not be used.')
+        setFailKind('other')
+        toast('error', 'Check your input', check.message)
+        return
+      }
+      advanceStage(2)
+      const scan = await runScanAnalysis(
+        {
+          images: picked.map((p) => p.dataUrl),
+          hiResImages: picked.map((p) => p.hiResUrl),
+          lang,
+          product_name: productName.trim() || undefined,
+          manufacturer: manufacturer.trim() || undefined,
+          barcode: barcode.trim() || undefined,
+          positions: picked.map((p) => p.position as PanelPrior),
+        },
+        advanceStage,
+      )
+      advanceStage(5)
       setResult(scan)
       // Best-effort photo persistence (Storage may not be provisioned yet).
       void attachScanPhotos(scan.scan.id, picked.map((p) => p.file)).then((n) => {
@@ -186,7 +260,7 @@ const prepared = await Promise.all(
         }
       })
       if (scan.pending) {
-        toast('info', 'Analysis queued', 'AI function is not deployed yet — scan saved for staff review.')
+        toast('info', 'Analysis queued', 'AI is unavailable right now — scan saved for staff review.')
       } else if (scan.scan.language_note?.includes('Gemini')) {
         toast('success', 'Analyzed with AI', `Google Gemini read the label and scored "${displayProductName(scan.scan.product_name)}" ${scan.scan.overall_score}/100.`)
       } else if (scan.scan.language_note?.includes('on-device')) {
@@ -195,20 +269,34 @@ const prepared = await Promise.all(
         toast('success', 'Analysis complete', `"${displayProductName(scan.scan.product_name)}" scored ${scan.scan.overall_score}/100.`)
       }
     } catch (e) {
-      const msg = (e as Error).message || 'Something went wrong during analysis.'
-      setAnalyzeError(msg)
-      toast('error', 'Analysis failed', msg)
+      const raw = (e as Error)?.message || ''
+      if (/no readable text/i.test(raw)) {
+        setAnalyzeError('No readable label text could be found in these photos.')
+        setFailKind('no-text')
+        toast('error', 'No readable text', 'Retake the label with steady hands and even light, then retry.')
+      } else {
+        setAnalyzeError('Your scan couldn\'t be completed. The label photos were kept so you can try again.')
+        setFailKind('other')
+        toast('error', 'Scan failed', 'Your scan couldn\'t be completed. Check your connection and try again.')
+      }
     } finally {
-      window.clearInterval(stepTimer)
       setBusy(false)
       setPhase('idle')
     }
+  }
+
+  /** Back to the capture form, keeping the photos and fields already entered. */
+  const editInput = () => {
+    setResult(null)
+    setAnalyzeError(null)
+    setFailKind(null)
   }
 
   const reset = () => {
     setPicked([])
     setResult(null)
     setAnalyzeError(null)
+    setFailKind(null)
     setProductName('')
     setManufacturer('')
     setBarcode('')
@@ -276,34 +364,52 @@ const prepared = await Promise.all(
 
               {phase === 'analyzing' && (
                 <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-500/20 dark:bg-brand-500/10">
-                  <div className="flex items-center justify-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300 sm:hidden">
+                  <p className="flex items-center gap-2 text-sm font-bold text-brand-800 dark:text-brand-200">
                     <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand-600" />
-                    <span>{PROGRESS_STEPS[progressStep]}</span>
-                  </div>
-                  <div className="hidden flex-wrap items-center justify-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300 sm:flex">
-                    {PROGRESS_STEPS.map((s, i) => (
-                      <span key={s} className="flex items-center gap-1.5">
-                        {i < progressStep ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        ) : i === progressStep && phase === 'analyzing' ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-brand-600" />
-                        ) : (
-                          <span className="h-4 w-4 rounded-full border-2 border-slate-300 dark:border-slate-600" />
-                        )}
-                        <span className={i <= progressStep ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'}>{s}</span>
-                        {i < PROGRESS_STEPS.length - 1 && <span className="mx-0.5 text-slate-300 dark:text-slate-600">→</span>}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/15">
-                    <div
-                      className="h-full rounded-full bg-brand-500 transition-all duration-700 ease-out"
-                      style={{ width: `${((progressStep + 1) / PROGRESS_STEPS.length) * 100}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-xs text-brand-600/80 dark:text-brand-300/70">
-                    Powered by Google Gemini AI when the Cloud Function is unavailable — real label transcription + the Legal Metrology rules engine.
+                    Processing your label
                   </p>
+                  <ol className="mt-3 space-y-1.5">
+                    {STAGES.map((s, i) => {
+                      const Icon = s.icon
+                      const done = i < progressStep
+                      const active = i === progressStep && !done
+                      return (
+                        <li key={s.label} className="flex items-center gap-2.5 text-sm">
+                          <span
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                              active
+                                ? 'bg-brand-600 text-white'
+                                : done
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                            }`}
+                          >
+                            {active ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : done ? (
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <Icon className="h-3.5 w-3.5" />
+                            )}
+                          </span>
+                          <span
+                            className={active ? 'font-semibold text-brand-800 dark:text-brand-200' : done ? 'text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}
+                          >
+                            {s.label}
+                          </span>
+                          {active && (
+                            <span className="ml-auto hidden h-1.5 w-20 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-500/15 sm:block">
+                              <span className="block h-full w-full animate-pulse rounded-full bg-brand-500" />
+                            </span>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ol>
+                  <div className="mt-3 flex items-start gap-2 text-xs text-brand-600/80 dark:text-brand-300/70">
+                    <ScanText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>Each step runs only when the previous step actually completes. Complex labels can take a minute — your photos are not uploaded unless you save the scan.</span>
+                  </div>
                 </div>
               )}
 
@@ -463,7 +569,7 @@ const prepared = await Promise.all(
                   disabled={busy || picked.length === 0}
                   className="w-full"
                 >
-                  {busy ? (phase === 'analyzing' ? PROGRESS_STEPS[progressStep] : 'Working…') : 'Analyze label with AI'}
+                  {busy ? 'Analyzing label…' : 'Analyze label'}
                 </Button>
                 {picked.length > 0 && (
                   <Button variant="outline" onClick={reset} disabled={busy} className="w-full">
@@ -495,7 +601,7 @@ const prepared = await Promise.all(
               </div>
             </AnalyticsCard>
           ) : (
-            <InspectionReport scan={result.scan} onScanAnother={reset} />
+            <InspectionReport scan={result.scan} onScanAnother={reset} onEditInput={editInput} onRegenerate={() => void analyze()} />
           )}
         </div>
       )}

@@ -124,14 +124,127 @@ Respond ONLY with valid JSON. No markdown, no code fences, no commentary before 
 /* ------------------------------------------------------------------ */
 /* JSON parsing + normalization helpers                                 */
 /* ------------------------------------------------------------------ */
+
+/** Replace unescaped control characters inside JSON string literals. */
+export function jsonStringSafe(text: string): string {
+  let out = ''
+  let inStr = false
+  let esc = false
+  for (const ch of text) {
+    if (inStr) {
+      if (esc) {
+        out += ch
+        esc = false
+        continue
+      }
+      if (ch === '\\') {
+        out += ch
+        esc = true
+        continue
+      }
+      if (ch === '"') {
+        inStr = false
+        out += ch
+        continue
+      }
+      if (ch === '\n' || ch === '\r' || ch === '\t') {
+        out += ch === '\n' ? '\\n' : ch === '\t' ? '\\t' : '\\r'
+        continue
+      }
+      out += ch
+      continue
+    }
+    if (ch === '"') inStr = true
+    out += ch
+  }
+  return out
+}
+
 export function extractJson(text: string): unknown {
   const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-  try {
-    return JSON.parse(cleaned)
-  } catch {
-    const m = cleaned.match(/\{[\s\S]*\}/)
-    return m ? JSON.parse(m[0]) : null
+  for (const candidate of [cleaned, jsonStringSafe(cleaned)]) {
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      /* try the next candidate */
+    }
   }
+  const m = cleaned.match(/\{[\s\S]*\}/)
+  if (m) {
+    try {
+      return JSON.parse(jsonStringSafe(m[0]))
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+/** Repair double-encoded UTF-8 (Ã© → é, â€™ → ’) and stray transport escapes. */
+function repairArtifacts(s: string): string {
+  if (!s) return s
+  let t = s
+    .replace(/\\n/g, ' ')
+    .replace(/\\t/g, ' ')
+    .replace(/\\r/g, '')
+    .replace(/\\(["'\\/])/g, '$1')
+  t = t.replace(/[\u00AD\u200B\u200E\u200F\u2060\u2066-\u2069\uFEFF]/g, '')
+  if (/[\u0080-\u00FF]/.test(t)) {
+    const bytes = Array.from(t, (ch) => ch.charCodeAt(0))
+    const out: string[] = []
+    let i = 0
+    while (i < bytes.length) {
+      const b0 = bytes[i]
+      let cp = -1
+      let len = 1
+      if (b0 >= 0xc2 && b0 <= 0xdf && i + 1 < bytes.length) {
+        const b1 = bytes[i + 1]
+        if (b1 >= 0x80 && b1 <= 0xbf) {
+          cp = ((b0 & 0x1f) << 6) | (b1 & 0x3f)
+          len = 2
+        }
+      } else if (b0 >= 0xe0 && b0 <= 0xef && i + 2 < bytes.length) {
+        const b1 = bytes[i + 1]
+        const b2 = bytes[i + 2]
+        if (b1 >= 0x80 && b1 <= 0xbf && b2 >= 0x80 && b2 <= 0xbf) {
+          cp = ((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f)
+          len = 3
+        }
+      }
+      if (cp >= 0) {
+        if (!(cp < 0x20 || (cp >= 0x7f && cp <= 0x9f))) out.push(String.fromCodePoint(cp))
+        i += len
+        continue
+      }
+      out.push(String.fromCharCode(b0))
+      i += 1
+    }
+    t = out.join('')
+  }
+  return t.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * A clean structured VALUE — the field text that feeds the engine and is shown
+ * in the result UI. Never raw OCR blob, never mojibake. Raw OCR text is the
+ * only thing kept verbatim as evidence.
+ */
+export function cleanStructured(raw: string | null): string | null {
+  if (raw === null || raw === undefined) return null
+  const s = repairArtifacts(String(raw))
+  return s === '' ? null : s
+}
+
+/**
+ * Product-name guard: a real product name is ONE short line. Whole OCR
+ * paragraphs are the #1 garbled-name source, so they are rejected at the
+ * source (the UI then shows "Product name not clearly detected").
+ */
+export function looksLikeOcrBlob(v: string | null): boolean {
+  if (!v) return false
+  if (/\r|\n/.test(v)) return true
+  if (v.split(/\s+/).filter(Boolean).length > 18) return true
+  return false
 }
 
 export function norm(value: unknown): string | null {
@@ -150,16 +263,20 @@ export interface NormField {
 /** Normalize an extraction field — accepts {value,confidence,source_image} or plain string/null. */
 export function normField(raw: unknown): NormField {
   if (raw === null || raw === undefined) return { value: null, confidence: 'low', source_image: null }
-  if (typeof raw === 'string') return { value: norm(raw), confidence: 'medium', source_image: null }
+  if (typeof raw === 'string') return { value: cleanStructured(raw), confidence: 'medium', source_image: null }
   if (typeof raw === 'object') {
     const o = raw as Record<string, unknown>
+    const rawValue = typeof o.value === 'string' ? o.value : o.value === null || o.value === undefined ? null : String(o.value)
+    let value = cleanStructured(rawValue)
+    // A product name is one short line — reject OCR paragraphs/blobs here.
+    if (value !== null && looksLikeOcrBlob(value)) value = null
     return {
-      value: norm(o.value),
+      value,
       confidence: o.confidence === 'high' || o.confidence === 'medium' || o.confidence === 'low' ? o.confidence : 'medium',
       source_image: typeof o.source_image === 'number' ? o.source_image : null,
     }
   }
-  return { value: norm(raw), confidence: 'medium', source_image: null }
+  return { value: cleanStructured(raw == null ? null : String(raw)), confidence: 'medium', source_image: null }
 }
 
 export interface SanitizedExtractions {
@@ -234,14 +351,16 @@ export function parseRaw(
     : []
   const categoryRaw = norm(raw.category) ?? user.category
   const category = categoryRaw && ALLOWED_CATEGORIES.includes(categoryRaw) ? categoryRaw : 'Other'
+  const rawProductName = cleanStructured(norm(raw.product_name)) ?? cleanStructured(user.product_name ?? null)
+  const productName = rawProductName && !looksLikeOcrBlob(rawProductName) ? rawProductName : null
   return {
     fields, ex,
     ocrText, ocrLangs, ocrBlocks, uncertain, labels,
     category,
     barcode: norm(user.barcode ?? raw.barcode),
-    productName: norm(raw.product_name) ?? user.product_name ?? null,
-    brand: norm(raw.brand),
-    languageNote: norm(raw.language_note) ?? '',
+    productName,
+    brand: cleanStructured(norm(raw.brand)),
+    languageNote: cleanStructured(norm(raw.language_note)) ?? '',
   }
 }
 
