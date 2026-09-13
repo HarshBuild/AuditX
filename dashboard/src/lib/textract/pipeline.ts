@@ -81,11 +81,17 @@ export interface PipelineOutput {
 function planForRegion(region: TexRegion, quality: QualityReport): Array<{ kind: VariantKind; upscale: number; label: string }> {
   const size = region.bbox.y1 - region.bbox.y0
   const goodQuality = quality.meanLum >= 45 && quality.edgeEnergy >= 6
-  if (quality.meanLum < 45) {
-    return [{ kind: 'clahe', upscale: 1.5, label: 'clahe-1.5x' }, { kind: 'bin', upscale: 1.5, label: 'bin-1.5x' }]
+  const dark = quality.meanLum < 45
+  // Tiny region (small print): 3× upscale + denoise beats 2× on codes/dates.
+  if (size < 100 || region.detectorConf < 0.38) {
+    if (dark) return [{ kind: 'brighten', upscale: 3, label: '3x-brighten' }, { kind: 'clahe', upscale: 3, label: '3x-clahe' }]
+    return [{ kind: 'standard', upscale: 3, label: '3x-std' }, { kind: 'sharp', upscale: 3, label: '3x-sharp' }, { kind: 'denoise', upscale: 3, label: '3x-denoise' }]
+  }
+  if (dark) {
+    return [{ kind: 'clahe', upscale: 1.5, label: 'clahe-1.5x' }, { kind: 'bin', upscale: 1.5, label: 'bin-1.5x' }, { kind: 'brighten', upscale: 1.5, label: 'brighten-1.5x' }]
   }
   if (size < 180 || region.detectorConf < 0.45) {
-    return [{ kind: 'standard', upscale: 2, label: '2x-std' }, { kind: 'sharp', upscale: 2, label: '2x-sharp' }]
+    return [{ kind: 'standard', upscale: 2, label: '2x-std' }, { kind: 'sharp', upscale: 2, label: '2x-sharp' }, { kind: 'denoise', upscale: 2, label: '2x-denoise' }]
   }
   if (goodQuality) {
     return [{ kind: 'standard', upscale: 2, label: '2x-std' }]
@@ -210,6 +216,7 @@ export async function runPipeline(
       const rescueVariants = [
         { kind: 'standard' as VariantKind, upscale: 2, label: 'full-2x-std' },
         { kind: 'color' as VariantKind, upscale: 2, label: 'full-2x-color' },
+        { kind: 'denoise' as VariantKind, upscale: 2, label: 'full-2x-denoise' },
       ]
       for (const rv of rescueVariants) {
         if (totalPassCount >= maxPasses) break

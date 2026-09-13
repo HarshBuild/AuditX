@@ -183,7 +183,8 @@ function buildReportHtml(scan: ScanRow, lang: string): string {
     )
     .join('')
 
-  const declarationLabels: { key: keyof NonNullable<ScanRow['extractions']>; label: string }[] = [
+  const exRec = (scan.extractions ?? {}) as Record<string, string | null | undefined>
+  const declarationLabels: { key: string; label: string }[] = [
     { key: 'commodity_name', label: 'Generic name' },
     { key: 'mrp', label: 'MRP (incl. taxes)' },
     { key: 'net_quantity', label: 'Net quantity' },
@@ -197,16 +198,44 @@ function buildReportHtml(scan: ScanRow, lang: string): string {
     { key: 'best_before', label: 'Best before / expiry' },
     { key: 'lot_no', label: 'Batch / lot no.' },
     { key: 'consumer_care', label: 'Consumer care' },
+    { key: 'fssai_license', label: 'FSSAI licence no.' },
+    { key: 'veg_nonveg', label: 'Veg / Non-veg' },
+    { key: 'ingredients', label: 'Ingredients' },
+    { key: 'allergens', label: 'Allergens' },
+    { key: 'nutrition_info', label: 'Nutrition info' },
   ]
-  const declarationRows = (scan.extractions
+  const specLabels: { key: string; label: string }[] = [
+    { key: 'model', label: 'Model / product code' },
+    { key: 'serial_number', label: 'Serial number' },
+    { key: 'material', label: 'Material' },
+    { key: 'dimensions', label: 'Dimensions' },
+    { key: 'capacity', label: 'Capacity' },
+    { key: 'voltage', label: 'Voltage' },
+    { key: 'power', label: 'Power' },
+    { key: 'current', label: 'Current' },
+    { key: 'frequency', label: 'Frequency' },
+    { key: 'website', label: 'Website' },
+    { key: 'email', label: 'Email' },
+    { key: 'certifications', label: 'Certifications / marks' },
+    { key: 'warnings', label: 'Warnings' },
+    { key: 'instructions', label: 'Instructions' },
+  ]
+  const declarationRows = scan.extractions
     ? declarationLabels
-        .filter((d) => scan.extractions![d.key])
+        .filter((d) => exRec[d.key])
         .map(
           (d) =>
-            `<tr>${td(`<span style="font-weight:600;color:${SILVER};">${esc(d.label)}</span>`, { width: '42%' })}${td(esc(displayText(scan.extractions![d.key])), { width: '58%', color: CHARCOAL, bold: true })}</tr>`,
+            `<tr>${td(`<span style="font-weight:600;color:${SILVER};">${esc(d.label)}</span>`, { width: '42%' })}${td(esc(displayText(exRec[d.key])), { width: '58%', color: CHARCOAL, bold: true })}</tr>`,
         )
         .join('')
-    : '')
+    : ''
+  const specRows = specLabels
+    .filter((d) => exRec[d.key])
+    .map(
+      (d) =>
+        `<tr>${td(`<span style="font-weight:600;color:${SILVER};">${esc(d.label)}</span>`, { width: '42%' })}${td(esc(displayText(exRec[d.key])), { width: '58%', color: CHARCOAL, bold: true })}</tr>`,
+    )
+    .join('')
 
   const score = Math.max(0, Math.min(100, scan.overall_score))
   const scoreFill = scoreColor(scan.overall_score)
@@ -257,6 +286,7 @@ function buildReportHtml(scan: ScanRow, lang: string): string {
       ${section('Label Data', 'Extracted Declarations')}
     </div>
     ${card(declarationRows ? table(['Declaration', 'Value'], declarationRows) : `<div style="font-size:9.5px;color:${SILVER};">${esc(t(lang, 'not_available'))}</div>`)}
+    ${specRows ? card(table(['Specification', 'Value'], specRows)) : ''}
 
     ${scan.labels && scan.labels.length > 0 ? `
       <div style="margin-top:34px;margin-bottom:12px;">${section('Label Verification', esc(t(lang, 'labels_detected')))}</div>

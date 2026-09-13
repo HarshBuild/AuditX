@@ -588,7 +588,7 @@ function EvidenceModal({ scan, imageIndex, title, onClose }: { scan: ScanRow; im
 /* 7 · Extracted declarations (status list)                            */
 /* ------------------------------------------------------------------ */
 
-const DECLARATION_LABELS: { key: keyof ExtractedDeclarations; label: string }[] = [
+const DECLARATION_LABELS: { key: string; label: string }[] = [
   { key: 'commodity_name', label: 'Generic name' },
   { key: 'mrp', label: 'MRP (incl. taxes)' },
   { key: 'net_quantity', label: 'Net quantity' },
@@ -602,6 +602,32 @@ const DECLARATION_LABELS: { key: keyof ExtractedDeclarations; label: string }[] 
   { key: 'best_before', label: 'Best before / expiry' },
   { key: 'lot_no', label: 'Batch / lot no.' },
   { key: 'consumer_care', label: 'Consumer care' },
+  { key: 'fssai_license', label: 'FSSAI licence no.' },
+  { key: 'veg_nonveg', label: 'Veg / Non-veg' },
+  { key: 'ingredients', label: 'Ingredients' },
+  { key: 'allergens', label: 'Allergens' },
+  { key: 'nutrition_info', label: 'Nutrition info' },
+]
+
+/**
+ * Specification fields (max-utility small-print extraction). Deployed in
+ * priority order so the most identifying details render first.
+ */
+const SPEC_FIELDS: { key: string; label: string }[] = [
+  { key: 'model', label: 'Model / product code' },
+  { key: 'serial_number', label: 'Serial number' },
+  { key: 'material', label: 'Material' },
+  { key: 'dimensions', label: 'Dimensions' },
+  { key: 'capacity', label: 'Capacity' },
+  { key: 'voltage', label: 'Voltage' },
+  { key: 'power', label: 'Power' },
+  { key: 'current', label: 'Current' },
+  { key: 'frequency', label: 'Frequency' },
+  { key: 'website', label: 'Website' },
+  { key: 'email', label: 'Email' },
+  { key: 'certifications', label: 'Certifications / marks' },
+  { key: 'warnings', label: 'Warnings' },
+  { key: 'instructions', label: 'Instructions' },
 ]
 
 const CONF_PCT: Record<string, number> = { high: 100, medium: 68, low: 38 }
@@ -611,19 +637,28 @@ const CONF_BAR: Record<string, string> = {
   low: 'bg-rose-500',
 }
 
+/** Fine-grained confidence band (deterministic, matches the scan report labels). */
+function bandFor(pct: number): { label: string; bar: string } {
+  if (pct >= 90) return { label: 'High', bar: 'bg-emerald-500' }
+  if (pct >= 75) return { label: 'Good', bar: 'bg-emerald-500' }
+  if (pct >= 50) return { label: 'Medium', bar: 'bg-amber-500' }
+  if (pct >= 25) return { label: 'Low', bar: 'bg-rose-500' }
+  return { label: 'Not confident', bar: 'bg-rose-500' }
+}
+
 function DeclarationsList({ scan }: { scan: ScanRow }) {
-  const ex = scan.extractions
+  const ex = scan.extractions as Record<string, string | null | undefined> | undefined
   const uncertain = scan.uncertain ?? []
   if (!ex && uncertain.length === 0) {
     return <p className="py-6 text-center text-sm text-slate-400">No extracted declarations for this scan.</p>
   }
   const detectedCount = DECLARATION_LABELS.filter((d) => {
-    const value = ex?.[d.key] as string | null | undefined
+    const value = ex?.[d.key]
     return value || uncertain.includes(d.key)
   }).length
 
   const rows = DECLARATION_LABELS.map((d) => {
-    const rawValue = (ex?.[d.key] as string | null | undefined) ?? ''
+    const rawValue = ex?.[d.key] ?? ''
     const conf = scan.extraction_fields?.[d.key] as { value?: string | null; confidence?: string | null; source_image?: number | null } | undefined
     const confidence = conf?.confidence ?? null
     const needsReview = confidence === 'low' || uncertain.includes(d.key)
@@ -706,7 +741,67 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 8 · Rule analysis (collapsible)                                     */
+/* 8 · Product details (model / specs / safety — per-field confidence) */
+/* ------------------------------------------------------------------ */
+
+function ProductDetails({ scan }: { scan: ScanRow }) {
+  const ex = scan.extractions as Record<string, string | null | undefined> | undefined
+  const fields = scan.extraction_fields ?? {}
+  const rows = SPEC_FIELDS.map(({ key, label }) => {
+    const value = displayText(ex?.[key] ?? '')
+    const f = fields[key]
+    const pct = typeof f?.confidence_score === 'number' ? Math.round(f.confidence_score * 100) : null
+    const legacyPct = f?.confidence != null ? CONF_PCT[f.confidence] ?? null : null
+    return { key, label, value, pct: pct ?? legacyPct, status: f?.status ?? null }
+  }).filter((r) => r.value || r.status === 'NEEDS_REVIEW' || r.status === 'INVALID')
+
+  if (rows.length === 0) {
+    return <p className="py-6 text-center text-sm text-slate-400">No model / specification details detected on this label.</p>
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {rows.map((r) => {
+        const verify = r.status === 'NEEDS_REVIEW' || r.status === 'INVALID' || (r.pct != null && r.pct < 50)
+        const band = r.pct != null ? bandFor(r.pct) : null
+        return (
+          <div
+            key={r.key}
+            className={`rounded-xl border p-3 ${verify ? 'border-amber-200 bg-amber-50/40 dark:border-amber-500/20 dark:bg-amber-500/5' : 'border-slate-100 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-950/40'}`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{r.label}</p>
+              {band && (
+                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
+                  <span>{band.label}</span>
+                  <span className="text-slate-300 dark:text-slate-600">·</span>
+                  <span>{r.pct}%</span>
+                </span>
+              )}
+            </div>
+            {r.value ? (
+              <p className={`mt-1 break-words text-sm font-semibold ${verify ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`} title={r.value}>
+                {r.value}
+              </p>
+            ) : (
+              <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5" /> Needs verification
+              </p>
+            )}
+            {band && (
+              <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                <span className={`block h-full rounded-full ${band.bar}`} style={{ width: `${r.pct}%` }} />
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* 9 · Rule analysis (collapsible)                                     */
 /* ------------------------------------------------------------------ */
 
 function RuleRow({ r, onViewEvidence }: { r: RuleCheck; onViewEvidence: (sourceImage: number | null) => void }) {
@@ -1322,6 +1417,14 @@ export default function InspectionReport({
             </div>
           ))}
         </div>
+      </AnalyticsCard>
+
+      {/* Product details — model / specs / safety small print */}
+      <AnalyticsCard
+        title="Product Details"
+        subtitle="Model, specifications, electrical ratings, contact & safety text read from small print — per-field confidence"
+      >
+        <ProductDetails scan={scan} />
       </AnalyticsCard>
 
       {/* Risk factors + warnings */}

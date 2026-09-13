@@ -45,6 +45,24 @@ For food/beverage items, also extract:
 - ingredients: the FULL verbatim ingredient list if present (else null).
 - allergens: verbatim allergen declaration text if present (else null).
 
+ADDITIONAL PRODUCT DETAILS — extract for EVERY product type (food and non-food):
+EXAMINE SMALL PRINT SHARPLY. Appliance/garment/tool labels are the MOST important source for these.
+- "model": model / product / article / item / style / catalog / stock / part number, EXACT code (e.g. "ABC-120").
+- "serial_number": serial number/SN, EXACT code.
+- "material": material / made of / fabric description (e.g. "100% Polyester").
+- "dimensions": size with units (e.g. "12 x 8 x 4 mm") — keep the x/× separators.
+- "capacity": capacity with unit (e.g. "1.5 L", "35 kg", "500 ml").
+- "voltage": e.g. "230V", "100-240V AC".
+- "power": e.g. "1200 W", "1.5 kW".
+- "current": e.g. "1.2 A".
+- "frequency": e.g. "50 Hz".
+- "website": any website printed on the label (e.g. "www.example.com").
+- "email": any e-mail printed on the label (e.g. "care@example.com").
+- "certifications": certification marks/standards (ISI, BIS, CE, RoHS, ISO 9001, EN 60335, Energy Star...).
+- "warnings": warning/caution/danger sentences or safety phrases ("Do not...", "Keep away from children", "Flammable").
+- "instructions": how-to-use / directions-for-use / dosage / usage instructions text.
+NEVER guess a code: transcribe EXACT verbatim characters (a misread "0" vs "O" is worse than null).
+
 "uncertain": List field keys where text was printed but could not be read confidently.
 
 Respond ONLY with valid JSON. No markdown, no code fences, no commentary.
@@ -76,7 +94,21 @@ Respond ONLY with valid JSON. No markdown, no code fences, no commentary.
     "veg_nonveg": {"value":"null or veg/nonveg","confidence":"high|medium|low","source_image":null},
     "nutrition_info": {"value":"null or verbatim table text","confidence":"high|medium|low","source_image":null},
     "ingredients": {"value":"null or verbatim list","confidence":"high|medium|low","source_image":null},
-    "allergens": {"value":"null or verbatim text","confidence":"high|medium|low","source_image":null}
+    "allergens": {"value":"null or verbatim text","confidence":"high|medium|low","source_image":null},
+    "model": {"value":"null or EXACT model/product/article/item/style/catalog/stock/part code","confidence":"high|medium|low","source_image":null},
+    "serial_number": {"value":"null or EXACT serial/SN code","confidence":"high|medium|low","source_image":null},
+    "material": {"value":"null or material/made of description","confidence":"high|medium|low","source_image":null},
+    "dimensions": {"value":"null or size with units (12 x 8 x 4 mm)","confidence":"high|medium|low","source_image":null},
+    "capacity": {"value":"null or capacity with unit (1.5 L)","confidence":"high|medium|low","source_image":null},
+    "voltage": {"value":"null or EXACT voltage (230V / 100-240V AC)","confidence":"high|medium|low","source_image":null},
+    "power": {"value":"null or EXACT power (1200 W / 1.5 kW)","confidence":"high|medium|low","source_image":null},
+    "current": {"value":"null or EXACT current (1.2 A)","confidence":"high|medium|low","source_image":null},
+    "frequency": {"value":"null or EXACT frequency (50 Hz)","confidence":"high|medium|low","source_image":null},
+    "website": {"value":"null or website as printed","confidence":"high|medium|low","source_image":null},
+    "email": {"value":"null or e-mail as printed","confidence":"high|medium|low","source_image":null},
+    "certifications": {"value":"null or certification marks/standards (ISI, BIS, CE, RoHS, ISO 9001)","confidence":"high|medium|low","source_image":null},
+    "warnings": {"value":"null or warning/caution/danger text","confidence":"high|medium|low","source_image":null},
+    "instructions": {"value":"null or usage/directions text","confidence":"high|medium|low","source_image":null}
   },
   "uncertain": ["list of field keys where value was printed but illegible"],
   "language_note": "short sentence about label languages"
@@ -224,16 +256,21 @@ export interface NormField {
   source_image: number | null
 }
 
+/** Long-form fields where multi-line / long text is legitimate. */
+const LONG_TEXT_KEYS = new Set(['warnings', 'instructions', 'nutrition_info', 'ingredients', 'allergens'])
+
 /** Normalize an extraction field — accepts {value,confidence,source_image} or plain string/null. */
-export function normField(raw: unknown): NormField {
+export function normField(raw: unknown, key?: string): NormField {
   if (raw === null || raw === undefined) return { value: null, confidence: 'low', source_image: null }
   if (typeof raw === 'string') return { value: cleanStructured(raw), confidence: 'medium', source_image: null }
   if (typeof raw === 'object') {
     const o = raw as Record<string, unknown>
     const rawValue = typeof o.value === 'string' ? o.value : o.value === null || o.value === undefined ? null : String(o.value)
     let value = cleanStructured(rawValue)
-    // A product name is one short line — reject OCR paragraphs/blobs here.
-    if (value !== null && looksLikeOcrBlob(value)) value = null
+    // Short simple fields must be one line — reject OCR paragraphs/blobs here.
+    // Long-form fields (warnings/instructions/nutrition/ingredients/allergens)
+    // legitimately span lines and are kept verbatim.
+    if (value !== null && !(key && LONG_TEXT_KEYS.has(key)) && looksLikeOcrBlob(value)) value = null
     return {
       value,
       confidence: o.confidence === 'high' || o.confidence === 'medium' || o.confidence === 'low' ? o.confidence : 'medium',
@@ -257,11 +294,15 @@ export function sanitizeExtractions(value: unknown): SanitizedExtractions {
     country_of_origin: null, mfg_date: null, best_before: null, consumer_care: null,
     lot_no: null, fssai_license: null, veg_nonveg: null, nutrition_info: null,
     ingredients: null, allergens: null,
+    model: null, serial_number: null, material: null, dimensions: null,
+    capacity: null, voltage: null, power: null, current: null, frequency: null,
+    website: null, email: null, certifications: null, warnings: null,
+    instructions: null,
   }
   if (value && typeof value === 'object') {
     const src = value as Record<string, unknown>
     for (const key of EXTRACTION_KEYS) {
-      fields[key] = normField(src[key])
+      fields[key] = normField(src[key], key)
       ex[key] = fields[key].value
     }
   } else {

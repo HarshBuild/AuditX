@@ -66,7 +66,14 @@ export interface ComplianceSummary {
   evidence_chain: Array<{ rule_id: string; requirement: string; status: string; detected_value: string | null; source_image: number | null; ocr_text: string | null }>
 }
 
-/** Extracted (verbatim-only) label fields — the ONLY thing the LLM produces. */
+/**
+ * Extracted (verbatim-only) label fields — the ONLY thing the LLM produces.
+ *
+ * Beyond the mandatory Legal Metrology declarations, the pipeline also pulls
+ * maximum useful product detail off the label (model/codes, electrical specs,
+ * dimensions, material, contact web/email, certifications, warnings and
+ * instructions). Every value here is EXACT text as printed — never guessed.
+ */
 export interface Extractions {
   commodity_name: string | null
   mrp: string | null
@@ -86,6 +93,20 @@ export interface Extractions {
   nutrition_info: string | null
   ingredients: string | null
   allergens: string | null
+  model: string | null
+  serial_number: string | null
+  material: string | null
+  dimensions: string | null
+  capacity: string | null
+  voltage: string | null
+  power: string | null
+  current: string | null
+  frequency: string | null
+  website: string | null
+  email: string | null
+  certifications: string | null
+  warnings: string | null
+  instructions: string | null
 }
 
 export interface ExtractedField {
@@ -119,6 +140,8 @@ export const EXTRACTION_KEYS: (keyof Extractions)[] = [
   'commodity_name', 'mrp', 'net_quantity', 'unit_sale_price', 'manufacturer', 'packer',
   'importer', 'address', 'country_of_origin', 'mfg_date', 'best_before', 'consumer_care',
   'lot_no', 'fssai_license', 'veg_nonveg', 'nutrition_info', 'ingredients', 'allergens',
+  'model', 'serial_number', 'material', 'dimensions', 'capacity', 'voltage', 'power',
+  'current', 'frequency', 'website', 'email', 'certifications', 'warnings', 'instructions',
 ]
 
 /** Categories that are food/beverage (carry food-specific label obligations). */

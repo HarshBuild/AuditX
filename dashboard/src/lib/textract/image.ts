@@ -53,7 +53,7 @@ function contrastStretch(gray: Float64Array, lo: number, hi: number): Float64Arr
   return out
 }
 
-export type VariantKind = 'color' | 'standard' | 'sharp' | 'clahe' | 'bin'
+export type VariantKind = 'color' | 'standard' | 'sharp' | 'clahe' | 'bin' | 'denoise' | 'brighten'
 
 function drawColor(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number) {
   ctx.fillStyle = '#ffffff'
@@ -208,6 +208,35 @@ export async function renderVariant(dataUrl: string, kind: VariantKind, upscale 
         const idx = (y * w + x) * 4
         rgba[idx] = v; rgba[idx + 1] = v; rgba[idx + 2] = v
       }
+    }
+  } else if (kind === 'denoise') {
+    const kernel = [1, 2, 1, 2, 4, 2, 1, 2, 1]
+    const blurred = gaussian3x3(gray, w, h, kernel, 16)
+    // 3×3 median clears sensor/grain noise that misleads small-print OCR.
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const win: number[] = []
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const ny = Math.min(h - 1, Math.max(0, y + dy))
+            const nx = Math.min(w - 1, Math.max(0, x + dx))
+            win.push(blurred[ny * w + nx])
+          }
+        }
+        win.sort((a, b) => a - b)
+        const v = win[4]
+        const idx = (y * w + x) * 4
+        rgba[idx] = v; rgba[idx + 1] = v; rgba[idx + 2] = v
+      }
+    }
+  } else if (kind === 'brighten') {
+    // Gamma lift (γ=0.8) raises crushed shadows so dark-lighting labels read.
+    const gamma = 0.8
+    for (let j = 0; j < gray.length; j++) {
+      const n = gray[j] / 255
+      const v = Math.round(255 * Math.pow(n, gamma))
+      const idx = j * 4
+      rgba[idx] = v; rgba[idx + 1] = v; rgba[idx + 2] = v
     }
   }
 

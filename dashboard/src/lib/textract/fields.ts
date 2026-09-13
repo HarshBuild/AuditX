@@ -37,6 +37,14 @@ interface RegExProfile {
   multiline?: boolean
   numeric?: boolean
   money?: boolean
+  /** Code fields (model/serial) normalize dash/space/case for consensus. */
+  code?: boolean
+  /**
+   * Context-aware line linking: when a label line ("Capacity") has no value
+   * on it, the next non-empty line ("1.5 L") is the value. Preserves
+   * Label → Value pairs (spec tables) instead of mixing fragments.
+   */
+  pairwise?: boolean
 }
 
 /* ------------------------------------------------------------------ */
@@ -78,14 +86,26 @@ export function fixField(value: string, numeric: boolean): string {
  * chars; money fields additionally collapse "₹199" / "Rs.199" / "199.00" to
  * the same key. Text fields compare case/space/punct-insensitively.
  */
+/** Spec fields carrying a unit ("230V" ≡ "230 V", "1.5L" ≡ "1.5 L"). */
+const UNIT_EQ_FIELDS = new Set<KeyOfExtractions>(['capacity', 'voltage', 'power', 'current', 'frequency', 'dimensions'])
+
 export function eqKey(key: KeyOfExtractions, value: string): string {
   const profile = PROFILES.find((p) => p.labelKey === key)
   const numeric = !!profile?.numeric
   const money = !!profile?.money
+  const code = !!profile?.code
+  if (UNIT_EQ_FIELDS.has(key)) {
+    return fixField(clean(value), false).toUpperCase().replace(/[×*]/g, 'X').replace(/\s+/g, '')
+  }
   if (numeric) {
     let v = fixField(value, true)
     if (money) v = String(Number(clean(v).replace(/[^\d.]/g, '')) ?? '')
     return v.replace(/[^\d]/g, '_')
+  }
+  if (code) {
+    // Codes/markers: "ABC-120" ≡ "ABC 120" ≡ "abc120" — but never across a
+    // genuinely different code. O/0, I/1, S/5 confusables still normalized.
+    return fixField(clean(value).toUpperCase(), false).replace(/[^A-Z0-9]/g, '')
   }
   return clean(value).toLowerCase().replace(/[\s.,;:()'"\-]+/g, ' ').trim()
 }
@@ -138,6 +158,38 @@ export function validateField(key: KeyOfExtractions, value: string): boolean {
     case 'allergens':
     case 'nutrition_info':
       return value.length >= 5
+    case 'model':
+    case 'serial_number': {
+      const code = value.replace(/[^A-Za-z0-9/\-_.]/g, '')
+      return code.length >= 3 && code.length <= 30
+    }
+    case 'material':
+      return value.length >= 3 && (/\d/.test(value) ? /[a-zA-Z]{3,}/.test(value) : /^[a-zA-Z&][a-zA-Z\s&-]{2,40}$/.test(value.trim()))
+    case 'dimensions': {
+      const hasUnit = /\b(?:mm|cm|m|inch(?:es)?|ft\.?|feet)\b/i.test(value) && /\d/.test(value)
+      return hasUnit && /[x×*]/.test(value.replace(/\s+/g, ''))
+    }
+    case 'capacity':
+      return /\d/.test(value) && /\b(?:l|ml|cl|g|kg|m3|cc|litre|liter|litres|liters|cu\s*\.?\s*(?:cm|ft|m))\b/i.test(value)
+    case 'voltage':
+      return /\d/.test(value) && /\b(?:v|vac|volts?|volt)\b/i.test(value)
+    case 'power':
+      return /\d/.test(value) && /\b(?:w|kw|watts?|wattage)\b/i.test(value)
+    case 'current':
+      return /\d/.test(value) && /\b(?:a|amps?|ampere(?:s)?)\b/i.test(value)
+    case 'frequency':
+      return /[\d.,/]+/.test(value) && /\b(?:hz|khz)\b/i.test(value)
+    case 'website':
+      return /(?:\bwww\.|https?:\/\/|\b[\w.-]+\.(?:co\.in|com|in|org|net|co|io)\b)/i.test(value)
+    case 'email':
+      return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(value.trim()) || /\bemail\b/i.test(value)
+    case 'certifications':
+      return /\b(?:isi|bis|ce|rohs|astm|iso\s*9\d{3}|[a-z]{2}\s*en\s*\d{2,4}|energy\s*star)\b/i.test(value) ||
+        (/\b(?:certif|conformity|mark(?:ed|ing)?)\b/i.test(value) && value.length >= 3 && value.length <= 80)
+    case 'warnings':
+      return /\b(?:warning|caution|danger|do\s+not|keep\s+away|flammable|corrosive|irritant|keep\s+out\s+of\s+reach|avoid)\b/i.test(value) && value.length <= 600
+    case 'instructions':
+      return value.length >= 4 && value.length <= 600
     default:
       return true
   }
@@ -275,6 +327,119 @@ export const PROFILES: RegExProfile[] = [
     labelKey: 'nutrition_info',
     patterns: [/(?:nutritional?\s*info(?:rmation)?|nutrition\s*facts|per\s*(?:100\s*g|serve)|energys?)\s*[:.]?\s*([\s\S]{10,1500}?)(?=mrp|ingredients?|best\s*before|allergen|$)/i],
   },
+  /* ------------------------------------------------------------------ */
+  /* Product-detail profiles (max-utility extraction, verbatim only)     */
+  /* ------------------------------------------------------------------ */
+  {
+    labelKey: 'model',
+    patterns: [
+      /\b(?:model|art(?:icle)?(?:\s+no\.?|#)?|style(?:\s+code)?|item(?:\s+no\.?|#)?|catalog(?:ue)?(?:\s+no\.?)?|stock(?:\s+code)?|part(?:\s+no\.?))(?:\s*(?:no\.?|number|#))?\s*[:.\-\s]\s*([a-zA-Z0-9][a-zA-Z0-9.\/\-]{2,24})\b/i,
+      /\b(?:m\s*no\.?|model\s+no\.?)\s*[:.\-]\s*([a-zA-Z0-9][a-zA-Z0-9.\/\-]{2,24})\b/i,
+      /\b(?:model|art(?:icle)?|style|item|catalog(?:ue)?|stock|part)\s*(?:no\.?|number|#)?\s*[:.]*\s*$/i,
+    ],
+    code: true,
+    pairwise: true,
+  },
+  {
+    labelKey: 'serial_number',
+    patterns: [
+      /\b(?:serial\s*(?:no\.?|number|#)?|s[\/.]?\s*n[o.]?|s\.?\s*no\.?)\s*[:.\-\s]\s*([a-zA-Z0-9][a-zA-Z0-9.\/\-]{3,24})\b/i,
+      /\b(?:serial|s[\/.]?\s*n[o.]?)\s*(?:no\.?|number|#)?\s*[:.]*\s*$/i,
+    ],
+    code: true,
+    pairwise: true,
+  },
+  {
+    labelKey: 'material',
+    patterns: [
+      /\b(?:material|made\s*of|fabric|shell\s*material)\s*[:.]?\s*([a-zA-Z&][a-zA-Z&\s.\/-]{2,40})/i,
+      /\b(?:material|made\s*of|fabric|shell\s*material)\s*[:.]*\s*$/i,
+    ],
+    pairwise: true,
+  },
+  {
+    labelKey: 'dimensions',
+    patterns: [
+      /\b(?:dimensions?|dim\.?|overall\s*size|package\s*size)\s*[:.]?\s*([\d.,]+(?:\s*[x×*]\s*[\d.,]+){1,3}\s*(?:mm|cm|m|inch(?:es)?|ft\.?|feet))\b/i,
+      /\b(?:dimensions?|dim\.?|overall\s*size|package\s*size)\s*[:.]*\s*$/i,
+    ],
+    pairwise: true,
+  },
+  {
+    labelKey: 'capacity',
+    patterns: [
+      /\bcapacity\s*[:.]?\s*([\d.,]+\s*(?:l|ml|cl|g|kg|m3|cc|litre|liter|litres|liters|cu\s*\.?\s*(?:cm|ft|m)))\b/i,
+      /\bcapa\.?\s*[:.]?\s*([\d.,]+\s*(?:l|ml))\b/i,
+      /\bcapacity\s*[:.]*\s*$/i,
+    ],
+    pairwise: true,
+  },
+  {
+    labelKey: 'voltage',
+    patterns: [
+      /\b(?:rated\s*voltage|voltage|volts?)\s*[:.]?\s*([\d.,]+\s*(?:[–\-–]\s*[\d.,]+)?\s*(?:vac|v|volts?))\b/i,
+      /\b(?:rated\s*voltage|voltage|volts?)\s*[:.]*\s*$/i,
+    ],
+    pairwise: true,
+  },
+  {
+    labelKey: 'power',
+    patterns: [
+      /\b(?:rated\s*power|power\s*consumption|watts?|wattage)\s*[:.]?\s*([\d.,]+\s*(?:kw|w|watts?))\b/i,
+      /\b(?:rated\s*power|power\s*consumption|watts?|wattage|power)\s*[:.]*\s*$/i,
+    ],
+    pairwise: true,
+  },
+  {
+    labelKey: 'current',
+    patterns: [
+      /\b(?:rated\s*current|current|amperage|ampere(?:s)?)\s*[:.]?\s*([\d.,]+\s*(?:a|amps?))\b/i,
+      /\b(?:rated\s*current|current|amperage|ampere(?:s)?)\s*[:.]*\s*$/i,
+    ],
+    pairwise: true,
+  },
+  {
+    labelKey: 'frequency',
+    patterns: [
+      /\b(?:frequency|freq\.?)\s*[:.]?\s*([\d.,/]+\s*(?:hz|khz))\b/i,
+      /\b(?:frequency|freq\.?)\s*[:.]*\s*$/i,
+    ],
+    pairwise: true,
+  },
+  {
+    labelKey: 'website',
+    patterns: [
+      /\b(?:website|web\s*site|web|visit\s*us\s*at|url)\s*[:.]?\s*([a-zA-Z0-9][\w.\/:-]*)/i,
+      /(?:\bwww\.|https?:\/\/)[a-zA-Z0-9][\w.\/-]*|\b[a-zA-Z0-9][\w.-]*\.(?:co\.in|com|in|org|net|co|io)\b[\w./-]*/i,
+    ],
+  },
+  {
+    labelKey: 'email',
+    patterns: [
+      /\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/i,
+      /\b(?:email|e-mail)\s*[:.]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/i,
+    ],
+  },
+  {
+    labelKey: 'certifications',
+    patterns: [
+      /\b(?:isi|bis|ce\b|rohs|astm|iso\s*\d{2,4}|[a-z]{2}\s*en\s*\d{2,4}|energy\s*star|certif(?:ied|ication|ies)|conformity\s*mark)(?:[^\n]{0,50})/i,
+    ],
+  },
+  {
+    labelKey: 'warnings',
+    patterns: [
+      /\b(?:warning|caution|danger)\b[^\n]{0,200}/i,
+      /[^\n]{0,40}?\b(?:do\s+not|keep\s+away|flammable|corrosive|irritant|suffocation|keep\s+out\s+of\s+reach|avoid)\b[^\n]{0,160}/i,
+    ],
+  },
+  {
+    labelKey: 'instructions',
+    patterns: [
+      /(?:how\s+to\s+use|directions?\s+for\s+use|instructions?\s+for\s+use|usage|dosage|method\s+of\s+use)\s*[:.]?\s*([^\n]{6,400})/i,
+    ],
+    pairwise: true,
+  },
 ]
 
 /* ------------------------------------------------------------------ */
@@ -300,6 +465,66 @@ const PRIORS: Record<KeyOfExtractions, Partial<Record<PanelPrior, number>>> = {
   ingredients: { front: 0.9, back: 0.7, side: 0.5, other: 0.5 },
   allergens: { front: 0.9, back: 0.7, side: 0.5, other: 0.5 },
   nutrition_info: { back: 0.85, front: 0.8, side: 0.5, other: 0.5 },
+  /* Product-detail priors — spec/rating labels live on the back/side panel */
+  model: { back: 0.9, side: 0.8, front: 0.5, other: 0.5 },
+  serial_number: { back: 0.85, side: 0.8, front: 0.3, other: 0.5 },
+  material: { back: 0.8, side: 0.75, front: 0.45, other: 0.5 },
+  dimensions: { back: 0.85, side: 0.8, front: 0.35, other: 0.5 },
+  capacity: { back: 0.9, side: 0.8, front: 0.5, other: 0.5 },
+  voltage: { back: 0.9, side: 0.85, front: 0.4, other: 0.5 },
+  power: { back: 0.9, side: 0.85, front: 0.4, other: 0.5 },
+  current: { back: 0.9, side: 0.85, front: 0.4, other: 0.5 },
+  frequency: { back: 0.9, side: 0.85, front: 0.4, other: 0.5 },
+  website: { back: 0.75, side: 0.65, front: 0.5, other: 0.5 },
+  email: { back: 0.75, side: 0.65, front: 0.45, other: 0.5 },
+  certifications: { back: 0.85, side: 0.75, front: 0.5, other: 0.5 },
+  warnings: { side: 0.8, back: 0.75, front: 0.55, other: 0.5 },
+  instructions: { back: 0.8, side: 0.7, front: 0.6, other: 0.5 },
+}
+
+/* ------------------------------------------------------------------ */
+/* Context-aware label → value line linking                            */
+/* ------------------------------------------------------------------ */
+
+/** First words that mark a line as a header/label for ANOTHER field. */
+const KNOWN_LABEL_PREFIX =
+  /^(?:net|gross|said|mrp|maximum|mfg|pkd|pkg|exp|use|best|pack|imp|manuf|mfr|made|consumer|customer|prod|model|serial|volt|power|curr|freq|mater|capa|dimen|size|certif|warn|caution|danger|instr|addr|regd|lot|batch|fssai|veg|ingred|allerg|nutri|country|origin|email|web|website|www|call|tel|helpline|shelf|direction|how)\b/i
+
+/**
+ * Resolve a label → value pair. Patterns are tried line-by-line so a label
+ * on its own line ("Capacity") links to the value on the NEXT non-empty line
+ * ("1.5 L") instead of dropping the pairing. A borrowed line is rejected when
+ * it clearly belongs to another field (known label prefix or "Label: value").
+ */
+function matchPairwise(pattern: RegExp, text: string): Array<{ raw: string }> {
+  const lines = text
+    .split(/\n+/)
+    .map((l) => clean(l))
+    .filter(Boolean)
+  const out: Array<{ raw: string }> = []
+  const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    let m: RegExpExecArray | null
+    while ((m = re.exec(line)) !== null) {
+      const raw = (m[1] ?? '').trim()
+      if (!raw || raw.length < 3 || raw.length > 80) {
+        const next = lines[i + 1]
+        if (
+          next &&
+          next.length <= 80 &&
+          !KNOWN_LABEL_PREFIX.test(next) &&
+          !/^[a-z][\w &.\/-]{1,24}:\s*[.:0-9]/.test(next)
+        ) {
+          out.push({ raw: next })
+        }
+      } else {
+        out.push({ raw })
+      }
+      if (!re.global) break
+    }
+  }
+  return out
 }
 
 /* ------------------------------------------------------------------ */
@@ -551,6 +776,10 @@ export function extractAllFields(passes: OcPass[], opts: ExtractOptions = {}): E
     mfg_date: null, best_before: null, consumer_care: null, lot_no: null,
     fssai_license: null, veg_nonveg: null, nutrition_info: null, ingredients: null,
     allergens: null,
+    model: null, serial_number: null, material: null, dimensions: null,
+    capacity: null, voltage: null, power: null, current: null, frequency: null,
+    website: null, email: null, certifications: null, warnings: null,
+    instructions: null,
   }
   const fields: Record<string, TexField> = {}
   const uncertain: string[] = []
@@ -570,26 +799,30 @@ export function extractAllFields(passes: OcPass[], opts: ExtractOptions = {}): E
 
     for (const pass of passes) {
       if (!pass.text) continue
-      for (const p of profile.patterns) {
+      const matcher = profile.pairwise ? (p: RegExp) => matchPairwise(p, pass.text) : (p: RegExp) => {
         const m = pass.text.match(p)
-        if (!m) continue
-        const raw = m[1] ?? m[0]
-        if (!raw) continue
-        const val = fixField(raw, !!profile.numeric)
-        if (val.length < minLen) continue
-        entries.push({
-          key: eqKey(key, raw),
-          raw,
-          val,
-          ocrConf: pass.ocrConf,
-          source: pass.source,
-          passLabel: pass.pass,
-          regionId: pass.regionId,
-          bbox: pass.bbox,
-          regionText: pass.text,
-          panelWeight: priorOf(key, pass.source),
-          crop: pass.crop ?? null,
-        })
+        return m ? [{ raw: m[1] ?? m[0] }] : []
+      }
+      for (const p of profile.patterns) {
+        for (const hit of matcher(p)) {
+          const raw = hit.raw
+          if (!raw) continue
+          const val = fixField(raw, !!profile.numeric)
+          if (val.length < minLen) continue
+          entries.push({
+            key: eqKey(key, raw),
+            raw,
+            val,
+            ocrConf: pass.ocrConf,
+            source: pass.source,
+            passLabel: pass.pass,
+            regionId: pass.regionId,
+            bbox: pass.bbox,
+            regionText: pass.text,
+            panelWeight: priorOf(key, pass.source),
+            crop: pass.crop ?? null,
+          })
+        }
       }
     }
 
