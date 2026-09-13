@@ -113,20 +113,9 @@ export default function Header({
         <Menu className="h-5 w-5" />
       </button>
 
-      <div className="flex min-w-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onNavigate(homePath({ role, status: profile?.status ?? 'active' }))}
-          aria-label="AuditX home"
-          title="AuditX"
-          className="shrink-0 rounded-lg transition-opacity hover:opacity-90"
-        >
-          <AuditXMark size="sm" />
-        </button>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
-          <p className="hidden text-xs text-slate-400 sm:block">Legal Metrology Suite</p>
-        </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
+        <p className="hidden text-xs text-slate-400 sm:block">Legal Metrology Suite</p>
       </div>
 
 {recPath && (
@@ -215,6 +204,17 @@ export default function Header({
           </MenuItem>
         </Dropdown>
       </div>
+
+      {/* Brand mark — pinned to the top-right corner (home) */}
+      <button
+        type="button"
+        onClick={() => onNavigate(homePath({ role, status: profile?.status ?? 'active' }))}
+        aria-label="AuditX home"
+        title="AuditX — Legal Metrology Compliance"
+        className="ml-1 shrink-0 rounded-lg transition-opacity hover:opacity-90"
+      >
+        <AuditXMark size="sm" />
+      </button>
 
       <ConfirmDialog
         open={logoutOpen}
