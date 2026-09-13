@@ -70,7 +70,7 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
     localStorage.setItem('mc_gemini_api_key', k)
     setHasKey(true)
     try {
-      await geminiGenerateContent({ parts: [{ text: 'Reply with exactly: OK' }], maxOutputTokens: 8 })
+      await geminiGenerateContent({ parts: [{ text: 'Reply with exactly the single word: OK' }], maxOutputTokens: 512 })
       setKeyMsg('Key verified — scans will now use Google Gemini vision extraction.')
       toast('success', 'Gemini key saved & verified', 'High-accuracy AI analysis is active on this device.')
     } catch (e) {

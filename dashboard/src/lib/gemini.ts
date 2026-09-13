@@ -75,7 +75,18 @@ export async function geminiGenerateContent(opts: {
       data?.candidates?.[0]?.content?.parts?.map((p: any) => String(p?.text ?? '')).join('') ?? ''
     if (!text) {
       const blocked = data?.promptFeedback?.blockReason
-      throw new Error(blocked ? `Gemini blocked request (${blocked})` : 'Empty Gemini response')
+      const finish = data?.candidates?.[0]?.finishReason
+      const safety: string[] = (data?.candidates?.[0]?.safetyRatings ?? [])
+        .filter((r: any) => r?.probability && r.probability !== 'NEGLIGIBLE')
+        .map((r: any) => r.category ?? '')
+        .filter(Boolean)
+      throw new Error(
+        blocked
+          ? `Gemini blocked request (${blocked})`
+          : finish
+            ? `Gemini returned no text (${finish}${safety.length ? `; safety: ${safety.join(', ')}` : ''})`
+            : 'Empty Gemini response',
+      )
     }
     return text
   } finally {
