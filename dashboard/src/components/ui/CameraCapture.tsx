@@ -177,8 +177,8 @@ export default function CameraCapture({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/90 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-slate-700 bg-slate-950 shadow-2xl sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <p className="flex items-center gap-2 text-sm font-bold text-white">
             <Camera className="h-4 w-4 text-brand-400" /> {shot ? 'Review captured photo' : 'Capture label photo'}
@@ -232,7 +232,7 @@ export default function CameraCapture({
         </div>
 
         {shot ? (
-          <div className="flex items-center justify-center gap-3 px-4 py-4">
+          <div className="flex items-center justify-center gap-3 px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-4">
             <button
               type="button"
               onClick={() => {
@@ -252,7 +252,7 @@ export default function CameraCapture({
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3">
             <button
               type="button"
               onClick={toggleTorch}

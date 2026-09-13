@@ -51,13 +51,17 @@ export default function MobileNav({ path, onNavigate, onAdd, role }: MobileNavPr
         key={item.path}
         onClick={() => onNavigate(item.path)}
         aria-current={active ? 'page' : undefined}
-        className={cn(
-          'flex min-w-14 flex-col items-center gap-0.5 rounded-lg py-1 text-[10px] font-medium transition-colors',
-          active ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400',
-        )}
+        className="flex min-w-0 flex-1 flex-col items-center gap-1 py-1.5"
       >
-        <Icon className="h-5 w-5" />
-        {item.label}
+        <span
+          className={cn(
+            'flex w-full flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-semibold transition-colors',
+            active ? 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400' : 'text-slate-400',
+          )}
+        >
+          <Icon className="h-5 w-5" />
+          <span className="max-w-full truncate">{item.label}</span>
+        </span>
       </button>
     )
   }
@@ -65,14 +69,14 @@ export default function MobileNav({ path, onNavigate, onAdd, role }: MobileNavPr
   return (
     <nav
       aria-label="Mobile navigation"
-      className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-slate-200 bg-white/95 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-900/95"
+      className="fixed inset-x-0 bottom-0 z-30 flex items-stretch justify-around gap-0.5 border-t border-slate-200 bg-white/95 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-900/95"
     >
       {first.map(renderItem)}
       {showAdd ? (
         <button
           onClick={centerAction}
           aria-label="Scan product"
-          className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 transition-transform active:scale-95"
+          className="relative -mt-5 flex h-12 w-12 shrink-0 items-center justify-center self-start rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 ring-4 ring-slate-100 transition-transform active:scale-95 dark:ring-slate-900"
         >
           <Plus className="h-6 w-6" />
         </button>

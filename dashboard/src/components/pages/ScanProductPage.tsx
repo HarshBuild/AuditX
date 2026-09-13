@@ -5,6 +5,7 @@ import {
   Barcode,
   Camera,
   CheckCircle2,
+  ChevronDown,
   FileInput,
   FileOutput,
   FileSearch,
@@ -43,6 +44,10 @@ interface PickedImage {
 }
 
 const POSITIONS = ['front', 'back', 'side', 'other'] as const
+
+/** Compact field styling shared by every input/select on the capture form. */
+const fieldCls =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
 
 export default function ScanProductPage() {
   const { toast } = useToast()
@@ -129,6 +134,9 @@ const prepared = await Promise.all(
   }
 
   const handleGallery = (list: FileList | null) => void addFiles(list ? Array.from(list) : [])
+
+/** Programmatic click on the hidden <input type="file"> — used by every upload action. */
+const openGallery = () => document.getElementById('scan-label-files')?.click()
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -304,10 +312,10 @@ const prepared = await Promise.all(
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Scan Product Label</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl dark:text-slate-100">Scan Product Label</h1>
+        <p className="mt-0.5 max-w-2xl text-[13px] leading-snug text-slate-500 sm:mt-1 sm:text-sm dark:text-slate-400">
           Photograph the label front, back and sides — the AI combines every photo into one multi-language inspection.
         </p>
       </div>
@@ -341,7 +349,7 @@ const prepared = await Promise.all(
 
       {!result && (
         <AnalyticsCard title="Label capture" subtitle={`Up to ${MAX_SCAN_IMAGES} photos · JPG, PNG or WEBP`}>
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* Photo grid */}
             <div
               className={`relative lg:col-span-2 ${dragActive ? 'rounded-xl outline-2 outline-dashed outline-brand-400' : ''}`}
@@ -414,47 +422,71 @@ const prepared = await Promise.all(
               )}
 
               {picked.length === 0 && (
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('scan-label-files')?.click()}
-                  onDragOver={onDragOver}
-                  onDrop={onDrop}
-                  disabled={busy || phase === 'reading'}
-                  className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 py-10 text-slate-400 transition-colors hover:border-brand-400 hover:text-brand-500 disabled:opacity-50 dark:border-slate-700"
-                >
-                  {dragActive ? (
-                    <>
-                      <UploadCloud className="h-8 w-8 text-brand-500" />
-                      <span className="text-sm font-semibold text-brand-600 dark:text-brand-300">Drop photos to add them</span>
-                    </>
-                  ) : (
-                    <>
-                      <ImagePlus className="h-8 w-8" />
-                      <span className="text-sm font-semibold">Drop label photos here, or click to browse</span>
-                      <span className="text-xs">Front + back + side panels give the most accurate reading.</span>
-                    </>
-                  )}
-                </button>
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="lg"
+                      icon={<Camera className="h-5 w-5" />}
+                      onClick={() => setCameraOpen(true)}
+                      disabled={busy || phase === 'reading'}
+                      className="h-11 w-full"
+                    >
+                      Take Photo
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      icon={<ImagePlus className="h-5 w-5" />}
+                      onClick={openGallery}
+                      disabled={busy || phase === 'reading'}
+                      className="h-11 w-full"
+                    >
+                      Upload Image
+                    </Button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openGallery}
+                    onDragOver={onDragOver}
+                    onDrop={onDrop}
+                    disabled={busy || phase === 'reading'}
+                    className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 py-6 text-slate-400 transition-colors hover:border-brand-400 hover:text-brand-500 disabled:opacity-50 dark:border-slate-700"
+                  >
+                    {dragActive ? (
+                      <>
+                        <UploadCloud className="h-6 w-6 text-brand-500" />
+                        <span className="text-[13px] font-semibold text-brand-600 dark:text-brand-300">Drop photos to add them</span>
+                      </>
+                    ) : (
+                      <>
+                        <ImagePlus className="h-6 w-6" />
+                        <span className="text-[13px] font-semibold">Or drag &amp; drop label photos here</span>
+                        <span className="text-[11px]">Front + back + side panels give the most accurate reading.</span>
+                      </>
+                    )}
+                  </button>
+                </>
               )}
 
               {picked.length > 0 && (
                 <>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       icon={phase === 'reading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                       onClick={() => setCameraOpen(true)}
                       disabled={busy || phase === 'reading'}
+                      className="h-10 w-full"
                     >
                       Take photo
                     </Button>
-                    <Button variant="outline" icon={<ImagePlus className="h-4 w-4" />} onClick={() => document.getElementById('scan-label-files')?.click()} disabled={busy || phase === 'reading'}>
+                    <Button variant="outline" icon={<ImagePlus className="h-4 w-4" />} onClick={openGallery} disabled={busy || phase === 'reading'} className="h-10 w-full">
                       Add from gallery
                     </Button>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
                     {picked.map((p, i) => (
                       <div key={i} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800">
-                        <img src={p.dataUrl} alt={`Label ${i + 1}`} className="h-28 w-full object-cover" />
+                        <img src={p.dataUrl} alt={`Label ${i + 1}`} className="h-24 w-full object-cover sm:h-28" />
                         {p.quality && (p.quality.blurry || p.quality.dark) && (
                           <div className="absolute left-1.5 top-1.5 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
                             {p.quality.blurry ? 'BLUR' : 'DARK'}
@@ -483,8 +515,8 @@ const prepared = await Promise.all(
                     {picked.length < MAX_SCAN_IMAGES && (
                       <button
                         type="button"
-                        onClick={() => document.getElementById('scan-label-files')?.click()}
-                        className="flex h-28 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 transition-colors hover:border-brand-400 hover:text-brand-500 dark:border-slate-700"
+                        onClick={openGallery}
+                        className="flex h-24 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 transition-colors hover:border-brand-400 hover:text-brand-500 dark:border-slate-700 sm:h-28"
                       >
                         <ImagePlus className="h-5 w-5" />
                         <span className="text-xs font-semibold">Add more</span>
@@ -496,13 +528,13 @@ const prepared = await Promise.all(
             </div>
 
             {/* Analysis options */}
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Report &amp; OCR language</label>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Report &amp; OCR language</label>
                 <select
                   value={lang}
                   onChange={(e) => setLang(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={fieldCls}
                 >
                   {SUPPORTED_LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>{l.name}</option>
@@ -510,26 +542,32 @@ const prepared = await Promise.all(
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Product (optional)</label>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Product (optional)</label>
                 <input
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
                   placeholder="e.g. Amul Milk 500ml"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={fieldCls}
                 />
               </div>
+              <details className="group rounded-xl border border-slate-200/80 px-3 py-1.5 dark:border-slate-800">
+                <summary className="flex cursor-pointer select-none items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  Additional details
+                  <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mt-2">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Manufacturer (optional)</label>
+                  <input
+                    value={manufacturer}
+                    onChange={(e) => setManufacturer(e.target.value)}
+                    placeholder="e.g. Amul Dairy"
+                    className={fieldCls}
+                  />
+                </div>
+              </details>
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Manufacturer (optional)</label>
-                <input
-                  value={manufacturer}
-                  onChange={(e) => setManufacturer(e.target.value)}
-                  placeholder="e.g. Amul Dairy"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Barcode (auto-detect)</label>
-                <div className="flex gap-2">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Barcode (auto-detect)</label>
+                <div className="flex gap-1.5">
                   <input
                     value={barcode}
                     onChange={(e) => setBarcode(e.target.value)}
@@ -538,21 +576,22 @@ const prepared = await Promise.all(
                       if (e.key === 'Enter') void lookupCatalogue()
                     }}
                     placeholder="e.g. 8901234567890"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                   <Button
                     variant="outline"
                     icon={lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Barcode className="h-4 w-4" />}
                     onClick={() => void lookupCatalogue()}
                     disabled={lookingUp}
-                    className="shrink-0"
+                    className="h-9 shrink-0"
                   >
-                    Lookup
+                    <span className="hidden min-[380px]:inline">Lookup</span>
+                    <span className="min-[380px]:hidden">Go</span>
                   </Button>
                 </div>
                 {productCatalogueHit && (
                   <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                     Catalogue match: {productCatalogueHit}
                   </p>
                 )}

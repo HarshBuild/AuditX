@@ -104,7 +104,7 @@ export default function Header({
   }, [])
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/80 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 sm:px-6">
+    <header className="sticky top-0 z-30 flex h-12 items-center gap-1.5 border-b border-slate-200 bg-white/80 px-3 backdrop-blur sm:h-14 sm:gap-3 sm:px-6 dark:border-slate-800 dark:bg-slate-900/80">
       <button
         onClick={onMenu}
         aria-label="Open navigation menu"
@@ -113,7 +113,7 @@ export default function Header({
         <Menu className="h-5 w-5" />
       </button>
 
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
           onClick={() => onNavigate(homePath({ role, status: profile?.status ?? 'active' }))}

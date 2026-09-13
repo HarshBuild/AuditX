@@ -119,11 +119,11 @@ export default function Workspace() {
           onLogout={() => void logout()}
         />
 
-        <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto w-full max-w-[1400px] flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
           <Outlet context={ctx} />
         </main>
 
-        <footer className="px-4 pb-24 pt-4 text-center text-xs text-slate-400 dark:text-slate-500 lg:px-8 lg:pb-6">
+        <footer className="px-3 pb-24 pt-4 text-center text-xs text-slate-400 dark:text-slate-500 sm:px-6 lg:px-8 lg:pb-6">
           AuditX · Legal Metrology compliance dashboard · Role-Based Edition
         </footer>
       </div>
