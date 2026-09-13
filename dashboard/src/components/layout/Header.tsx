@@ -151,7 +151,7 @@ export default function Header({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
         <button
           onClick={onCycleTheme}
           aria-label={`Switch theme (currently ${resolvedDark ? 'dark' : 'light'})`}
