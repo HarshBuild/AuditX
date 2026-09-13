@@ -417,6 +417,20 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                       />
                     </div>
 
+                    {picked.length > 0 && (
+                      <div className="relative mx-auto mt-4 max-w-xs overflow-hidden rounded-xl bg-slate-200/50 ring-1 ring-brand-500/25 dark:bg-navy-950">
+                        <img src={picked[0].dataUrl} alt="Scanning product label" className="h-40 w-full object-cover" />
+                        <div aria-hidden="true" className="absolute inset-0">
+                          <span className="absolute left-0 right-0 top-0 h-0.5 animate-scan-line-progress bg-gradient-to-b from-transparent via-accent-400 to-transparent shadow-[0_0_10px_rgba(79,155,255,0.9)]" />
+                          <span className="absolute left-2.5 top-2.5 h-6 w-6 animate-pulse rounded-tl-lg border-l-2 border-t-2 border-accent-400" />
+                          <span className="absolute right-2.5 top-2.5 h-6 w-6 animate-pulse rounded-tr-lg border-r-2 border-t-2 border-accent-400" />
+                          <span className="absolute bottom-2.5 left-2.5 h-6 w-6 animate-pulse rounded-bl-lg border-b-2 border-l-2 border-accent-400" />
+                          <span className="absolute bottom-2.5 right-2.5 h-6 w-6 animate-pulse rounded-br-lg border-b-2 border-r-2 border-accent-400" />
+                          <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 animate-pulse-glow rounded-full bg-accent-400" />
+                        </div>
+                      </div>
+                    )}
+
                     <ol className="mt-4 space-y-1.5">
                       {STAGES.map((s, i) => {
                         const Icon = s.icon
@@ -494,7 +508,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                     onDragOver={onDragOver}
                     onDrop={onDrop}
                     disabled={busy || phase === 'reading'}
-                    className="group relative mt-3 flex w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 px-6 py-8 text-slate-400 transition-all duration-200 hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-500 disabled:opacity-50 dark:border-white/15 dark:bg-navy-900/40 dark:hover:border-brand-500/50 dark:hover:bg-brand-500/[0.05]"
+                    className={`group relative mt-3 flex w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 px-6 py-8 text-slate-400 transition-all duration-200 hover:border-brand-400 hover:bg-brand-50/40 hover:text-brand-500 disabled:opacity-50 dark:border-white/15 dark:bg-navy-900/40 dark:hover:border-brand-500/50 dark:hover:bg-brand-500/[0.05] ${dragActive ? 'scale-[1.01] border-brand-500/70 bg-brand-50/40 dark:bg-brand-500/[0.06]' : ''}`}
                   >
                     {dragActive && (
                       <span aria-hidden="true" className="pointer-events-none absolute inset-0 animate-pulse-glow rounded-2xl ring-2 ring-accent-400/70" />
@@ -538,7 +552,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
                     {picked.map((p, i) => (
-                      <div key={i} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-white/10">
+                      <div key={i} className="group relative animate-fade-up overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-white/10" style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}>
                         <img src={p.dataUrl} alt={`Label ${i + 1}`} className="h-24 w-full object-cover sm:h-28" />
                         {p.quality && (p.quality.blurry || p.quality.dark) && (
                           <div className="absolute left-1.5 top-1.5 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-bold text-white">

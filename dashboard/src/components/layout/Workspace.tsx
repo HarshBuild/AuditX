@@ -91,6 +91,7 @@ export default function Workspace() {
 
   return (
     <div className="flex min-h-screen">
+      <div aria-hidden="true" className="animated-bg" />
       <Sidebar
         path={pathname}
         onNavigate={trip}

@@ -155,3 +155,90 @@ html.dark .skeleton::after {
 *::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ---------- Ambient animated background ---------- */
+/* Fixed, very quiet layer of slow-drifting brand-hued glow + faint dot grid.
+   z-index:-1 keeps it above the page background but under every card. */
+.animated-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-image: radial-gradient(rgb(148 163 184 / 0.16) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+.animated-bg::before,
+.animated-bg::after {
+  content: '';
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(55px);
+  will-change: transform;
+}
+.animated-bg::before {
+  width: 44rem;
+  height: 44rem;
+  left: -12rem;
+  top: -12rem;
+  background: radial-gradient(circle, rgb(37 99 235 / 0.1) 0%, transparent 65%);
+  animation: bg-blob-a 34s ease-in-out infinite;
+}
+.animated-bg::after {
+  width: 38rem;
+  height: 38rem;
+  right: -12rem;
+  bottom: -14rem;
+  background: radial-gradient(circle, rgb(99 102 241 / 0.09) 0%, transparent 65%);
+  animation: bg-blob-b 46s ease-in-out infinite;
+}
+html.dark .animated-bg {
+  background-image: radial-gradient(rgb(148 163 184 / 0.09) 1px, transparent 1px);
+}
+html.dark .animated-bg::before {
+  background: radial-gradient(circle, rgb(96 165 250 / 0.09) 0%, transparent 65%);
+}
+html.dark .animated-bg::after {
+  background: radial-gradient(circle, rgb(129 140 248 / 0.07) 0%, transparent 65%);
+}
+@keyframes bg-blob-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(90px, -50px, 0) scale(1.15);
+  }
+  66% {
+    transform: translate3d(-60px, 60px, 0) scale(0.92);
+  }
+}
+@keyframes bg-blob-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-110px, -70px, 0) scale(1.22);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animated-bg::before,
+  .animated-bg::after {
+    animation: none;
+  }
+}
+
+/* ---------- Staggered card entrance ---------- */
+/* Children fade + rise in a short cascade; pairs with the theme's fade-up. */
+.stagger > * {
+  animation: fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger > *:nth-child(2) { animation-delay: 50ms; }
+.stagger > *:nth-child(3) { animation-delay: 100ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 200ms; }
+.stagger > *:nth-child(6) { animation-delay: 250ms; }
+.stagger > *:nth-child(7) { animation-delay: 300ms; }
+.stagger > *:nth-child(8) { animation-delay: 350ms; }
+.stagger > *:nth-child(n + 9) { animation-delay: 400ms; }

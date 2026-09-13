@@ -98,7 +98,7 @@ export default function UserDashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
           <StatCard key={stat.id} stat={stat} />
         ))}
@@ -109,7 +109,7 @@ export default function UserDashboardPage() {
       ) : error ? (
         <ErrorState message={error} onRetry={() => setRefresh((x) => x + 1)} />
       ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="stagger grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <AnalyticsCard
               title="Recent scans"

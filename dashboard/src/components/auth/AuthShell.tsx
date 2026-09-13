@@ -12,6 +12,7 @@ const highlights = [
 export default function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-navy-950">
+      <div aria-hidden="true" className="animated-bg" />
       {/* Brand panel */}
       <aside className="relative hidden w-[45%] overflow-hidden bg-gradient-to-br from-navy-900 via-navy-950 to-[#070d1d] lg:block dark:lg:block">
         <div aria-hidden="true" className="absolute inset-0 bg-dots opacity-[0.07]" />
@@ -51,7 +52,7 @@ export default function AuthShell({ children }: { children: ReactNode }) {
               Audit<span className="text-brand-600 dark:text-accent-400">X</span>
             </span>
           </div>
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card ring-1 ring-slate-900/[0.03] dark:border-white/[0.07] dark:bg-navy-900 dark:ring-white/[0.02] sm:p-8">
+          <div className="animate-fade-up rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card ring-1 ring-slate-900/[0.03] dark:border-white/[0.07] dark:bg-navy-900 dark:ring-white/[0.02] sm:p-8">
             {children}
           </div>
           <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-slate-400 dark:text-white/35">

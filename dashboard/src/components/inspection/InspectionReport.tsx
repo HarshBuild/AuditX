@@ -506,8 +506,9 @@ function AiSummaryCard({ scan, counts, failCount }: { scan: ScanRow; counts: Sta
   return (
     <div className="rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50/80 via-white to-white p-5 dark:border-brand-500/20 dark:from-brand-500/10 dark:via-slate-900 dark:to-slate-900">
       <div className="flex items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
-          <Bot className="h-5 w-5" />
+        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
+          <span aria-hidden="true" className="absolute inset-0 animate-pulse-glow rounded-xl bg-brand-500/40" />
+          <Bot className="relative h-5 w-5" />
         </span>
         <div>
           <p className="text-sm font-extrabold uppercase tracking-wide text-brand-700 dark:text-brand-300">AI Inspection Summary</p>
@@ -1201,6 +1202,7 @@ export default function InspectionReport({
   const [ruleFilter, setRuleFilter] = useState('ISSUES')
   const [evidenceIdx, setEvidenceIdx] = useState<number | null>(null)
   const [evidenceTitle, setEvidenceTitle] = useState('Evidence from product label')
+  const [copiedField, setCopiedField] = useState<string | null>(null)
 
   const t = (key: Parameters<typeof translate>[1]) => translate(lang, key)
   const counts = resolveCounts(scan)
@@ -1319,6 +1321,8 @@ export default function InspectionReport({
     if (!text) return
     try {
       await navigator.clipboard.writeText(text)
+      setCopiedField(label)
+      window.setTimeout(() => setCopiedField((cur) => (cur === label ? null : cur)), 1400)
       toast('success', 'Copied', `${label} copied to clipboard.`)
     } catch {
       toast('error', 'Copy failed', 'Your browser blocked clipboard access.')
@@ -1451,7 +1455,7 @@ export default function InspectionReport({
       {/* Product information */}
       <div className="animate-fade-up space-y-4" style={{ animationDelay: '180ms' }}>
       <AnalyticsCard title="Detected Information" subtitle="Values read off the package label">
-        <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/[0.08]">
+        <div className="stagger overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/[0.08]">
           <div className="hidden items-center gap-3 bg-slate-50/80 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:grid sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)_130px_120px_48px] dark:bg-white/[0.04] dark:text-slate-500">
             <span>Property</span>
             <span>Value</span>
@@ -1502,9 +1506,13 @@ export default function InspectionReport({
                     type="button"
                     onClick={() => void copyField(p.label, copyValue)}
                     aria-label={`Copy ${p.label}`}
-                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-brand-600 dark:hover:bg-white/10 dark:hover:text-brand-300"
+                    className="rounded-md p-1.5 text-slate-400 transition-all hover:bg-slate-100 hover:text-brand-600 dark:hover:bg-white/10 dark:hover:text-brand-300"
                   >
-                    <Copy className="h-3.5 w-3.5" />
+                    {copiedField === p.label ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 scale-110 text-emerald-500" aria-hidden="true" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
                   </button>
                 </div>
               </div>
