@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, Outlet, useOutletContext } from 'react-router-dom'
-import { PublicOnly, RequireAuth, RequireRole } from '../components/auth/guards'
+import { PublicOnly, RequireAuth, RequireRole, FullPageLoader } from '../components/auth/guards'
 import Workspace from '../components/layout/Workspace'
+import LandingPage from '../components/pages/LandingPage'
 import LoginPage from '../components/pages/LoginPage'
 import SignupPage from '../components/pages/SignupPage'
 import ProfilePage from '../components/pages/ProfilePage'
@@ -173,6 +174,14 @@ function PublicGate() {
   )
 }
 
+/** Public home — premium hero landing; authenticated users go to their home path. */
+function LandingGate() {
+  const { user, profile, loading } = useAuth()
+  if (loading) return <FullPageLoader />
+  if (user && profile) return <Navigate to={homePath(profile)} replace />
+  return <LandingPage />
+}
+
 function AuthGate({ children }: { children?: React.ReactNode }) {
   return <RequireAuth>{children ?? <Outlet />}</RequireAuth>
 }
@@ -212,7 +221,8 @@ function SharedGate() {
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* Public (login / signup) */}
+      {/* Public landing + auth */}
+      <Route path="/" element={<LandingGate />} />
       <Route element={<PublicGate />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
