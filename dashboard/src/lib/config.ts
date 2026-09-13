@@ -52,10 +52,10 @@ export const CONFIG = {
   FIREBASE_FUNCTIONS_REGION: (import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION as string | undefined) || 'asia-south1',
   /**
    * AuditX Express API base URL (render.yaml service `auditx-api`).
-   * Used only for admin actions that must mint Firestore custom claims
-   * (/api/set-claims) — the browser cannot call Firebase's Admin SDK.
-   * Resolved from VITE_AUDITX_API_URL, localStorage `mc_auditx_api_url`, or the
-   * deployed onrender.com default.
+   * Used for Admin-SDK-only actions the browser cannot do directly:
+   * product-database writes (/api/products) and custom-claim minting
+   * (/api/set-claims). Resolved from VITE_AUDITX_API_URL, localStorage
+   * `mc_auditx_api_url`, or the deployed onrender.com default.
    */
   AUDITX_API_URL:
     (import.meta.env.VITE_AUDITX_API_URL as string | undefined) ||

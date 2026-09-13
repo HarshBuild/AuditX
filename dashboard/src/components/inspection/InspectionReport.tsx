@@ -60,6 +60,29 @@ function RuleStatusBadge({ status }: { status: string }) {
   return <ToneBadge tone={tone as 'emerald' | 'amber' | 'rose' | 'cyan' | 'slate'}>{status}</ToneBadge>
 }
 
+/* Severity badge for key findings (critical → low). */
+const SEV_STYLES: Record<FindingSeverity, string> = {
+  critical: 'bg-rose-600 text-white',
+  high: 'bg-rose-500 text-white',
+  medium: 'bg-amber-500 text-white',
+  low: 'bg-slate-400 text-white',
+}
+
+const SEV_LABELS: Record<FindingSeverity, string> = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+}
+
+function SeverityBadge({ severity }: { severity: FindingSeverity }) {
+  return (
+    <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${SEV_STYLES[severity]}`}>
+      {SEV_LABELS[severity]}
+    </span>
+  )
+}
+
 /**
  * Turn a long assistant reply into short, readable sentence bullets.
  */
@@ -134,10 +157,11 @@ function ContextBadges({ ctx }: { ctx?: ScanContext }) {
   )
 }
 
-const SCORE_TONE_BG: Record<string, { track: string; stroke: string; text: string; badge: 'emerald' | 'amber' | 'rose' }> = {
-  high: { track: 'text-emerald-200', stroke: 'text-emerald-500', text: 'text-emerald-500', badge: 'emerald' },
-  mid: { track: 'text-amber-200', stroke: 'text-amber-500', text: 'text-amber-500', badge: 'amber' },
-  low: { track: 'text-rose-200', stroke: 'text-rose-500', text: 'text-rose-500', badge: 'rose' },
+const RISK_TONE: Record<string, { track: string; stroke: string; text: string; badge: 'emerald' | 'amber' | 'rose' }> = {
+  Low: { track: 'text-emerald-100', stroke: 'text-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', badge: 'emerald' },
+  Medium: { track: 'text-amber-100', stroke: 'text-amber-500', text: 'text-amber-600 dark:text-amber-400', badge: 'amber' },
+  High: { track: 'text-rose-100', stroke: 'text-rose-500', text: 'text-rose-600 dark:text-rose-400', badge: 'rose' },
+  Critical: { track: 'text-rose-200', stroke: 'text-rose-600', text: 'text-rose-700 dark:text-rose-400', badge: 'rose' },
 }
 
 function MetricChip({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number; tone: 'emerald' | 'amber' | 'rose' | 'cyan' | 'slate' }) {
@@ -160,28 +184,33 @@ function MetricChip({ icon, label, value, tone }: { icon: React.ReactNode; label
 }
 
 /* ------------------------------------------------------------------ */
-/* 1 · Result header + compliance score hero                            */
+/* 1 · Result header + overall risk score hero                         */
 /* ------------------------------------------------------------------ */
 
-function ScoreHero({ scan, counts }: { scan: ScanRow; counts: StatusCounts }) {
+function ScoreHero({ scan, counts, sig }: { scan: ScanRow; counts: StatusCounts; sig: ResultSignals }) {
   const score = Math.max(0, Math.min(100, scan.overall_score ?? 0))
-  const risk = scan.risk_score ?? 100 - score
+  const risk = Math.max(0, Math.min(100, scan.risk_score ?? 100 - score))
   const band = riskBand(risk)
-  const tone = score >= 80 ? SCORE_TONE_BG.high : score >= 50 ? SCORE_TONE_BG.mid : SCORE_TONE_BG.low
+  const tone = RISK_TONE[band] ?? RISK_TONE.Low
+  const insufficient = sig.status === 'insufficient'
   const R = 56
   const CIRC = 2 * Math.PI * R
-  const frac = score / 100
+  const frac = insufficient ? 0 : risk / 100
   const verdict = scan.verdict ?? (score >= 80 ? 'COMPLIANT' : score >= 50 ? 'PARTIALLY_COMPLIANT' : 'NON-COMPLIANT')
   const needReview = (counts.warnings ?? 0) + (counts.not_detected ?? 0) + (counts.uncertain ?? 0)
+
+  const scoreExplanation = insufficient
+    ? sig.explanation
+    : `This ${risk}/100 risk score is derived only from the mandatory-declaration checks that actually ran on your label photos. Deficiency = higher risk. Anything the engine could not read is marked "Unable to verify" — it is never counted as pass or fail.`
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
       <div className="grid grid-cols-1 gap-0 lg:grid-cols-[auto_1fr_auto]">
-        {/* Score ring */}
+        {/* Risk score ring */}
         <div className="p-6 lg:border-r lg:border-slate-100 lg:dark:border-slate-800">
-          <p className="mb-4 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Compliance Score</p>
+          <p className="mb-4 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Overall Risk Score</p>
           <div className="flex flex-wrap items-center gap-5">
-          <div className="relative h-24 w-24 shrink-0 sm:h-36 sm:w-36">
+          <div className="relative h-24 w-24 shrink-0 sm:h-32 sm:w-32">
             <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90">
               <circle cx="64" cy="64" r={R} fill="none" strokeWidth="11" className={`stroke-current ${tone.track}`} />
               <circle
@@ -191,16 +220,35 @@ function ScoreHero({ scan, counts }: { scan: ScanRow; counts: StatusCounts }) {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className={`text-4xl font-extrabold leading-none ${tone.text}`}>{score}</span>
-              <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">/ 100</span>
+              {insufficient ? (
+                <>
+                  <span className="text-xl font-extrabold leading-none text-slate-400">—</span>
+                  <span className="mt-1 max-w-[7rem] text-center text-[9px] font-bold uppercase leading-tight tracking-wide text-slate-400">Insufficient data</span>
+                </>
+              ) : (
+                <>
+                  <span className={`text-4xl font-extrabold leading-none ${tone.text}`}>{risk}</span>
+                  <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">risk / 100</span>
+                </>
+              )}
             </div>
           </div>
           <div className="flex flex-col items-start gap-1.5">
-            <span className={`text-xs font-extrabold uppercase tracking-wider ${tone.text}`}>{band} risk</span>
-            <span className={`text-2xl font-extrabold uppercase tracking-tight break-words ${tone.text}`}>{verdict}</span>
-            <ToneBadge tone={tone.badge}>{score >= 80 ? 'Compliant' : score >= 50 ? 'Partially compliant' : 'Non-compliant'}</ToneBadge>
+            {insufficient ? (
+              <>
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Cannot be scored</span>
+                <ToneBadge tone="rose">Insufficient Data</ToneBadge>
+              </>
+            ) : (
+              <>
+                <span className={`text-lg font-extrabold uppercase tracking-tight ${tone.text}`}>{band} risk</span>
+                <ToneBadge tone={tone.badge}>{verdict}</ToneBadge>
+                <span className="text-[11px] text-slate-400">Compliance {score}/100</span>
+              </>
+            )}
           </div>
           </div>
+          <p className="mt-4 max-w-xs text-xs leading-relaxed text-slate-500 dark:text-slate-400">{scoreExplanation}</p>
         </div>
 
         {/* Product + summary counts */}
@@ -595,7 +643,7 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
               <span className="flex h-6 w-6 shrink-0 items-center justify-center">{row.icon}</span>
               <span className="w-28 shrink-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:w-40">{row.label}</span>
               <span title={row.value} className={`min-w-0 flex-1 truncate text-sm ${row.status === 'miss' ? 'italic text-rose-400' : row.status === 'verify' ? 'italic text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                {row.status === 'miss' ? 'Not detected' : row.status === 'verify' ? (row.value || 'Needs verification') : row.value}
+                {row.status === 'miss' ? 'Not detected' : row.status === 'verify' ? (row.value || 'Unable to verify from photos') : row.value}
               </span>
               {row.confidence && (
                 <span className={`hidden rounded-full px-2 py-0.5 text-[10px] font-bold sm:inline ${row.confidence === 'high' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : row.confidence === 'medium' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'}`}>
@@ -612,7 +660,7 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Detected value</p>
                   <p className={`mt-0.5 text-sm ${row.status === 'miss' ? 'italic text-rose-500 dark:text-rose-400' : row.status === 'verify' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                    {row.status === 'miss' ? 'Not detected — value missing' : row.value || 'Needs verification'}
+                    {row.status === 'miss' ? 'Not detected — value missing' : row.value || 'Unable to verify from photos'}
                   </p>
                 </div>
                 <div>
@@ -765,11 +813,18 @@ function resolveCounts(scan: ScanRow): StatusCounts {
 
 export type ResultStatus = 'verified' | 'needs_review' | 'insufficient'
 
+export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low'
+
+export interface ResultFinding {
+  severity: FindingSeverity
+  text: string
+}
+
 export interface ResultSignals {
   status: ResultStatus
   statusLabel: string
   cause: string
-  findings: string[]
+  findings: ResultFinding[]
   recs: string[]
   limitations: string[]
   explanation: string
@@ -807,7 +862,7 @@ function analyzeResultSignals(scan: ScanRow, counts: StatusCounts): ResultSignal
       status: 'insufficient',
       statusLabel: 'Insufficient Data',
       cause: 'We couldn\'t verify this result reliably — not enough readable information was extracted from the label photos.',
-      findings: ['Not enough readable label text was extracted to run the Legal Metrology checks.'],
+      findings: [{ severity: 'medium', text: 'Not enough readable label text was extracted to run the Legal Metrology checks.' }],
       recs: ['Retake the label with steady hands, even light and the declarations block in frame, then scan again.'],
       limitations: [
         'Extraction comes from the label photos only — small print is missed when lighting or focus is poor.',
@@ -817,14 +872,17 @@ function analyzeResultSignals(scan: ScanRow, counts: StatusCounts): ResultSignal
     }
   }
 
-  const findings: string[] = []
-  for (const r of failRules) findings.push(`${r.field || r.rule_id} — ${r.requirement || r.reason || 'mandatory declaration missing'}`)
-  for (const r of reviewRules) findings.push(r.status === 'WARNING' ? `Needs verification — ${r.field || r.rule_id}` : `Not detected — ${r.field || r.rule_id}`)
-  if (uncertain.length > 0) findings.push(`Not readable from the photos — ${uncertain.map((k) => k.replace(/_/g, ' ')).join('; ')}`)
-  if (physCount > 0) findings.push(`Physical inspection required — ${physRules.map((r) => r.field || r.rule_id).join('; ')}`)
-  if (barcodeReview) findings.push('Barcode needs verification — the decoded value does not match the label reading.')
-  if (findings.length === 0 && extractionCount > 0) findings.push('All checked mandatory declarations were detected on the label.')
-  const findingsSlice = findings.slice(0, 5)
+  const findings: ResultFinding[] = []
+  for (const r of failRules) findings.push({ severity: 'critical', text: `${r.field || r.rule_id} — ${r.requirement || r.reason || 'mandatory declaration missing'}` })
+  for (const r of reviewRules) findings.push(r.status === 'WARNING' ? { severity: 'medium', text: `Needs verification — ${r.field || r.rule_id}` } : { severity: 'medium', text: `Not detected — ${r.field || r.rule_id}` })
+  if (uncertain.length > 0) findings.push({ severity: 'medium', text: `Not readable from the photos — ${uncertain.map((k) => k.replace(/_/g, ' ')).join('; ')}` })
+  if (physCount > 0) findings.push({ severity: 'low', text: `Physical inspection required — ${physRules.map((r) => r.field || r.rule_id).join('; ')}` })
+  if (barcodeReview) findings.push({ severity: 'medium', text: 'Barcode needs verification — the decoded value does not match the label reading.' })
+  if (findings.length === 0 && extractionCount > 0) findings.push({ severity: 'low', text: 'All checked mandatory declarations were detected on the label.' })
+  // Most important issue first (critical → high → medium → low).
+  const rank = (s: FindingSeverity) => (s === 'critical' ? 4 : s === 'high' ? 3 : s === 'medium' ? 2 : 1)
+  findings.sort((a, b) => rank(b.severity) - rank(a.severity))
+  const findingsSlice = findings.slice(0, 6)
 
   const recs: string[] = []
   for (const r of [...failRules, ...reviewRules]) {
@@ -928,11 +986,11 @@ function ResultSummary({
           <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
             <ListChecks className="h-3.5 w-3.5" /> Key findings
           </p>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {sig.findings.map((f, i) => (
-              <li key={i} className="flex gap-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${sig.status === 'verified' ? 'bg-emerald-500' : sig.status === 'needs_review' ? 'bg-amber-500' : 'bg-rose-500'}`} />
-                <span>{f}</span>
+              <li key={i} className="flex items-start gap-2 rounded-lg border border-slate-100 bg-white/60 px-2.5 py-1.5 text-sm leading-relaxed text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+                <SeverityBadge severity={f.severity} />
+                <span className="min-w-0 flex-1">{f.text}</span>
               </li>
             ))}
           </ul>
@@ -1004,6 +1062,8 @@ export default function InspectionReport({
   const failCount = counts.failed ?? 0
   const hasLowConfidence = failCount > 0 || (scan.uncertain ?? []).length > 0
   const ocrBlocks = scan.ocr_blocks ?? []
+  const photoCount = (scan.image_urls ?? []).length
+  const ocrChars = (scan.ocr?.text ?? '').length
   const failRules = (scan.rules ?? []).filter((r) => r.status === 'FAIL')
   const reviewRules = (scan.rules ?? []).filter((r) => r.status === 'WARNING' || r.status === 'NOT_DETECTED')
   const analysis = analysisLabel(scan.engine)
@@ -1069,7 +1129,7 @@ export default function InspectionReport({
       `Result status: ${sig.statusLabel} — ${sig.cause}`,
       '',
       'Key findings:',
-      ...(sig.findings.length > 0 ? sig.findings : ['No individual finding recorded.']),
+      ...(sig.findings.length > 0 ? sig.findings.map((f) => `[${SEV_LABELS[f.severity]}] ${f.text}`) : ['No individual finding recorded.']),
       '',
       'Recommendations:',
       ...sig.recs,
@@ -1216,13 +1276,13 @@ export default function InspectionReport({
       </div>
 
       {/* Compliance score + overall status */}
-      <ScoreHero scan={scan} counts={counts} />
+      <ScoreHero scan={scan} counts={counts} sig={sig} />
 
       {/* Qualitative result status + key findings + recommendations */}
       <ResultSummary sig={sig} onTryAgain={onRegenerate} />
 
       {/* Product information */}
-      <AnalyticsCard title="Product Information" subtitle="Values read off the package label">
+      <AnalyticsCard title="Detected Information" subtitle="Values read off the package label">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {prodInfo.map((p) => (
             <div key={p.label} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
@@ -1233,7 +1293,7 @@ export default function InspectionReport({
                 <p className="mt-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200" title={p.value}>{p.value}</p>
               ) : p.state === 'verify' ? (
                 <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="h-3.5 w-3.5" /> Needs verification
+                  <AlertTriangle className="h-3.5 w-3.5" /> Unable to verify
                 </p>
               ) : (
                 <p className="mt-1 text-sm font-semibold text-rose-400">Not detected</p>
@@ -1248,9 +1308,9 @@ export default function InspectionReport({
         </div>
       </AnalyticsCard>
 
-      {/* Critical findings */}
+      {/* Risk factors + warnings */}
       <AnalyticsCard
-        title="Critical Findings"
+        title="Risk Factors & Warnings"
         subtitle={failCount > 0 ? `Mandatory declarations that are missing or incorrect on the label` : 'No mandatory declaration failures detected'}
       >
         {failCount === 0 && reviewRules.length === 0 ? (
@@ -1298,6 +1358,44 @@ export default function InspectionReport({
         </AnalyticsCard>
       )}
 
+      {/* Source & Evidence — where every finding came from */}
+      <AnalyticsCard title="Source & Evidence" subtitle="Provenance of every value in this report">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Analysis engine</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{analysis}</p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Photos analysed</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{photoCount > 0 ? `${photoCount} image${photoCount === 1 ? '' : 's'}` : '—'}</p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">OCR source</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              {ocrBlocks.length > 0 || ocrChars > 0
+                ? `${ocrBlocks.length} block${ocrBlocks.length === 1 ? '' : 's'}${ocrBlocks.length > 0 && ocrChars > 0 ? ' · ' : ''}${ocrChars > 0 ? `${ocrChars} chars` : ''}`
+                : 'None captured'}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Rule checks run</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{(scan.rules ?? []).length}</p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Evidence links</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{(scan.evidence_chain ?? []).length}</p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Uncertain fields</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{(scan.uncertain ?? []).length}</p>
+          </div>
+        </div>
+        <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
+          Every value in this report is drawn only from the {photoCount} photo{photoCount === 1 ? '' : 's'} captured and the text readable on the label.
+          Declarations that could not be read are marked &quot;Unable to verify&quot; and are never counted as pass or fail.
+        </p>
+      </AnalyticsCard>
+
       {/* Rule analysis */}
       <AnalyticsCard title={t('rule_checks')} subtitle="Legal Metrology · Packaged Commodities Rules 2011">
         {(scan.rules ?? []).length === 0 ? (
@@ -1339,7 +1437,7 @@ export default function InspectionReport({
       <FinalAssessment scan={scan} counts={counts} />
 
       {/* Extracted declarations */}
-      <AnalyticsCard title="Extracted Declarations" subtitle="Declarations read off the label, with confidence">
+      <AnalyticsCard title="Extracted Declarations & Verification" subtitle="Declarations read off the label, with confidence">
         <DeclarationsList scan={scan} />
       </AnalyticsCard>
 

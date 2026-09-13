@@ -12,7 +12,10 @@
     <meta name="apple-mobile-web-app-title" content="AuditX" />
     <meta name="twitter:card" content="summary" />
     <link rel="manifest" href="./manifest.json" />
-    <link rel="icon" type="image/png" sizes="64x64" href="./icons/favicon.png" />
+    <!-- Inline (data-URI) favicon: the tab icon always renders, even when the
+         single-file bundle is served without the /icons folder or after browsers
+         cached a favicon miss for this origin. -->
+    <link rel="icon" type="image/png" sizes="64x64" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACeElEQVR42u2bP2uUQRDGfxq1EAJKQFBSCCqICKa3MJkxksJCwcJ/oKBFUAs18YzGRLCQfAALSwsr8TOIhUhKS7ESEREJQUQkBBFvcUPGJXJ63nHvu7MLC+8zt7e387DP7PDuHHS8vRqBiwJvBN4JDAo8FditsE/hisB6hYbC3Qrgyi2oEOCdgFQyqaR63h6OwP7mAh8LPBE4JvC+ucDTChcUxgXWKdyIDlUd127BhQDvBKSSSyXZ8TafBKHwjFlQ3XF2DhUCvBMw/795Qwgqe01QCZP9kN9/MCecvYOFAO8EpJJu2cYE3gqcionGeYHvApNxwtxw9g4WArwTkEp6zVz/rMDrmDiE52UzQe7YncOFAO8EpJJnS0wSdsWXkOHDpWSCnLE7hwsB3glIJc9JgW8CE3GAN1wIKAR4J+BEM0B8NQZvuBDQ6QnnBDbq6rHzUmCHws2Iw7XWHoWpiLcqHFS43SWc/n66vrIDwmXjF2PwhgsBrQYEzWwwmgnlLAcUbkU8FL6jMBPxIYUzCrM1wexUGFW484eg4WIHfG4ar5sBnnAhIDW8ENhuytbqpul/jgGtBqzEiOmI7wv0maBY+x1wVGDRGLzhQkB4PdRvSkxy13x4vmxjwDVz5rfTxxWumglDja+aROmBwCZdPXcrtwPC5eGCMXjDhYD0mKu7xo8onDN4yvi2Vm9b++32xfhfgEaVJPBJfgXDlQGesDuH78XK0om/TYVz03zPY0DaF+I9XaNXEjgs8NEYvGF3Dj8X2GbL5b1pvnIxIO3PBAbM+4auS2BY4IMxeMPuHH4ksNlejdUtBlwySUwneuViwPFQ72vuKbq7I34C4pHZCONWpF8AAAAASUVORK5CYII=" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-180.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

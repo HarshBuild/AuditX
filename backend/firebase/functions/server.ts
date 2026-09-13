@@ -38,20 +38,30 @@ import productsRouter from './routes/products.js'
 // --- Express app ---
 const app: express.Express = express()
 
-// CORS — allow FRONTEND_URL / CORS_ORIGINS (comma-separated) plus localhost dev origins
+// CORS — allow FRONTEND_URL / CORS_ORIGINS (comma-separated) plus localhost dev origins.
+// When no origins are configured the API reflects the request origin so a browser
+// app whose origin is not registered yet (e.g. Render FRONTEND_URL left unset)
+// can still reach token-authed endpoints like /api/products. Authorization is the
+// Firebase ID token — never the Origin header — so reflection is safe; an operator
+// should still set FRONTEND_URL for a locked-down policy.
 const allowedOrigins: string[] = (process.env.CORS_ORIGINS ?? process.env.FRONTEND_URL ?? '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean)
 
+if (allowedOrigins.length === 0) {
+  console.warn(
+    '[auditx-api] CORS_ORIGINS/FRONTEND_URL not set — reflecting any browser origin. ' +
+      'Set FRONTEND_URL to the dashboard URL for a locked-down policy.',
+  )
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (
-        !origin ||
-        allowedOrigins.includes(origin) ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
-      ) {
+      const loopback =
+        !!origin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+      if (allowedOrigins.length === 0 || !origin || allowedOrigins.includes(origin) || loopback) {
         callback(null, true)
       } else {
         callback(null, false)

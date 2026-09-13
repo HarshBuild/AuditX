@@ -524,10 +524,21 @@ export async function upsertProduct(input: {
     void logActivity(actor, 'product.upserted_via_api', 'product', productId, { barcode, api: true })
     return productId
   } catch (e) {
-    // Only a network-level failure (backend unreachable, e.g. local dev) falls
-    // back to the direct Firestore write. Server-side errors (auth, validation,
-    // 403/500) are NOT retried — they surface to the admin as the real cause.
+    // Server-authoritative failures (auth, validation, 403/500) are never
+    // retried — they surface to the admin as the real cause.
     if (!(e instanceof TypeError)) throw e
+    // Network-level failure (backend down, CORS misconfig, or local dev with no
+    // backend running): dev builds keep the direct Firestore fallback. On the
+    // deployed build a direct write would only hit the stricter client rules
+    // ("Missing or insufficient permissions") and mislead, so it is disabled and
+    // an actionable message is thrown instead.
+    if (!import.meta.env.DEV) {
+      throw new Error(
+        `Cannot reach the AuditX product API at ${CONFIG.AUDITX_API_URL}. ` +
+          'Check that the Render auditx-api service is running and that ' +
+          'VITE_AUDITX_API_URL (or mc_auditx_api_url) matches it.',
+      )
+    }
   }
 
   const existing = await findProductByBarcodeInternal(barcode)
@@ -565,6 +576,13 @@ export async function deleteProduct(productId: string) {
     return
   } catch (e) {
     if (!(e instanceof TypeError)) throw e
+    if (!import.meta.env.DEV) {
+      throw new Error(
+        `Cannot reach the AuditX product API at ${CONFIG.AUDITX_API_URL}. ` +
+          'Check that the Render auditx-api service is running and that ' +
+          'VITE_AUDITX_API_URL (or mc_auditx_api_url) matches it.',
+      )
+    }
   }
   const snap = await getDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
   if (!snap.exists()) throw new Error('Product not found')
