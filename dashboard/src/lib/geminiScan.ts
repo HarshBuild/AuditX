@@ -84,6 +84,13 @@ export async function runGeminiScan(input: LocalScanInput): Promise<ScanRow> {
 
   const prompt = buildExtractionPrompt(lang)
   const parts: GemPart[] = [{ text: prompt }]
+  // Optional Google Cloud Vision transcript — a reference for small/dense
+  // text. The photographs remain the PRIMARY source; OCR noise must be ignored.
+  if (input.ocrHint?.trim()) {
+    parts.push({
+      text: `REFERENCE TRANSCRIPT (Google Cloud Vision OCR — may contain noise):\n${input.ocrHint.trim().slice(0, 30000)}\n\nUse the photographs as the primary source. Only transcribe text that is actually visible and legible in the photos — do not copy OCR noise verbatim.`,
+    })
+  }
   for (const img of input.images) {
     if (!img) continue
     let url = img

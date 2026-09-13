@@ -139,9 +139,17 @@ Respond ONLY with valid JSON. No markdown, no code fences, no commentary before 
 async function geminiVisionOcr(
   images: Array<string | { data?: string }>,
   lang: string,
+  ocrTextHint?: string,
 ): Promise<ParsedRaw> {
   const prompt = buildVisionPrompt(lang)
   const parts: GemPart[] = [{ text: prompt }]
+  // Optional Google Cloud Vision transcript — a second reference for small,
+  // dense text. The photographs remain the PRIMARY source.
+  if (ocrTextHint && ocrTextHint.trim()) {
+    parts.push({
+      text: `REFERENCE TRANSCRIPT (Google Cloud Vision OCR — may contain noise):\n${ocrTextHint.trim().slice(0, 30000)}\n\nUse the photographs as the primary source. Only transcribe text that is actually visible and legible in the photos — do not copy OCR noise verbatim.`,
+    })
+  }
   for (const img0 of images) {
     // Accept either a raw data URL/base64 string or { data, mime } objects
     const img: string = typeof img0 === 'string' ? img0 : String(img0?.data ?? '')
@@ -197,6 +205,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       longitude,
       location_name,
       category,
+      ocr_text,
     } = req.body ?? {}
 
     if (!images || !Array.isArray(images) || images.length === 0) {
@@ -209,7 +218,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     }
 
     // 1️⃣ Gemini Vision OCR + structured extraction (parseRaw normalizes fields/ex)
-    const parsed = await geminiVisionOcr(images as Array<string | { data?: string }>, lang)
+    const parsed = await geminiVisionOcr(images as Array<string | { data?: string }>, lang, typeof ocr_text === 'string' ? ocr_text : undefined)
     const { ex, fields, ocrText, ocrLangs, ocrBlocks, uncertain, labels, category: detectedCategory, barcode: parsedBarcode, productName, brand } = parsed
 
     // 2️⃣ Build deterministic EngineInputs and detect package context

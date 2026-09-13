@@ -72,7 +72,7 @@ export default function ScanProductPage() {
   const STAGES = [
     { label: 'Input received', icon: FileInput },
     { label: 'Validating input', icon: ShieldCheck },
-    { label: 'Extracting information', icon: FileSearch },
+    { label: 'Extracting text', icon: FileSearch },
     { label: 'Analyzing data', icon: ScanSearch },
     { label: 'Validating result', icon: BadgeCheck },
     { label: 'Preparing final report', icon: FileOutput },
@@ -596,7 +596,7 @@ const prepared = await Promise.all(
                   Analysis is queued — an inspector will review this label shortly.
                 </p>
                 <p className="text-sm text-slate-400">
-                  The AI Cloud Function is not deployed yet. Instant results use Google Gemini — scans still land here if offline.
+                  Analysis is temporarily unavailable — your scan is safely queued and an inspector will review the label.
                 </p>
               </div>
             </AnalyticsCard>

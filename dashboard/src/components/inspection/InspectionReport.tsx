@@ -22,7 +22,6 @@ import {
   Loader2,
   MessageSquareText,
   MinusCircle,
-  Package,
   RefreshCw,
   Send,
   Share2,
@@ -31,6 +30,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
+import { AuditXMark } from '../brand/AuditXMark'
 import Button from '../ui/Button'
 import Modal from '../ui/Modal'
 import { ToneBadge } from '../ui/Badge'
@@ -1179,9 +1179,7 @@ export default function InspectionReport({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-                <Package className="h-4 w-4" />
-              </span>
+              <AuditXMark size="sm" />
               <div>
                 <p className="text-[11px] font-extrabold uppercase tracking-widest text-brand-600 dark:text-brand-400">AuditX</p>
                 <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Inspection Result</h1>

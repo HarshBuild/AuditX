@@ -24,6 +24,7 @@ import { createScan } from './services'
 import { saveLocalScan } from './localStore'
 import { runLocalScan } from './localEngine'
 import { runGeminiScan } from './geminiScan'
+import { runVisionOcr } from './visionOcr'
 import { COLLECTIONS } from './db'
 import type {
   AIIinsight,
@@ -225,6 +226,7 @@ export interface ScanAnalysisInput extends ScanAnalysisMeta {
 /** Wire shape expected by the Cloud Function (each image wrapped as {data}). */
 interface ScanAnalysisRequest extends ScanAnalysisMeta {
   images: { data: string }[]
+  ocr_text?: string // Google Cloud Vision transcript (best-effort reference)
 }
 
 export interface RawAnalysis {
@@ -339,16 +341,22 @@ export async function runScanAnalysis(
   input: ScanAnalysisInput,
   onStage?: (stage: number) => void,
 ): Promise<{ scan: ScanRow; pending: boolean }> {
+  // Google Cloud Vision OCR (backend-only) — best-effort. Reads small/dense
+  // label text into a transcript that the AI analysis below uses as a
+  // reference. Any failure degrades silently to the normal pipeline.
+  onStage?.(2)
+  const ocrHint = await runVisionOcr(input.images, input.lang ?? 'en').catch(() => null)
+
   const fn = httpsCallable<ScanAnalysisRequest, ScanAnalysisOutput>(functions, 'scanAnalysis')
   let out: ScanAnalysisOutput
   try {
-    onStage?.(2)
     const res = await fn({
       images: (input.images ?? []).map((src) => ({ data: src })),
       lang: input.lang ?? 'en',
       product_name: input.product_name,
       manufacturer: input.manufacturer,
       barcode: input.barcode,
+      ocr_text: ocrHint?.text,
     })
     out = res.data
     if (!out?.ok || !out.scan_id) throw new Error('Empty AI response from server.')
@@ -367,6 +375,7 @@ export async function runScanAnalysis(
         manufacturer: input.manufacturer,
         barcode: input.barcode,
         positions: input.positions,
+        ocrHint: ocrHint?.text,
       })
       onStage?.(3)
       onStage?.(4)

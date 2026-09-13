@@ -5,7 +5,8 @@ import ConfirmDialog from '../ui/ConfirmDialog'
 import NotificationsPanel from '../notifications/NotificationsPanel'
 import { cn } from '../../utils/format'
 import { useToast } from '../ui/Toast'
-import { initialsOf, roleLabel, type Role, type UserProfile } from '../../lib/rbac'
+import { initialsOf, roleLabel, homePath, type Role, type UserProfile } from '../../lib/rbac'
+import { AuditXMark } from '../brand/AuditXMark'
 
 export const PAGE_TITLES: Record<string, string> = {
   '/user-dashboard': 'Dashboard',
@@ -112,9 +113,20 @@ export default function Header({
         <Menu className="h-5 w-5" />
       </button>
 
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
-        <p className="hidden text-xs text-slate-400 sm:block">AuditX / {title}</p>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <button
+          type="button"
+          onClick={() => onNavigate(homePath({ role, status: profile?.status ?? 'active' }))}
+          aria-label="AuditX home"
+          title="AuditX"
+          className="shrink-0 rounded-lg transition-opacity hover:opacity-90"
+        >
+          <AuditXMark size="sm" />
+        </button>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
+          <p className="hidden text-xs text-slate-400 sm:block">Legal Metrology Suite</p>
+        </div>
       </div>
 
 {recPath && (

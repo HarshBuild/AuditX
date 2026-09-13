@@ -11,6 +11,10 @@
  *   GEMINI_TEXT_MODEL    — Gemini model for assistant answers (default gemini-3.6-flash)
  *   FRONTEND_URL         — CORS allowed origin(s), comma-separated
  *   CORS_ORIGINS         — optional; overrides FRONTEND_URL for CORS
+ *   GOOGLE_VISION_CREDENTIALS_JSON — full Google Cloud service-account JSON
+ *                       (single-line string) for Vision OCR. Preferred secret.
+ *   GOOGLE_APPLICATION_CREDENTIALS — path to a service-account JSON file
+ *                       (alternative to the inline JSON secret).
  */
 
 // --- Load local .env first (no-op in production; Render injects environment) ---
@@ -28,6 +32,7 @@ import scanRouter from './routes/scan.js'
 import assistantRouter from './routes/assistant.js'
 import barcodeRouter from './routes/barcode.js'
 import claimsRouter from './routes/claims.js'
+import ocrRouter from './routes/ocr.js'
 
 // --- Express app ---
 const app: express.Express = express()
@@ -124,6 +129,7 @@ app.use('/api/scan', firebaseAuthMiddleware, scanRouter)
 app.use('/api/assistant', firebaseAuthMiddleware, assistantRouter)
 app.use('/api/barcode', firebaseAuthMiddleware, barcodeRouter)
 app.use('/api/set-claims', firebaseAuthMiddleware, claimsRouter)
+app.use('/api/ocr', firebaseAuthMiddleware, ocrRouter)
 
 // --- 404 ---
 app.use((_req: Request, _res: Response): void => {

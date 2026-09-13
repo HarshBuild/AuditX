@@ -40,6 +40,7 @@ export interface LocalScanInput {
   manufacturer?: string
   barcode?: string
   positions?: PanelPrior[] // label panel per photo (order follows images)
+  ocrHint?: string // Google Cloud Vision transcript (best-effort reference)
 }
 
 const TESS_LANGS: Record<string, string> = {
