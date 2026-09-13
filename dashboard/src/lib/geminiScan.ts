@@ -17,6 +17,7 @@ import type { ExtractedField as EngineField, Extractions } from './compliance/ty
 import { createScan } from './services'
 import { saveLocalScan } from './localStore'
 import { db, auth } from './firebase'
+import { PerfRun, tim, timSync } from './perf'
 import { COLLECTIONS } from './db'
 import { CONFIG } from './config'
 import { dataUrlToInline, extractJson, geminiGenerateContent, type GemPart } from './gemini'
@@ -78,7 +79,7 @@ function detectedFrom(out: ComplianceOutcome): DetectedSummary {
  * Throws when Gemini is unreachable so callers can fall back to the
  * on-device Tesseract engine.
  */
-export async function runGeminiScan(input: LocalScanInput): Promise<ScanRow> {
+export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Promise<ScanRow> {
   const lang = input.lang ?? 'en'
   if (!CONFIG.GEMINI_API_KEY) throw new Error('Gemini API key is not configured.')
 
@@ -118,19 +119,21 @@ export async function runGeminiScan(input: LocalScanInput): Promise<ScanRow> {
   })
 
   const engineFields = parsed.fields as Record<string, EngineField>
-  const outcome = runComplianceEngine({
-    ex: parsed.ex,
-    fields: engineFields,
-    ocrText: parsed.ocrText,
-    ocrBlocks: parsed.ocrBlocks,
-    uncertain: parsed.uncertain,
-    barcode: parsed.barcode ?? input.barcode ?? null,
-    languages: parsed.ocrLangs,
-    labels: parsed.labels,
-    userCategory: null,
-    userProductName: parsed.productName ?? input.product_name?.trim() ?? null,
-    productLabelText: `${parsed.ex.commodity_name ?? ''} ${input.product_name ?? ''}`.trim() || undefined,
-  })
+  const outcome = timSync(perf, 'validation', () =>
+    runComplianceEngine({
+      ex: parsed.ex,
+      fields: engineFields,
+      ocrText: parsed.ocrText,
+      ocrBlocks: parsed.ocrBlocks,
+      uncertain: parsed.uncertain,
+      barcode: parsed.barcode ?? input.barcode ?? null,
+      languages: parsed.ocrLangs,
+      labels: parsed.labels,
+      userCategory: null,
+      userProductName: parsed.productName ?? input.product_name?.trim() ?? null,
+      productLabelText: `${parsed.ex.commodity_name ?? ''} ${input.product_name ?? ''}`.trim() || undefined,
+    }),
+  )
 
   const ctx = outcome.context
   const context: ScanContext = {
@@ -184,6 +187,7 @@ export async function runGeminiScan(input: LocalScanInput): Promise<ScanRow> {
   let scanId = `gemini-${Date.now()}`
   let persisted = false
   try {
+    await tim(perf, 'db-save', async () => {
     scanId = await createScan({
       product_name: productName,
       brand,
@@ -222,6 +226,7 @@ labels: parsed.labels.map((l) => ({ ...l, verdict: 'VERIFIED' as DetectedLabel['
         ocr_text: e.ocr_text ?? '',
       })),
       updated_at: new Date().toISOString(),
+    })
     })
     persisted = true
   } catch {

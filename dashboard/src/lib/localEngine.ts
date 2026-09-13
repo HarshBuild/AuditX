@@ -17,6 +17,7 @@ import type { ExtractedField as EngineField, Extractions } from './compliance/ty
 import { createScan } from './services'
 import { saveLocalScan } from './localStore'
 import { db, auth } from './firebase'
+import { PerfRun, tim, timSync } from './perf'
 import { COLLECTIONS } from './db'
 import type {
   AIIinsight,
@@ -130,13 +131,13 @@ function detectedFrom(out: ComplianceOutcome): DetectedSummary {
  * Run a fully on-device inspection and persist it as an analyzed scan.
  * Throws when no readable text could be OCR'd (so the UI can ask for a retake).
  */
-export async function runLocalScan(input: LocalScanInput): Promise<ScanRow> {
+export async function runLocalScan(input: LocalScanInput, perf?: PerfRun): Promise<ScanRow> {
   const lang = input.lang ?? 'en'
   const tessLangs = Array.from(new Set(['eng', TESS_LANGS[lang] ?? 'eng']))
 
   const worker = await createWorker(tessLangs)
-  let output: PipelineOutput
-  try {
+  let output!: PipelineOutput
+  const analyze = async () => {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.AUTO, // full layout analysis for multi-section labels
       preserve_interword_spaces: '1',
@@ -149,6 +150,9 @@ export async function runLocalScan(input: LocalScanInput): Promise<ScanRow> {
       barcode: input.barcode ?? null,
       positions: input.positions,
     })
+  }
+  try {
+    await tim(perf, 'ai-analyze', analyze)
   } finally {
     await worker.terminate()
   }
@@ -159,19 +163,21 @@ export async function runLocalScan(input: LocalScanInput): Promise<ScanRow> {
   const ocrText = output.ocrText
   const ocrBlocks = output.ocrBlocks
 
-  const outcome = runComplianceEngine({
-    ex,
-    fields: engineFields,
-    ocrText,
-    ocrBlocks,
-    uncertain,
-    barcode: output.resolvedBarcode ?? input.barcode ?? null,
-    languages: tessLangs,
-    labels: [],
-    userCategory: null,
-    userProductName: input.product_name?.trim() ?? null,
-    productLabelText: `${ex.commodity_name ?? ''} ${input.product_name ?? ''}`.trim() || undefined,
-  })
+  const outcome = timSync(perf, 'validation', () =>
+    runComplianceEngine({
+      ex,
+      fields: engineFields,
+      ocrText,
+      ocrBlocks,
+      uncertain,
+      barcode: output.resolvedBarcode ?? input.barcode ?? null,
+      languages: tessLangs,
+      labels: [],
+      userCategory: null,
+      userProductName: input.product_name?.trim() ?? null,
+      productLabelText: `${ex.commodity_name ?? ''} ${input.product_name ?? ''}`.trim() || undefined,
+    }),
+  )
 
   const ctx = outcome.context
   const context: ScanContext = {
@@ -212,6 +218,7 @@ export async function runLocalScan(input: LocalScanInput): Promise<ScanRow> {
   let scanId = `local-${Date.now()}`
   let persisted = false
   try {
+    await tim(perf, 'db-save', async () => {
     scanId = await createScan({
       product_name: productName,
       brand: brandFromManufacturer(ex.manufacturer ?? ''),
@@ -257,6 +264,7 @@ export async function runLocalScan(input: LocalScanInput): Promise<ScanRow> {
         ocr_text: e.ocr_text ?? '',
       })),
       updated_at: new Date().toISOString(),
+    })
     })
     persisted = true
   } catch {

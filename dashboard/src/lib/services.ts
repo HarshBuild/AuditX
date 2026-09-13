@@ -527,24 +527,47 @@ export async function upsertProduct(input: {
     // Server-authoritative failures (auth, validation, 403/500) are never
     // retried — they surface to the admin as the real cause.
     if (!(e instanceof TypeError)) throw e
-    // Network-level failure (backend down, CORS misconfig, or local dev with no
-    // backend running): dev builds keep the direct Firestore fallback. On the
-    // deployed build a direct write would only hit the stricter client rules
-    // ("Missing or insufficient permissions") and mislead, so it is disabled and
-    // an actionable message is thrown instead.
-    if (!import.meta.env.DEV) {
+    // Network-level failure (backend down / CORS / wrong base URL). Every
+    // build falls back to a direct Firestore write, which succeeds whenever
+    // the products rules allow (isManager() || claimsManager()). If that
+    // write is denied, rethrow with the combined, honest cause so the
+    // operator knows exactly which gate to fix: backend availability or
+    // rules/claims.
+    console.warn(
+      `[products] auditx-api unreachable at ${CONFIG.AUDITX_API_URL} — falling back to a direct Firestore write.`,
+    )
+    try {
+      const productId = await saveProductDirect({ ...input, barcode })
+      void logActivity(actor, 'product.upserted_via_firestore', 'product', productId, { barcode, api: false })
+      return productId
+    } catch (fallbackErr) {
       throw new Error(
-        `Cannot reach the AuditX product API at ${CONFIG.AUDITX_API_URL}. ` +
-          'Check that the Render auditx-api service is running and that ' +
-          'VITE_AUDITX_API_URL (or mc_auditx_api_url) matches it.',
+        `Product save failed: ${describeWriteBlock(fallbackErr, 'save')} ` +
+          `The AuditX product API at ${CONFIG.AUDITX_API_URL} is unreachable ` +
+          'and the direct Firestore write was denied. Deploy the auditx-api service (render.yaml) ' +
+          'or upload backend/firebase/firestore.rules and confirm this account has the manager role/claims.',
       )
     }
   }
+}
 
-  const existing = await findProductByBarcodeInternal(barcode)
+/** Direct Firestore write used by the offline/fallback path for products. */
+async function saveProductDirect(input: {
+  barcode: string
+  name: string
+  brand?: string
+  manufacturer?: string
+  category?: string
+  net_quantity?: string
+  mrp?: string
+  consumer_care?: string
+  country_of_origin?: string
+  best_before_label?: string
+}): Promise<string> {
+  const existing = await findProductByBarcodeInternal(input.barcode)
   const now = new Date().toISOString()
   const data = {
-    barcode,
+    barcode: input.barcode,
     name: input.name.trim(),
     brand: (input.brand ?? '').trim(),
     manufacturer: (input.manufacturer ?? '').trim(),
@@ -559,13 +582,21 @@ export async function upsertProduct(input: {
 
   if (existing) {
     await updateDoc(doc(db, COLLECTIONS.PRODUCTS, existing.id), data)
-    void logActivity(actor, 'product.updated', 'product', existing.id, { barcode })
     return existing.id
   }
   const ref = doc(collection(db, COLLECTIONS.PRODUCTS))
   await setDoc(ref, { ...data, created_at: now })
-  void logActivity(actor, 'product.created', 'product', ref.id, { barcode })
   return ref.id
+}
+
+/** Readable explanation of a Firestore fallback rejection. */
+function describeWriteBlock(err: unknown, action: 'save' | 'delete'): string {
+  const code = (err as { code?: string })?.code ?? ''
+  const msg = (err as Error)?.message ?? ''
+  if (code === 'permission-denied' || /denied|permission/i.test(msg)) {
+    return `Firestore rejected the ${action} with "Missing or insufficient permissions".`
+  }
+  return `The direct Firestore ${action} failed${msg ? ` (${msg})` : ''}.`
 }
 
 export async function deleteProduct(productId: string) {
@@ -576,19 +607,25 @@ export async function deleteProduct(productId: string) {
     return
   } catch (e) {
     if (!(e instanceof TypeError)) throw e
-    if (!import.meta.env.DEV) {
+    console.warn(
+      `[products] auditx-api unreachable at ${CONFIG.AUDITX_API_URL} — falling back to a direct Firestore delete.`,
+    )
+    try {
+      const snap = await getDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
+      if (!snap.exists()) throw new Error('Product not found')
+      const { deleteDoc } = await import('firebase/firestore')
+      await deleteDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
+      void logActivity(actor, 'product.deleted', 'product', productId, { barcode: snap.data()?.barcode })
+      return
+    } catch (fallbackErr) {
       throw new Error(
-        `Cannot reach the AuditX product API at ${CONFIG.AUDITX_API_URL}. ` +
-          'Check that the Render auditx-api service is running and that ' +
-          'VITE_AUDITX_API_URL (or mc_auditx_api_url) matches it.',
+        `Product delete failed: ${describeWriteBlock(fallbackErr, 'delete')} ` +
+          `The AuditX product API at ${CONFIG.AUDITX_API_URL} is unreachable ` +
+          'and the direct Firestore write was denied. Deploy the auditx-api service (render.yaml) ' +
+          'or upload backend/firebase/firestore.rules and confirm this account has the manager role/claims.',
       )
     }
   }
-  const snap = await getDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
-  if (!snap.exists()) throw new Error('Product not found')
-  const { deleteDoc } = await import('firebase/firestore')
-  await deleteDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
-  void logActivity(actor, 'product.deleted', 'product', productId, { barcode: snap.data()?.barcode })
 }
 
 /* Admin-SDK product writes via the AuditX Express API. The backend's

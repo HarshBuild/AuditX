@@ -25,6 +25,7 @@ import Button from '../ui/Button'
 import CameraCapture from '../ui/CameraCapture'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../lib/auth'
+import { PerfRun, fmtMs } from '../../lib/perf'
 import { prepareImageFile, loadImageBitmap, runScanAnalysis, attachScanPhotos, MAX_SCAN_IMAGES, type ImageQuality } from '../../lib/scan'
 import { detectBarcodeFromFile } from '../../lib/barcode'
 import { findProductByBarcode } from '../../lib/db'
@@ -102,7 +103,9 @@ export default function ScanProductPage() {
     try {
 const prepared = await Promise.all(
           slots.map(async (file, i) => {
+            const t0 = performance.now()
             const { dataUrl, hiResUrl, quality } = await prepareImageFile(file)
+            console.info(`[perf] preprocess · image ${i + 1}/${slots.length} ${fmtMs(performance.now() - t0)} (${file.name})`)
             return { file, dataUrl, hiResUrl, position: i === 0 ? 'front' : i === 1 ? 'back' : 'side', quality }
           }),
         )
@@ -234,10 +237,12 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
     setAnalyzeError(null)
     setFailKind(null)
     setProgressStep(0)
+    const perf = new PerfRun('scan')
+    perf.mark('start')
     try {
       advanceStage(0)
       advanceStage(1)
-      const check = await validateBeforeScan()
+      const check = await perf.timed('input-validation', () => validateBeforeScan())
       if (!check.ok) {
         setAnalyzeError(check.message ?? 'Your input could not be used.')
         setFailKind('other')
@@ -256,9 +261,13 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
           positions: picked.map((p) => p.position as PanelPrior),
         },
         advanceStage,
+        perf,
       )
       advanceStage(5)
       setResult(scan)
+      perf.mark('result')
+      perf.segment('start', 'result', 'analyze-total')
+      perf.summary()
       // Best-effort photo persistence (Storage may not be provisioned yet).
       void attachScanPhotos(scan.scan.id, picked.map((p) => p.file)).then((n) => {
         if (n.length > 0 && scan.scan.image_urls) {

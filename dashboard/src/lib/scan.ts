@@ -25,6 +25,7 @@ import { saveLocalScan } from './localStore'
 import { runLocalScan } from './localEngine'
 import { runGeminiScan } from './geminiScan'
 import { runVisionOcr } from './visionOcr'
+import { PerfRun } from './perf'
 import { COLLECTIONS } from './db'
 import type {
   AIIinsight,
@@ -311,14 +312,16 @@ function buildScanRow(scanId: string, out: ScanAnalysisOutput, lang: string, met
  */
 export async function attachScanPhotos(scanId: string, files: File[]): Promise<string[]> {
   if (files.length === 0) return []
+  const perf = new PerfRun('upload')
   try {
-    const urls = await uploadScanImages(files)
+    const urls = await perf.timed('upload-images', () => uploadScanImages(files))
     const patch: Record<string, unknown> = {
       image_urls: urls,
       image_url: urls[0] ?? '',
       updated_at: new Date().toISOString(),
     }
-    await updateDoc(doc(db, COLLECTIONS.SCANS, scanId), patch)
+    await perf.timed('db-save-photo-urls', () => updateDoc(doc(db, COLLECTIONS.SCANS, scanId), patch))
+    perf.summary()
     return urls
   } catch {
     return []
@@ -340,24 +343,35 @@ export async function attachScanPhotos(scanId: string, files: File[]): Promise<s
 export async function runScanAnalysis(
   input: ScanAnalysisInput,
   onStage?: (stage: number) => void,
+  perf?: PerfRun,
 ): Promise<{ scan: ScanRow; pending: boolean }> {
+  const pf = perf ?? new PerfRun('analysis')
   // Google Cloud Vision OCR (backend-only) — best-effort. Reads small/dense
   // label text into a transcript that the AI analysis below uses as a
   // reference. Any failure degrades silently to the normal pipeline.
   onStage?.(2)
-  const ocrHint = await runVisionOcr(input.images, input.lang ?? 'en').catch(() => null)
+  const ocrHint = await pf
+    .timed('ocr', async () => {
+      try {
+        return await runVisionOcr(input.images, input.lang ?? 'en')
+      } catch {
+        return null
+      }
+    })
 
   const fn = httpsCallable<ScanAnalysisRequest, ScanAnalysisOutput>(functions, 'scanAnalysis')
   let out: ScanAnalysisOutput
   try {
-    const res = await fn({
-      images: (input.images ?? []).map((src) => ({ data: src })),
-      lang: input.lang ?? 'en',
-      product_name: input.product_name,
-      manufacturer: input.manufacturer,
-      barcode: input.barcode,
-      ocr_text: ocrHint?.text,
-    })
+    const res = await pf.timed('ai-analyze', () =>
+      fn({
+        images: (input.images ?? []).map((src) => ({ data: src })),
+        lang: input.lang ?? 'en',
+        product_name: input.product_name,
+        manufacturer: input.manufacturer,
+        barcode: input.barcode,
+        ocr_text: ocrHint?.text,
+      }),
+    )
     out = res.data
     if (!out?.ok || !out.scan_id) throw new Error('Empty AI response from server.')
     onStage?.(3)
@@ -376,7 +390,7 @@ export async function runScanAnalysis(
         barcode: input.barcode,
         positions: input.positions,
         ocrHint: ocrHint?.text,
-      })
+      }, pf)
       onStage?.(3)
       onStage?.(4)
       return { scan: geminiScan, pending: false }
@@ -392,7 +406,7 @@ export async function runScanAnalysis(
       manufacturer: input.manufacturer,
       barcode: input.barcode,
       positions: input.positions,
-    })
+    }, pf)
     onStage?.(3)
     onStage?.(4)
     return { scan: localScan, pending: false }
@@ -405,7 +419,7 @@ export async function runScanAnalysis(
       const product = input.product_name?.trim() || 'Label scan'
       let scanId = `local-pending-${Date.now()}`
       try {
-        scanId = await createScan({
+        scanId = await pf.timed('db-save', () => createScan({
           product_name: product,
           brand: '',
           manufacturer: input.manufacturer ?? '',
@@ -417,7 +431,7 @@ export async function runScanAnalysis(
           status: 'pending_review',
           image_url: '',
           language: input.lang ?? 'en',
-        })
+        }))
       } catch {
         // Local-only queue — the UI shows the row regardless.
       }

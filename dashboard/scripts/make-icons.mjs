@@ -81,22 +81,65 @@ function encodePng(width, height, rgba) {
   ])
 }
 
-/** Wrap a 256×256 PNG into a single-image .ico container. */
-function encodeIco(pngBuf) {
+/** Encode a 32-bpp bottom-up DIB icon image (XOR + AND mask) as ICO image data. */
+function dibIcon(size, rgba) {
+  const rows = []
+  for (let y = size - 1; y >= 0; y--) {
+    const row = Buffer.alloc(size * 4)
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4
+      const dst = x * 4
+      row[dst] = rgba[i + 2] // B
+      row[dst + 1] = rgba[i + 1] // G
+      row[dst + 2] = rgba[i] // R
+      row[dst + 3] = rgba[i + 3] // A
+    }
+    rows.push(row)
+  }
+  const maskStride = Math.ceil(size / 32) * 4
+  for (let y = size - 1; y >= 0; y--) {
+    const mask = Buffer.alloc(maskStride, 0)
+    for (let x = 0; x < size; x++) {
+      if (rgba[(y * size + x) * 4 + 3] < 128) mask[x >> 3] |= 0x80 >> (x & 7)
+    }
+    rows.push(mask)
+  }
+  const header = Buffer.alloc(40)
+  header.writeUInt32LE(40, 0) // biSize
+  header.writeInt32LE(size, 4) // biWidth
+  header.writeInt32LE(size * 2, 8) // biHeight (XOR + AND)
+  header.writeUInt16LE(1, 12) // biPlanes
+  header.writeUInt16LE(32, 14) // biBitCount
+  header.writeUInt32LE(0, 16) // biCompression BI_RGB
+  return Buffer.concat([header, ...rows])
+}
+
+/**
+ * Wrap icon images into a multi-size .ico container.
+ * @param images Array of { size, data, w256 } — 16/32/48 are 32-bpp DIB,
+ *               256 is a PNG-compressed entry (renders sharp at large sizes).
+ */
+function encodeIco(images) {
   const header = Buffer.alloc(6)
   header.writeUInt16LE(0, 0) // reserved
   header.writeUInt16LE(1, 2) // type: icon
-  header.writeUInt16LE(1, 4) // image count
-  const entry = Buffer.alloc(16)
-  entry[0] = 0 // 256px (0 means 256)
-  entry[1] = 0
-  entry[2] = 0 // color count
-  entry[3] = 0 // reserved
-  entry.writeUInt16LE(1, 4) // planes
-  entry.writeUInt16LE(32, 6) // bpp
-  entry.writeUInt32LE(pngBuf.length, 8)
-  entry.writeUInt32LE(6 + 16, 12) // data offset
-  return Buffer.concat([header, entry, pngBuf])
+  header.writeUInt16LE(images.length, 4) // image count
+  const entries = []
+  let offset = 6 + 16 * images.length
+  for (const img of images) {
+    const entry = Buffer.alloc(16)
+    entry[0] = img.w256 ? 0 : img.size // width (0 = 256)
+    entry[1] = img.w256 ? 0 : img.size // height
+    entry[2] = 0 // color count
+    entry[3] = 0 // reserved
+    entry.writeUInt16LE(1, 4) // planes
+    entry.writeUInt16LE(32, 6) // bpp
+    entry.writeUInt32LE(img.data.length, 8)
+    entry.writeUInt32LE(offset, 12)
+    entries.push(entry)
+    offset += img.data.length
+  }
+  return Buffer.concat([header, ...entries, ...images.map((i) => i.data)])
 }
 
 /* ---------------- drawing ---------------- */
@@ -175,10 +218,10 @@ const WHITE = [255, 255, 255]
 const ACCENT = [0xbf, 0xdb, 0xfe] // brand-200
 
 /**
- * Render one icon.
- * @param opts {size, maskable, strokeScale}
+ * Rasterize one icon to an RGBA byte buffer.
+ * @param opts {size, maskable}
  */
-function renderIcon(size, maskable) {
+function rasterize(size, maskable) {
   const SS = 3 // supersample factor per axis
   const px = new Uint8Array(size * size * 4)
   const fullBleed = maskable
@@ -231,7 +274,11 @@ function renderIcon(size, maskable) {
       px[i + 3] = Math.round(acc[3] / n)
     }
   }
-  return encodePng(size, size, Buffer.from(px))
+  return px
+}
+
+function renderIcon(size, maskable) {
+  return encodePng(size, size, Buffer.from(rasterize(size, maskable)))
 }
 
 /* ---------------- emitting ---------------- */
@@ -248,7 +295,15 @@ const files = [
   [join(publicIcons, 'icon-maskable-512.png'), renderIcon(512, true)],
   [join(publicIcons, 'icon-180.png'), renderIcon(180, false)],
   [join(desktopBuild, 'icon.png'), renderIcon(512, false)],
-  [join(desktopBuild, 'icon.ico'), encodeIco(renderIcon(256, false))],
+  [
+    join(desktopBuild, 'icon.ico'),
+    encodeIco([
+      { size: 16, data: dibIcon(16, rasterize(16, false)) },
+      { size: 32, data: dibIcon(32, rasterize(32, false)) },
+      { size: 48, data: dibIcon(48, rasterize(48, false)) },
+      { size: 256, data: renderIcon(256, false), w256: true },
+    ]),
+  ],
 ]
 
 for (const [path, buf] of files) {
