@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
-  ArrowUpRight,
   ClipboardCheck,
   FileCheck2,
   FileText,
@@ -15,6 +14,7 @@ import {
   Users,
 } from 'lucide-react'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
+import ActionTile from '../dashboard/ActionTile'
 import StatCard from '../dashboard/StatCard'
 import RiskBars from '../dashboard/RiskBars'
 import DataTable, { type DataColumn } from '../table/DataTable'
@@ -245,25 +245,9 @@ export function AdminDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:sticky xl:top-24">
-            {links.map((l) => {
-              const Icon = l.icon
-              return (
-                <Link
-                  key={l.path}
-                  to={l.path}
-                  className="panel-interactive group flex flex-col p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-card bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-text-faint transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-brand-600 dark:text-navy-500 dark:group-hover:text-brand-400" />
-                  </div>
-                  <p className="mt-4 text-sm font-bold text-ink-text dark:text-navy-50">{l.label}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-ink-text-soft dark:text-navy-400">{l.desc}</p>
-                </Link>
-              )
-            })}
+            {links.map((l) => (
+              <ActionTile key={l.path} to={l.path} icon={l.icon} label={l.label} desc={l.desc} />
+            ))}
           </div>
         </div>
       )}
@@ -377,25 +361,9 @@ export function SuperAdminDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:sticky xl:top-24">
-            {SUPER_LINKS.map((l) => {
-              const Icon = l.icon
-              return (
-                <Link
-                  key={l.path}
-                  to={l.path}
-                  className="panel-interactive group flex flex-col p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-card bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-text-faint transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-brand-600 dark:text-navy-500 dark:group-hover:text-brand-400" />
-                  </div>
-                  <p className="mt-4 text-sm font-bold text-ink-text dark:text-navy-50">{l.label}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-ink-text-soft dark:text-navy-400">{l.desc}</p>
-                </Link>
-              )
-            })}
+            {SUPER_LINKS.map((l) => (
+              <ActionTile key={l.path} to={l.path} icon={l.icon} label={l.label} desc={l.desc} />
+            ))}
           </div>
 
           <div className="min-w-0 xl:col-span-3">

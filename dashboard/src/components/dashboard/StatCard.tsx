@@ -11,17 +11,39 @@ const accentMap: Record<StatDefinition['accent'], string> = {
   cyan: 'bg-info-50 text-info-600 dark:bg-info-500/15 dark:text-info-400',
 }
 
+const hairlineMap: Record<StatDefinition['accent'], string> = {
+  brand: 'via-brand-500/50',
+  emerald: 'via-success-500/50',
+  amber: 'via-warning-500/50',
+  rose: 'via-danger-500/50',
+  violet: 'via-violet-500/50',
+  cyan: 'via-info-500/50',
+}
+
 export default function StatCard({ stat, prominent }: { stat: StatDefinition; prominent?: boolean }) {
   const Icon = stat.icon
   return (
     <div
       className={cn(
-        'group panel flex h-full flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
+        'group relative panel flex h-full flex-col overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
         prominent &&
           'border-brand-200/70 bg-gradient-to-br from-brand-50/80 via-surface to-surface ring-1 ring-brand-500/10 dark:border-brand-500/25 dark:from-brand-500/[0.1] dark:via-navy-900 dark:to-navy-900 dark:ring-brand-500/10',
       )}
     >
-      <div className="flex flex-1 items-start justify-between gap-3">
+      <span
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-brand-500/70 to-transparent',
+          !prominent && hairlineMap[stat.accent],
+        )}
+      />
+      {prominent && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-brand-500/20 blur-2xl dark:bg-brand-400/20"
+        />
+      )}
+      <div className="flex flex-1 items-start justify-between gap-3 p-5">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-faint dark:text-navy-400">
             {stat.title}
@@ -57,7 +79,7 @@ export default function StatCard({ stat, prominent }: { stat: StatDefinition; pr
         </div>
         <div
           className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-card transition-transform duration-200 group-hover:scale-105',
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-card shadow-sm ring-1 ring-inset ring-black/5 transition-all duration-200 group-hover:-rotate-3 group-hover:scale-110 dark:ring-white/10',
             accentMap[stat.accent],
           )}
         >
