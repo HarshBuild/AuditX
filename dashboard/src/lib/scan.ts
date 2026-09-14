@@ -311,6 +311,7 @@ function buildScanRow(scanId: string, out: ScanAnalysisOutput, lang: string, met
     trust_breakdown: out.result.trust_breakdown,
     processing: out.result.processing,
     uncertain_regions: out.result.uncertain_regions,
+    missed_regions: (out.result as any)?.missed_regions ?? null,
     manual_result: null,
     notes: '',
     latitude: null,
@@ -362,6 +363,7 @@ interface FastOcrPayload {
   lang: string
   meta: ScanAnalysisMeta
   processingTime?: number
+  missedRegions?: { checked: number; found: number }
 }
 
 function toFastRules(rules: FastOcrResultRule[]): RuleCheck[] {
@@ -489,6 +491,7 @@ image_url: '',
       trust_score,
       processing,
       uncertain_regions: 0,
+      missed_regions: p.missedRegions,
       detected,
     counts: statusCounts,
     context: {
@@ -581,6 +584,9 @@ export async function runScanAnalysis(
           lang: input.lang ?? 'en',
           meta: input,
           processingTime: ocrHint.processing_time_ms,
+          missedRegions: ocrHint.image_regions
+            ? { checked: ocrHint.image_regions.missed_regions_checked, found: ocrHint.image_regions.missed_found }
+            : undefined,
         }),
       )
       onStage?.(3)
@@ -627,6 +633,9 @@ export async function runScanAnalysis(
         ocrBlocks: (ocrHint?.regions ?? []).map((im) => ({ blocks: im.blocks ?? [] })),
         qualityScores: (ocrHint?.image_quality ?? []).map((q) => q.score),
         ocrInitialMs: ocrHint?.processing_time_ms ?? 0,
+        ocrMissedRegions: ocrHint?.image_regions
+          ? { checked: ocrHint.image_regions.missed_regions_checked, found: ocrHint.image_regions.missed_found }
+          : undefined,
       }, pf)
       onStage?.(3)
       onStage?.(4)
@@ -643,6 +652,12 @@ export async function runScanAnalysis(
       manufacturer: input.manufacturer,
       barcode: input.barcode,
       positions: input.positions,
+      ocrBlocks: (ocrHint?.regions ?? []).map((im) => ({ blocks: im.blocks ?? [] })),
+      qualityScores: (ocrHint?.image_quality ?? []).map((q) => q.score),
+      ocrInitialMs: ocrHint?.processing_time_ms ?? 0,
+      ocrMissedRegions: ocrHint?.image_regions
+        ? { checked: ocrHint.image_regions.missed_regions_checked, found: ocrHint.image_regions.missed_found }
+        : undefined,
     }, pf)
     onStage?.(3)
     onStage?.(4)

@@ -5,6 +5,8 @@ Each photo is normalized before PaddleOCR reads it.
 """
 from __future__ import annotations
 
+import math
+
 import cv2
 import numpy as np
 
@@ -117,6 +119,35 @@ def blur_score(img: np.ndarray) -> float:
     return float(cv2.Laplacian(g, cv2.CV_64F).var())
 
 
+def rotation_deg(img: np.ndarray) -> float:
+    """Estimate label skew (degrees) from dominant near-horizontal text lines.
+    Used only as an honest quality signal — never auto-rotates."""
+    g = _gray(img)
+    blur = cv2.GaussianBlur(g, (3, 3), 0)
+    edges = cv2.Canny(blur, 50, 150)
+    try:
+        lines = cv2.HoughLinesP(
+            edges, 1, np.pi / 720.0, threshold=60,
+            minLineLength=max(20, g.shape[1] // 8), maxLineGap=12
+        )
+    except Exception:
+        return 0.0
+    if lines is None or len(lines) == 0:
+        return 0.0
+    angles = []
+    for ln in lines:
+        x1, y1, x2, y2 = ln[0]
+        dx, dy = x2 - x1, y2 - y1
+        if abs(dx) < 1:
+            continue
+        ang = math.degrees(math.atan2(dy, dx))
+        if abs(ang) < 40.0:
+            angles.append(ang)
+    if not angles:
+        return 0.0
+    return round(float(np.median(angles)), 1)
+
+
 def estimate_quality(img: np.ndarray) -> dict:
     """Cheap, non-OCR image-quality assessment used for honest prompts and
     the trust-score 'image quality' signal. No heavy processing."""
@@ -130,7 +161,9 @@ def estimate_quality(img: np.ndarray) -> dict:
     # brightness not too dark (<35) and not blown out (>235)
     bright_pct = float(np.clip(100 - (abs(mean_ - 140) * 1.1), 20, 100))
     contrast_pct = float(np.clip(100 - (abs(std_ - 70) * 1.2), 20, 100))
-    overall = round(0.3 * blur_pct + 0.25 * res_score + 0.2 * bright_pct + 0.25 * contrast_pct, 1)
+    rot = rotation_deg(img)
+    rot_pct = float(np.clip(100 - abs(rot) * 8.0, 0, 100))
+    overall = round(0.28 * blur_pct + 0.22 * res_score + 0.18 * bright_pct + 0.22 * contrast_pct + 0.10 * rot_pct, 1)
     issues = []
     if blur < 90:
         issues.append("Image is blurry — retake the photo closer to the label.")
@@ -140,6 +173,8 @@ def estimate_quality(img: np.ndarray) -> dict:
         issues.append("Image is too dark — use better lighting.")
     if mean_ > 215:
         issues.append("Image is over-exposed — reduce glare/lighting.")
+    if abs(rot) >= 4:
+        issues.append(f"Image appears rotated by {abs(rot):.0f} degrees — straighten the label.")
     if not issues:
         issues.append("Image quality looks good.")
     return {
@@ -148,6 +183,7 @@ def estimate_quality(img: np.ndarray) -> dict:
         "blur_score": round(blur, 2),
         "brightness": round(mean_, 1),
         "contrast": round(std_, 1),
+        "rotation_deg": rot,
         "verdict": "good" if overall >= 75 else "acceptable" if overall >= 50 else "poor",
         "message": " ".join(issues),
     }

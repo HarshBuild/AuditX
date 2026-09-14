@@ -148,11 +148,13 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     try {
       let blocksByImage = normalizeRegions((req.body as any)?.perImageBlocks)
       let qualityScores: number[] | undefined
+      let missedRegions: { checked: number; found: number } | undefined
       if (blocksByImage.length === 0) {
         // No blocks forwarded — fetch them from the Python microservice once.
         const ev = await fetchOcrEvidence(images.map(toDataUrl), lang)
         blocksByImage = ev.blocksByImage
         qualityScores = ev.qualityScores
+        missedRegions = ev.missedRegions
         ocrEvidenceMs = ev.ms
       }
       if (blocksByImage.length > 0) {
@@ -165,6 +167,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
           lang,
           qualityScores,
           ocrInitialMs: ocrEvidenceMs,
+          missedRegions,
         })
       }
     } catch (evErr) {
@@ -277,6 +280,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
             trust_breakdown: adaptive.trust.breakdown,
             verification: adaptive.verification,
             uncertain_regions: adaptive.scanned_regions,
+            missed_regions: adaptive.missed_regions,
             processing: {
               initial_ocr_ms: adaptive.processing.initial_ocr_ms,
               verification_ms: adaptive.processing.verification_ms,
@@ -322,6 +326,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         trust_score: result.trust_score ?? null,
         processing: result.processing ?? null,
         scanned_regions: result.uncertain_regions ?? 0,
+        missed_regions: result.missed_regions ?? null,
         risk_score: result.risk_score,
         status: 'analyzed',
         latitude: latitude ?? null,

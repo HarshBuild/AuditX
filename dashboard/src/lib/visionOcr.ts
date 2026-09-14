@@ -56,12 +56,24 @@ export interface RegionBlock {
 export interface RegionImage {
   image_id?: string
   blocks: RegionBlock[]
+  /** Missed-text-region detection (#9): counts reported by the OCR service. */
+  text_regions_detected?: number
+  lines_extracted?: number
+  missed_regions_checked?: number
 }
 
 export interface ImageQualityScore {
   score: number
   verdict?: string
   message?: string
+}
+
+export interface ImageRegionsSummary {
+  text_regions_detected: number
+  lines_extracted: number
+  missed_regions_checked: number
+  missed_found: number
+  missed_regions: Array<{ image_id: string; region: [number, number, number, number] }>
 }
 
 export interface VisionOcrResult {
@@ -78,6 +90,8 @@ export interface VisionOcrResult {
   /** Adaptive evidence layer: per-image OCR blocks with bounding boxes. */
   regions?: RegionImage[]
   image_quality?: ImageQualityScore[]
+  /** Missed-text-region detection summary (#9). */
+  image_regions?: ImageRegionsSummary
 }
 
 /**
@@ -120,6 +134,7 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
     processing_time_ms?: number
     regions?: RegionImage[]
     image_quality?: ImageQualityScore[]
+    image_regions?: ImageRegionsSummary
   }
   try {
     data = (await res.json()) as typeof data
@@ -139,6 +154,7 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
     processing_time_ms: data.processing_time_ms,
     regions: Array.isArray(data.regions) ? data.regions : [],
     image_quality: Array.isArray(data.image_quality) ? data.image_quality : [],
+    image_regions: data.image_regions,
   }
 }
 

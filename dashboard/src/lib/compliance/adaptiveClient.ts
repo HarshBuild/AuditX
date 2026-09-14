@@ -25,6 +25,7 @@ export interface AdaptiveClientInput {
   blocksByImage?: BlocksImage[]
   qualityScores?: number[]
   ocrInitialMs?: number
+  missedRegions?: { checked: number; found: number }
 }
 
 export interface AdaptiveClientResult {
@@ -33,10 +34,23 @@ export interface AdaptiveClientResult {
   conflicts: Array<{ field: string; values: string[]; images: number[]; explanation: string }>
   uncertain: string[]
   scanned_regions: number
+  missed_regions: { checked: number; found: number }
   processing: { initial_ocr_ms: number; verification_ms: number; total_ms: number }
 }
 
 const CONFIGURABLE_CHARS = /[0O1IlzZSsGg6B8]/
+
+/**
+ * Labels where a wrong character can change a legal-metrology finding
+ * (codes, serials, quantities, prices, dates, electrical ratings). Per the
+ * spec these get STRICTER verification even when first-pass OCR is ≥95%.
+ */
+export const CRITICAL_FIELDS = new Set([
+  'model', 'serial_number', 'sku', 'lot_no', 'batch', 'tariff_code',
+  'mrp', 'unit_sale_price', 'net_quantity', 'net_qty',
+  'mfg_date', 'best_before', 'expiry_date', 'fssai_license',
+  'power', 'voltage', 'current', 'capacity', 'weight', 'dimensions',
+])
 
 export function hasConfusables(text: string): boolean {
   return text.length >= 2 && CONFIGURABLE_CHARS.test(text)
@@ -80,6 +94,50 @@ function modelBase(conf: string | null | undefined): number {
 }
 
 /**
+ * Trust score — derived ONLY from measured signals. Exported so the targeted
+ * Gemini visual verification can recompute the score after re-checking a
+ * region instead of keeping stale numbers.
+ */
+export function computeTrustFromVerification(
+  verification: Record<string, FieldVerification>,
+  candidateKeys: string[],
+  qualityAvg: number,
+  crossImageAgreementScore: number,
+): { score: number; breakdown: TrustBreakdown } {
+  const verifiedCount = candidateKeys.filter((k) => verification[k]?.verified).length
+  const verificationRate = candidateKeys.length ? (verifiedCount / candidateKeys.length) * 100 : 100
+
+  const ocrConfs = candidateKeys
+    .map((k) => verification[k]?.ocrConfidence)
+    .filter((c): c is number => typeof c === 'number' && c > 0)
+  const ocrConfidence = ocrConfs.length ? (ocrConfs.reduce((a, b) => a + b, 0) / ocrConfs.length) * 100 : candidateKeys.length ? 70 : 90
+
+  const charScores = candidateKeys.map((k) => (verification[k]?.verified ? 100 : verification[k]?.needsVerification ? 40 : 80))
+  const characterVerification = charScores.length ? charScores.reduce((a, b) => a + b, 0) / charScores.length : 95
+
+  const imageQuality = qualityAvg
+
+  const crossImageAgreement = crossImageAgreementScore
+
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(ocrConfidence * 0.25 + characterVerification * 0.25 + imageQuality * 0.15 + crossImageAgreement * 0.2 + verificationRate * 0.15),
+    ),
+  )
+
+  const breakdown: TrustBreakdown = {
+    ocr_confidence: Math.round(ocrConfidence),
+    character_verification: Math.round(characterVerification),
+    image_quality: Math.round(imageQuality),
+    cross_image_agreement: Math.round(crossImageAgreement),
+    verification_rate: Math.round(verificationRate),
+  }
+  return { score, breakdown }
+}
+
+/**
  * Verify fields against the fast-OCR blocks. Returns null when no blocks are
  * available so callers can silently skip adaptive verification.
  */
@@ -89,6 +147,7 @@ export function clientsideVerify(
   blocksByImage: BlocksImage[],
   qualityScores?: number[],
   ocrInitialMs?: number,
+  opts?: { verifyCritical?: boolean; missedRegions?: { checked: number; found: number } },
 ): AdaptiveClientResult | null {
   if (!blocksByImage || blocksByImage.length === 0) return null
   const t0 = Date.now()
@@ -145,7 +204,13 @@ export function clientsideVerify(
     const best = bestByField[key]
     const hasConflict = distinctByImage[key] && new Set(Array.from(distinctByImage[key].values())).size > 1
     const confusable = hasConfusables(value)
-    const needs = modelConf === 'low' || modelConf === 'medium' || uncertainSet.has(key) || (confusable && (!best || best.conf < 0.95))
+    const needs =
+      modelConf === 'low' ||
+      modelConf === 'medium' ||
+      uncertainSet.has(key) ||
+      (confusable && (!best || best.conf < 0.95)) ||
+      // Critical fields get stricter verification even at high confidence (#5)
+      (!!opts?.verifyCritical && CRITICAL_FIELDS.has(key))
 
     if (!needs && best && tierOf(best.conf) === 'high') {
       verification[key] = {
@@ -203,17 +268,6 @@ export function clientsideVerify(
   // Trust score — derived ONLY from measured signals.
   // ---------------------------------------------------------------
   const keys = candidates.map(([k]) => k)
-  const verifiedCount = keys.filter((k) => verification[k]?.verified).length
-  const verificationRate = keys.length ? (verifiedCount / keys.length) * 100 : 100
-
-  const ocrConfs = keys
-    .map((k) => verification[k]?.ocrConfidence)
-    .filter((c): c is number => typeof c === 'number' && c > 0)
-  const ocrConfidence = ocrConfs.length ? (ocrConfs.reduce((a, b) => a + b, 0) / ocrConfs.length) * 100 : 70
-
-  const charScores = keys.map((k) => (verification[k]?.verified ? 100 : verification[k]?.needsVerification ? 40 : 80))
-  const characterVerification = charScores.length ? charScores.reduce((a, b) => a + b, 0) / charScores.length : 95
-
   const imageQuality = qualityScores?.length ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length : 80
 
   const multi = Object.values(distinctByImage)
@@ -223,28 +277,15 @@ export function clientsideVerify(
     crossImageAgreement = (agreeing / multi.length) * 100
   }
 
-  const score = Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(ocrConfidence * 0.25 + characterVerification * 0.25 + imageQuality * 0.15 + crossImageAgreement * 0.2 + verificationRate * 0.15),
-    ),
-  )
-
-  const breakdown: TrustBreakdown = {
-    ocr_confidence: Math.round(ocrConfidence),
-    character_verification: Math.round(characterVerification),
-    image_quality: Math.round(imageQuality),
-    cross_image_agreement: Math.round(crossImageAgreement),
-    verification_rate: Math.round(verificationRate),
-  }
+  const trust = computeTrustFromVerification(verification, keys, imageQuality, crossImageAgreement)
 
   return {
     verification,
-    trust: { score, breakdown },
+    trust,
     conflicts,
     uncertain: Array.from(uncertainSet),
     scanned_regions: 0,
+    missed_regions: opts?.missedRegions ?? { checked: 0, found: 0 },
     processing: { initial_ocr_ms: ocrInitialMs ?? 0, verification_ms: Date.now() - t0, total_ms: Date.now() - t0 + (ocrInitialMs ?? 0) },
   }
 }

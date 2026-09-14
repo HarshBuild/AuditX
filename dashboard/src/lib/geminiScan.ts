@@ -22,7 +22,9 @@ import { COLLECTIONS } from './db'
 import { CONFIG } from './config'
 import { dataUrlToInline, extractJson, geminiApiKey, geminiGenerateContent, type GemPart } from './gemini'
 import type { LocalScanInput } from './localEngine'
-import { clientsideVerify } from './compliance/adaptiveClient'
+import { cropRegionFromOriginal } from './textract/image'
+import { clientsideVerify, computeTrustFromVerification, type AdaptiveClientResult } from './compliance/adaptiveClient'
+import type { FieldVerification } from './types2'
 import type {
   AIIinsight,
   DetectedLabel,
@@ -69,6 +71,109 @@ function detectedFrom(out: ComplianceOutcome): DetectedSummary {
     missing: c.not_detected,
     uncertain: c.uncertain,
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Targeted Gemini visual verification (#6)                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Crop ONLY the uncertain/critical label regions (never the whole image) and
+ * ask Gemini vision to verify whether the visible text matches the OCR
+ * reading — the spec's "verify the evidence, don't blindly replace OCR" rule.
+ * Bounded to a small number of regions to keep API calls minimal. The model
+ * is told to read the characters literally (0/O, 1/I/l, 5/S…) and to say
+ * "unclear" instead of guessing.
+ */
+async function strengthenAdaptiveWithGemini(
+  adaptive: AdaptiveClientResult,
+  fields: Record<string, { value: string | null; confidence?: string | null }>,
+  images: string[],
+): Promise<AdaptiveClientResult> {
+  if (!geminiApiKey()) return adaptive
+
+  const picks: Array<{ key: string; entry: FieldVerification; imgIdx: number; region: [number, number, number, number] }> = []
+  for (const [key, v] of Object.entries(adaptive.verification)) {
+    if (!v.needsVerification) continue
+    const ev = v.evidence.find((e) => e.region && e.source_image >= 0 && images[e.source_image])
+    if (!ev?.region) continue
+    picks.push({ key, entry: v, imgIdx: ev.source_image, region: ev.region })
+    if (picks.length >= 2) break
+  }
+  if (picks.length === 0) return adaptive
+
+  const updated = { ...adaptive.verification }
+  const uncertain = new Set(adaptive.uncertain)
+  let scanned = adaptive.scanned_regions
+
+  await Promise.all(
+    picks.map(async ({ key, entry, imgIdx, region }) => {
+      try {
+        const { url: cropUrl } = await cropRegionFromOriginal(
+          images[imgIdx],
+          { x0: region[0], y0: region[1], x1: region[0] + region[2], y1: region[1] + region[3] },
+          0.06,
+          2,
+        )
+        const candidate = String(fields[key]?.value ?? entry.before ?? '')
+        const prompt = [
+          'You are a label-verification machine. An OCR engine read:',
+          `"${candidate}"`,
+          `(field confidence ${Math.round((entry.ocrConfidence ?? 0) * 100)}%).`,
+          'Read ONLY the text visible in this cropped region. Do not use background knowledge. Do not guess.',
+          'Be careful with confusable characters: 0/O, 1/I/l, 2/Z, 5/S, 6/G, 8/B — pick exactly what is printed.',
+          'Return strict JSON only: {"match": true|false|null, "value": "exact visible text or null", "confidence": 0.0-1.0, "evidence": "visual_match"|"visual_mismatch"|"unclear"}',
+        ].join(' ')
+        const res = await geminiGenerateContent({
+          model: CONFIG.GEMINI_VISION_MODEL,
+          system: 'You are a machine. Output strict JSON only, no commentary.',
+          parts: [{ text: prompt }, dataUrlToInline(cropUrl)],
+          temperature: 0,
+          maxOutputTokens: 256,
+        })
+        const json = res ? extractJson(res) : null
+        scanned += 1
+        if (json && typeof json === 'object' && typeof json.match === 'boolean') {
+          const match = json.match as boolean
+          const readText = typeof json.value === 'string' && json.value.trim() ? String(json.value).trim() : null
+          const ev = { source_image: imgIdx, region, region_text: readText ?? candidate, pass: 'visual' as const, ocr_conf: null, value: candidate }
+          if (match && readText) {
+            updated[key] = {
+              ...entry,
+              verified: true,
+              needsVerification: false,
+              via: 'targeted_re_scan',
+              confidence_score: Math.max(entry.confidence_score, 0.9),
+              ocrConfidence: entry.ocrConfidence,
+              before: entry.before ?? candidate,
+              after: readText,
+              evidence: [...entry.evidence, ev],
+            }
+            uncertain.delete(key)
+          } else {
+            updated[key] = {
+              ...entry,
+              via: 'targeted_re_scan',
+              after: readText ?? null,
+              evidence: [...entry.evidence, ev],
+            }
+            uncertain.add(key)
+          }
+        }
+      } catch {
+        // keep the honest needs_verification flag (evidence-first)
+      }
+    }),
+  )
+
+  const keys = Object.keys(updated)
+  const trust = computeTrustFromVerification(
+    updated,
+    keys,
+    adaptive.trust.breakdown.image_quality,
+    adaptive.trust.breakdown.cross_image_agreement,
+  )
+  return { ...adaptive, verification: updated, trust, uncertain: Array.from(uncertain), scanned_regions: scanned }
 }
 
 /* ------------------------------------------------------------------ */
@@ -161,13 +266,17 @@ export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Prom
   // Adaptive evidence layer — verify Gemini values against the fast-OCR
   // blocks (honest flags + cross-image agreement + trust score). Best-effort:
   // runs only when the fast OCR pass forwarded per-image blocks.
-  const adaptive = clientsideVerify(
+  const adaptiveBase = clientsideVerify(
     parsed.fields as unknown as Record<string, { value: string | null; confidence?: string | null }>,
     [...parsed.uncertain],
     input.ocrBlocks ?? [],
     input.qualityScores,
     input.ocrInitialMs,
+    { verifyCritical: true, missedRegions: input.ocrMissedRegions },
   )
+  // Targeted Gemini visual verification: crop ONLY the uncertain/critical
+  // regions and confirm the visible text (spec #6) — bounded to ≤2 regions.
+  const adaptive = adaptiveBase ? await strengthenAdaptiveWithGemini(adaptiveBase, parsed.fields as unknown as Record<string, { value: string | null; confidence?: string | null }>, input.images ?? []) : null
   if (adaptive) {
     for (const key of adaptive.uncertain) if (!parsed.uncertain.includes(key)) parsed.uncertain.push(key)
   }
@@ -291,8 +400,9 @@ labels: parsed.labels.map((l) => ({ ...l, verdict: 'VERIFIED' as DetectedLabel['
       verification: adaptive?.verification ?? null,
       trust_score: adaptive?.trust.score ?? null,
       trust_breakdown: adaptive?.trust.breakdown ?? null,
-      processing: adaptive?.processing ?? null,
+processing: adaptive?.processing ?? null,
       uncertain_regions: adaptive?.scanned_regions ?? 0,
+      missed_regions: adaptive?.missed_regions ?? input.ocrMissedRegions ?? null,
       uncertain: parsed.uncertain,
       detected: detectedFrom(outcome),
       counts,
@@ -347,6 +457,7 @@ labels: parsed.labels.map((l) => ({ ...l, verdict: 'VERIFIED' as DetectedLabel['
     trust_breakdown: adaptive?.trust.breakdown,
     processing: adaptive?.processing,
     uncertain_regions: adaptive?.scanned_regions ?? 0,
+    missed_regions: adaptive?.missed_regions ?? input.ocrMissedRegions ?? null,
     detected: detectedFrom(outcome),
     counts,
     context,

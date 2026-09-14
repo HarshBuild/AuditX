@@ -86,6 +86,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       // Adaptive evidence layer: per-block bounding boxes + per-image quality.
       regions: Array.isArray(data.blocks_detail) ? data.blocks_detail : [],
       image_quality: Array.isArray(data.image_quality) ? data.image_quality : [],
+      // Missed-text-region detection (#9): candidate gaps auto-re-OCRed.
+      image_regions: data.image_regions,
       // Full deterministic extraction so the frontend can decide whether the
       // fast path already produced a valid result (skip Gemini when it did).
       fields: data.fields,

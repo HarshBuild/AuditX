@@ -262,6 +262,8 @@ export interface ScanRow {
   trust_breakdown?: TrustBreakdown
   processing?: { initial_ocr_ms: number; verification_ms: number; total_ms: number }
   uncertain_regions?: number
+  /** Missed-text-region detection (#9): candidate gaps auto-OCRed. */
+  missed_regions?: { checked: number; found: number } | null
   manual_result: ManualResult | null
   notes: string
   latitude: number | null

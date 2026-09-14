@@ -845,7 +845,11 @@ function DeclarationsList({
                     </p>
                     {row.fv.evidence.map((ev, j) => (
                       <p key={j} className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                        {ev.pass === 'targeted_re_scan' ? 'Re-scanned region' : 'OCR read'} · Image {(ev.source_image ?? 0) + 1}
+                        {ev.pass === 'targeted_re_scan'
+                          ? 'Re-scanned region'
+                          : ev.pass === 'visual'
+                            ? 'Visual check'
+                            : 'OCR read'} · Image {(ev.source_image ?? 0) + 1}
                         {ev.ocr_conf != null ? ` · OCR ${Math.round(ev.ocr_conf * 100)}%` : ''} — “{displayText(ev.region_text, 60)}”
                       </p>
                     ))}
@@ -981,6 +985,11 @@ function TrustScoreCard({ scan }: { scan: ScanRow }) {
           {scan.uncertain_regions != null && scan.uncertain_regions > 0 && (
             <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
               <ScanSearch className="h-3.5 w-3.5" /> {scan.uncertain_regions} region{scan.uncertain_regions === 1 ? '' : 's'} were re-scanned during verification.
+            </p>
+          )}
+          {scan.missed_regions && scan.missed_regions.checked > 0 && (
+            <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400">
+              <ScanSearch className="h-3.5 w-3.5" /> {scan.missed_regions.checked} gap{scan.missed_regions.checked === 1 ? '' : 's'} between text rows were auto-checked; {scan.missed_regions.found} yielded extra text.
             </p>
           )}
         </div>

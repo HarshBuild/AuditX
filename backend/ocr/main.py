@@ -60,6 +60,9 @@ _OCR_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 LOW_CONFIDENCE_THRESHOLD = 0.65
 MIN_MEAN_CONFIDENCE_FOR_FAST_PATH = 0.75
 
+# Missed-text-region detection (#9): how many candidate gaps to re-OCR per image
+MAX_MISSED_REGIONS_PER_IMAGE = 3
+
 
 def _image_hash(img: np.ndarray) -> str:
     """Fast perceptual hash for caching."""
@@ -157,7 +160,7 @@ def _run_enhanced_ocr_parallel(images: List[np.ndarray], lang: str) -> List[Tupl
     return [(lines, conf) for _, lines, conf in results]
 
 
-def _assemble_results(all_lines: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
+def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_checked: Optional[List[int]] = None) -> Dict[str, Any]:
     """Assemble final result from OCR lines."""
     from correction import collapse_whitespace, join_ocr
     from fields import extract_all
@@ -167,6 +170,8 @@ def _assemble_results(all_lines: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
     blocks_detail = []
     combined = []
     for i, lines in enumerate(all_lines):
+        if not lines:
+            continue
         lines = collapse_whitespace(lines)
         text = join_ocr(lines)
         conf = round(float(np.mean([l["confidence"] for l in lines]) if lines else 0), 3)
@@ -184,6 +189,9 @@ def _assemble_results(all_lines: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
                 "enhanced": bool(ln.get("enhanced", False)),
             })
         if per["blocks"]:
+            per["text_regions_detected"] = len(per["blocks"])
+            per["lines_extracted"] = len(per["blocks"])
+            per["missed_regions_checked"] = int(missed_checked[i]) if missed_checked else 0
             blocks_detail.append(per)
         combined.append(text)
     ocr_text = " ".join(c for c in combined if c).strip()
@@ -200,6 +208,71 @@ def _assemble_results(all_lines: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
         "rules": rules,
         "result": result,
     }
+
+
+def _detect_missed_regions(rects: List[List[int]]) -> List[List[int]]:
+    """Heuristic: rows of detected text boxes often leave internal vertical gaps
+    where small/unreadable text was missed. Returns candidate [x,y,w,h] regions
+    for the largest in-band gaps. Pure geometry — never fabricates text."""
+    if len(rects) < 2:
+        return []
+    area_x0 = int(min(r[0] for r in rects))
+    area_x1 = int(max(r[0] + r[2] for r in rects))
+    area_y0 = int(min(r[1] for r in rects))
+    area_y1 = int(max(r[1] + r[3] for r in rects))
+    if area_x1 - area_x0 < 40 or area_y1 - area_y0 < 24:
+        return []
+    med_h = float(np.median([r[3] for r in rects]))
+    # Merge vertically-overlapping rows into horizontal bands
+    rows = sorted(rects, key=lambda r: r[1])
+    bands: List[List[int]] = []
+    for r in rows:
+        top, bot = r[1], r[1] + r[3]
+        if bands and top <= bands[-1][1] + max(6, med_h * 0.35):
+            bands[-1][1] = max(bands[-1][1], bot)
+        else:
+            bands.append([top, bot])
+    bands.sort(key=lambda b: b[0])
+    candidates: List[List[int]] = []
+    for a, b in zip(bands, bands[1:]):
+        gap_top, gap_bot = a[1], b[0]
+        gap_h = gap_bot - gap_top
+        # A real missed row is usually at least ~half a text-line tall
+        if gap_h < max(8, med_h * 0.55):
+            continue
+        candidates.append([area_x0, gap_top, area_x1 - area_x0, gap_h])
+        if len(candidates) >= MAX_MISSED_REGIONS_PER_IMAGE:
+            break
+    return candidates
+
+
+def _run_missed_region_ocr(img: np.ndarray, lines: List[Dict[str, Any]], lang: str) -> Tuple[List[Dict[str, Any]], List[List[int]], int]:
+    """Auto-OCR likely-missed text regions. Returns (extra_lines, found_rects, checked)."""
+    rects = [r for l in lines if (r := _rect_from_box(l.get("box"))) and l.get("text")]
+    candidates = _detect_missed_regions(rects)
+    extra_lines: List[Dict[str, Any]] = []
+    found_rects: List[List[int]] = []
+    for (x, y, rw, rh) in candidates:
+        crop = preprocess.crop_region(img, (x, y, rw, rh))
+        target = preprocess.upscale_for_ocr(crop)
+        if preprocess.needs_enhancement(crop):
+            target = preprocess.enhance(target)
+        found = [l for l in ocr_mod.read_text(target, lang) if l.get("text")]
+        if not found:
+            continue
+        seen = {l["text"].strip() for l in lines}
+        picked = [l for l in found if l["text"].strip() not in seen]
+        if not picked:
+            continue
+        best = max(picked, key=lambda l: l["confidence"])
+        best = dict(best)
+        best["box"] = [[float(x), float(y)], [float(x + rw), float(y)], [float(x + rw), float(y + rh)], [float(x), float(y + rh)]]
+        best["enhanced"] = True
+        best["missed_region"] = True
+        extra_lines.append(best)
+        seen.add(best["text"].strip())
+        found_rects.append([int(x), int(y), int(rw), int(rh)])
+    return extra_lines, found_rects, len(candidates)
 
 
 @app.get("/health")
@@ -329,14 +402,47 @@ async def ocr_endpoint(request: Request) -> Dict[str, Any]:
             if len(_OCR_CACHE) > _CACHE_MAX_SIZE:
                 _OCR_CACHE.pop(next(iter(_OCR_CACHE)))
 
-    # Filter out None entries
-    final_lines = [lines for lines in all_lines if lines is not None]
-    
-    result = _assemble_results(final_lines)
+    # ------------------------------------------------------------------
+    # Missed-text-region detection + auto re-OCR (#9).
+    # After the main OCR pass, gaps between detected text rows are probed;
+    # ONLY those candidate regions get a second, targeted read. The full
+    # image is never re-scanned and results are merged back into the same
+    # image's block list so field extraction sees the recovered text.
+    # ------------------------------------------------------------------
+    missed_checked = [0] * len(all_lines)
+    missed_summary = {
+        "text_regions_detected": 0,
+        "lines_extracted": 0,
+        "missed_regions_checked": 0,
+        "missed_found": 0,
+        "missed_regions": [],
+    }
+    for i, img in enumerate(images):
+        if not all_lines[i]:
+            continue
+        missed_summary["text_regions_detected"] += len(all_lines[i])
+        extra_lines, found_rects, checked = _run_missed_region_ocr(img, all_lines[i], lang)
+        missed_checked[i] = checked
+        if extra_lines:
+            all_lines[i] = all_lines[i] + extra_lines
+            all_confidences[i] = float(np.mean([l["confidence"] for l in all_lines[i]]))
+            img_hash = _image_hash(images[i])
+            _OCR_CACHE[img_hash] = {"lines": all_lines[i], "confidence": all_confidences[i]}
+            if len(_OCR_CACHE) > _CACHE_MAX_SIZE:
+                _OCR_CACHE.pop(next(iter(_OCR_CACHE)))
+        missed_summary["lines_extracted"] += len(all_lines[i])
+        missed_summary["missed_regions_checked"] += checked
+        missed_summary["missed_found"] += len(found_rects)
+        for r in found_rects:
+            missed_summary["missed_regions"].append({"image_id": f"image_{i+1}", "region": r})
+
+    # includes None slots; _assemble_results aligns per-image stats by index
+    result = _assemble_results(all_lines, missed_checked)
     result["processing_time_ms"] = round((time.time() - start_time) * 1000, 1)
     result["cache_hits"] = len(cached_results)
     result["reocr_count"] = len(reocr_needed)
     result["image_quality"] = quality_info
+    result["image_regions"] = missed_summary
     return result
 
 

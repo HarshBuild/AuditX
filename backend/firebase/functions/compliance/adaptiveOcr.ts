@@ -70,6 +70,7 @@ export interface AdaptiveVerification {
   conflicts: Array<{ field: string; values: string[]; images: number[]; explanation: string }>
   uncertain: string[]
   scanned_regions: number
+  missed_regions: { checked: number; found: number }
   processing: { initial_ocr_ms: number; verification_ms: number; total_ms: number }
 }
 
@@ -82,9 +83,22 @@ export interface AdaptiveInput {
   lang: string
   qualityScores?: number[]
   ocrInitialMs?: number
+  missedRegions?: { checked: number; found: number }
 }
 
 export const CONFIGURABLE_CHARS = /[0O1IlzZSsGg6B8]/
+
+/**
+ * Labels where a wrong character can change a legal-metrology finding
+ * (codes, serials, quantities, prices, dates, electrical ratings). Per the
+ * spec these get STRICTER verification even when first-pass OCR is ≥95%.
+ */
+export const CRITICAL_FIELDS = new Set([
+  'model', 'serial_number', 'sku', 'lot_no', 'batch', 'tariff_code',
+  'mrp', 'unit_sale_price', 'net_quantity', 'net_qty',
+  'mfg_date', 'best_before', 'expiry_date', 'fssai_license',
+  'power', 'voltage', 'current', 'capacity', 'weight', 'dimensions',
+])
 
 export function pythonOcrUrl(): string {
   return process.env.PYTHON_OCR_URL || 'http://localhost:8100'
@@ -137,7 +151,12 @@ function matches(value: string, blockText: string): boolean {
 export async function fetchOcrEvidence(
   images: string[],
   lang: string,
-): Promise<{ blocksByImage: RegionBlock[][]; qualityScores: number[]; ms: number }> {
+): Promise<{
+  blocksByImage: RegionBlock[][]
+  qualityScores: number[]
+  ms: number
+  missedRegions: { checked: number; found: number }
+}> {
   const t0 = Date.now()
   const res = await fetch(`${pythonOcrUrl()}/ocr`, {
     method: 'POST',
@@ -161,7 +180,11 @@ export async function fetchOcrEvidence(
   const qualityScores: number[] = Array.isArray(data.image_quality)
     ? data.image_quality.map((q: any) => Number(q?.score ?? 80))
     : []
-  return { blocksByImage, qualityScores, ms: Date.now() - t0 }
+  const missedRegions = {
+    checked: Number(data.image_regions?.missed_regions_checked ?? 0),
+    found: Number(data.image_regions?.missed_found ?? 0),
+  }
+  return { blocksByImage, qualityScores, ms: Date.now() - t0, missedRegions }
 }
 
 export interface VerifyRegionResult {
@@ -246,6 +269,8 @@ export async function runAdaptiveVerification(input: AdaptiveInput): Promise<Ada
     if (modelConf === 'medium') return true
     if (input.uncertain?.includes(key)) return true
     if (hasConfusables(value) && best && best.conf < 0.95) return true
+    // Critical fields get stricter verification EVEN at high confidence (#5)
+    if (CRITICAL_FIELDS.has(key)) return true
     if (!best) return modelConf === 'low' || input.uncertain?.includes(key) || false
     return false
   }
@@ -456,6 +481,10 @@ export async function runAdaptiveVerification(input: AdaptiveInput): Promise<Ada
     conflicts,
     uncertain: Array.from(uncertain),
     scanned_regions: scannedRegions,
+    missed_regions: {
+      checked: input.missedRegions?.checked ?? 0,
+      found: input.missedRegions?.found ?? 0,
+    },
     processing: {
       initial_ocr_ms: input.ocrInitialMs ?? 0,
       verification_ms: verificationMs,

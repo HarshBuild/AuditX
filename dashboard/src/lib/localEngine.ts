@@ -46,6 +46,7 @@ export interface LocalScanInput {
   ocrBlocks?: BlocksImage[] // fast-OCR blocks with bounding boxes (adaptive evidence)
   qualityScores?: number[]
   ocrInitialMs?: number
+  ocrMissedRegions?: { checked: number; found: number }
 }
 
 const TESS_LANGS: Record<string, string> = {
@@ -225,6 +226,7 @@ export async function runLocalScan(input: LocalScanInput, perf?: PerfRun): Promi
     input.ocrBlocks ?? [],
     input.qualityScores,
     input.ocrInitialMs,
+    { missedRegions: input.ocrMissedRegions },
   )
   if (adaptive) {
     for (const key of adaptive.uncertain) if (!uncertain.includes(key)) uncertain.push(key)
@@ -286,6 +288,7 @@ export async function runLocalScan(input: LocalScanInput, perf?: PerfRun): Promi
       trust_breakdown: adaptive?.trust.breakdown ?? null,
       processing: adaptive?.processing ?? null,
       uncertain_regions: adaptive?.scanned_regions ?? 0,
+      missed_regions: adaptive?.missed_regions ?? input.ocrMissedRegions ?? null,
       evidence_chain: summary.evidence_chain.map((e) => ({
         rule_id: e.rule_id,
         requirement: e.requirement,
@@ -345,6 +348,7 @@ export async function runLocalScan(input: LocalScanInput, perf?: PerfRun): Promi
     trust_breakdown: adaptive?.trust.breakdown,
     processing: adaptive?.processing,
     uncertain_regions: adaptive?.scanned_regions ?? 0,
+    missed_regions: adaptive?.missed_regions ?? input.ocrMissedRegions ?? null,
     evidence_chain: summary.evidence_chain.map((e) => ({
       rule_id: e.rule_id,
       requirement: e.requirement,
