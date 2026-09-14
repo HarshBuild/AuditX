@@ -131,7 +131,12 @@ function scanSearchable(s: ScanRow): string {
   return [s.product_name, s.brand, s.manufacturer, s.category, s.barcode].join(' | ')
 }
 
-const scanRisk = (s: ScanRow) => s.risk_score ?? 100 - s.overall_score
+const scanRisk = (s: ScanRow) => {
+  const direct = Number(s.risk_score)
+  const fallback = 100 - Number(s.overall_score)
+  const risk = Number.isFinite(direct) && direct >= 0 ? direct : Number.isFinite(fallback) ? fallback : 100
+  return Math.max(0, Math.min(100, risk))
+}
 
 export async function listScans(
   opts: ListOptions & { status?: string; risk?: string; category?: string },

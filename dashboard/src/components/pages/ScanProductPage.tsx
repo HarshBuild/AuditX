@@ -269,10 +269,15 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
       perf.segment('start', 'result', 'analyze-total')
       perf.summary()
       // Best-effort photo persistence (Storage may not be provisioned yet).
-      void attachScanPhotos(scan.scan.id, picked.map((p) => p.file)).then((n) => {
-        if (n.length > 0 && scan.scan.image_urls) {
+      // Capture the scan id up-front so a newer result that lands while this
+      // upload is still in flight is never overwritten with old photo URLs.
+      const uploadedScanId = scan.scan.id
+      void attachScanPhotos(uploadedScanId, picked.map((p) => p.file)).then((n) => {
+        if (n.length > 0) {
           setResult((prev) =>
-            prev ? { ...prev, scan: { ...prev.scan, image_urls: n, image_url: n[0] ?? '' } } : prev,
+            prev && prev.scan.id === uploadedScanId
+              ? { ...prev, scan: { ...prev.scan, image_urls: n, image_url: n[0] ?? '' } }
+              : prev,
           )
         }
       })
@@ -320,6 +325,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
     setManufacturer('')
     setBarcode('')
     setProductCatalogueHit(null)
+    setExternalProduct(null)
   }
 
   return (
@@ -722,6 +728,12 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                 <p className="text-sm text-slate-400">
                   Analysis is temporarily unavailable — your scan is safely queued and an inspector will review the label.
                 </p>
+                <div className="mt-2 flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void analyze()} disabled={busy}>
+                    Try again
+                  </Button>
+                  <Button variant="outline" icon={<Camera className="h-4 w-4" />} onClick={reset}>Scan another label</Button>
+                </div>
               </div>
             </AnalyticsCard>
           ) : (

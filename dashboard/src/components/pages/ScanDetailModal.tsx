@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   BrainCircuit,
@@ -39,18 +39,25 @@ export default function ScanDetailModal({
   reports,
   onClose,
   onRefresh,
+  canReview = true,
 }: {
   scan: ScanRow | null
   violations: ViolationRow[]
   reports: ReportRow[]
   onClose: () => void
   onRefresh: () => void
+  canReview?: boolean
 }) {
   const { toast } = useToast()
   const [status, setStatus] = useState(scan?.status ?? 'analyzed')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState(scan?.notes ?? '')
   const [manualOpen, setManualOpen] = useState(false)
+
+  useEffect(() => {
+    setStatus(scan?.status ?? 'analyzed')
+    setNote(scan?.notes ?? '')
+  }, [scan])
 
   if (!scan) return null
 
@@ -92,6 +99,7 @@ export default function ScanDetailModal({
         title={scan.product_name?.trim() ? displayProductName(scan.product_name) : 'Untitled scan'}
         description={`${displayText(scan.brand || scan.manufacturer) || 'Unknown'} · scanned ${formatDateTime(scan.created_at)}`}
         footer={
+          canReview ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
             <select
               value={status}
@@ -112,6 +120,7 @@ export default function ScanDetailModal({
               Manual Review
             </Button>
           </div>
+          ) : undefined
         }
       >
         {/* Risk profile */}
@@ -247,6 +256,7 @@ export default function ScanDetailModal({
         )}
 
         {/* Admin note */}
+        {canReview && (
         <section className="mt-4">
           <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Administrative notes</label>
           <textarea
@@ -260,6 +270,7 @@ export default function ScanDetailModal({
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Status changes & reviews are logged to the audit trail.
           </p>
         </section>
+        )}
       </Modal>
 
       <ManualReviewModal

@@ -13,6 +13,7 @@
 
 import { auth } from './firebase'
 import { CONFIG } from './config'
+import { fetchWithTimeout } from './net'
 
 const MAX_IMAGES = 6
 
@@ -110,14 +111,14 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
 
   let res: Response
   try {
-    res = await fetch(`${base}/api/ocr`, {
+    res = await fetchWithTimeout(`${base}/api/ocr`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ images: images.slice(0, MAX_IMAGES), language: lang, fast: true }),
-    })
+    }, 45000)
   } catch {
     return null
   }

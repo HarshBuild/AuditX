@@ -45,7 +45,13 @@ export default function UserDashboardPage() {
 
   const [distribution, setDistribution] = useState<RiskDistribution>({ Low: 0, Medium: 0, High: 0, Critical: 0 })
   useEffect(() => {
-    void scanRiskDistribution(scans).then(setDistribution)
+    let active = true
+    void scanRiskDistribution(scans).then((d) => {
+      if (active) setDistribution(d)
+    })
+    return () => {
+      active = false
+    }
   }, [scans])
 
   const openScans = scans.filter((s) => s.status === 'flagged' || s.status === 'manual_review' || s.status === 'pending_review')

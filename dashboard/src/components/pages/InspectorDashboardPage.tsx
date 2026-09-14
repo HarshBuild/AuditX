@@ -31,23 +31,22 @@ export default function InspectorDashboardPage() {
       setError(null)
       try {
         const uid = profile?.uid ?? ''
-        const [totalScans, myScans, vulnPaged, riskDist] = await Promise.all([
+        // Fetch the user's scans once and reuse the same list for the count,
+        // the risk distribution and the recent list — no redundant round-trips.
+        const [totalScans, userScans, vulnPaged] = await Promise.all([
           countScans(),
-          fetchScansForUser(uid, 500).then((s) => s.length),
+          fetchScansForUser(uid, 500),
           listViolations({ page: 1, pageSize: 1000 }),
-          fetchScansForUser(uid, 200).then(scanRiskDistribution),
         ])
-        if (cancelled) return
-        const scans = await fetchScansForUser(uid, 10)
         if (cancelled) return
         setStats({
           totalScans,
-          myScans,
+          myScans: userScans.length,
           totalViolations: vulnPaged.count,
           unreviewed: vulnPaged.data.filter((v) => v.status === 'Detected').length,
         })
-        setRisk(riskDist)
-        setRecentScans(scans.map((s) => ({ id: s.id, product_name: s.product_name, created_at: s.created_at, overall_score: s.overall_score })))
+        setRisk(await scanRiskDistribution(userScans))
+        setRecentScans(userScans.slice(0, 10).map((s) => ({ id: s.id, product_name: s.product_name, created_at: s.created_at, overall_score: s.overall_score })))
       } catch (e) {
         if (!cancelled) setError((e as Error).message)
       } finally {

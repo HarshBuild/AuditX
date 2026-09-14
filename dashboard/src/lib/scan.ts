@@ -236,6 +236,7 @@ interface ScanAnalysisRequest extends ScanAnalysisMeta {
 export interface RawAnalysis {
   product_name?: string
   brand?: string
+  manufacturer?: string
   category?: string
   verdict?: string
   summary?: string
@@ -284,7 +285,7 @@ function buildScanRow(scanId: string, out: ScanAnalysisOutput, lang: string, met
     engine,
     product_name: out.result.product_name ?? meta.product_name ?? '',
     brand: out.result.brand ?? '',
-    manufacturer: meta.manufacturer ?? out.result.brand ?? '',
+    manufacturer: out.result.manufacturer ?? meta.manufacturer ?? out.result.brand ?? '',
     category: typeof out.result.category === 'string' ? out.result.category : 'General',
     barcode: meta.barcode ?? '',
     overall_score: score,
@@ -338,7 +339,8 @@ export async function attachScanPhotos(scanId: string, files: File[]): Promise<s
     await perf.timed('db-save-photo-urls', () => updateDoc(doc(db, COLLECTIONS.SCANS, scanId), patch))
     perf.summary()
     return urls
-  } catch {
+  } catch (err) {
+    console.error('attachScanPhotos failed', err)
     return []
   }
 }
@@ -718,6 +720,17 @@ export async function runScanAnalysis(
         location_name: '',
         language: input.lang ?? 'en',
         engine: 'queued',
+        ocr_blocks: [],
+        extractions: undefined,
+        extraction_fields: {},
+        detected: undefined,
+        uncertain: [],
+        verification: {},
+        trust_score: 0,
+        trust_breakdown: {} as TrustBreakdown,
+        processing: { initial_ocr_ms: 0, verification_ms: 0, total_ms: 0 },
+        uncertain_regions: 0,
+        missed_regions: null,
       }
       saveLocalScan(pending)
       return { scan: pending, pending: true }

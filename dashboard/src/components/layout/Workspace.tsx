@@ -44,7 +44,7 @@ export default function Workspace() {
     }
   }, [profile?.prefs])
 
-  const realtimeNotifications = useNotifications()
+  const realtimeNotifications = useNotifications({ enabled: profile?.prefs?.notifications !== false })
 
   const markOne = useCallback((id: string) => {
     realtimeNotifications.markOne(id)

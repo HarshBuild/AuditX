@@ -10,6 +10,24 @@ html.dark {
   color-scheme: dark;
 }
 
+/* Content-density preference — compact mode tightens spacing app-wide.
+   The [data-density] attribute is set on <html> from Settings → prefs. */
+html[data-density='compact'] main {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+html[data-density='compact'] main > * + * {
+  margin-top: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  html[data-density='compact'] main {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
 body {
   @apply antialiased text-ink-text bg-surface-bg dark:text-navy-100 dark:bg-navy-950;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans Devanagari', sans-serif;

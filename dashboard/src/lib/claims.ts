@@ -14,6 +14,7 @@
 
 import { auth } from './firebase'
 import { CONFIG } from './config'
+import { fetchWithTimeout } from './net'
 
 export interface SyncClaimsInput {
   uid: string
@@ -31,7 +32,7 @@ export async function syncUserClaims(input: SyncClaimsInput): Promise<void> {
   if (!user) throw new Error('Not signed in — claims cannot be synced')
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
   const token = await user.getIdToken(true)
-  const res = await fetch(`${base}/api/set-claims`, {
+  const res = await fetchWithTimeout(`${base}/api/set-claims`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

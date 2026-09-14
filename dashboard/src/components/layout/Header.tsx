@@ -86,11 +86,27 @@ export default function Header({
   const { toast } = useToast()
   const [logoutOpen, setLogoutOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const navTimer = useRef<number | null>(null)
   const unread = notifications.filter((n) => n.unread).length
 
   const title = pageTitle(path)
   const role: Role = profile?.role ?? 'user'
   const recPath = recordsPath(role)
+
+  useEffect(() => {
+    return () => {
+      if (navTimer.current) window.clearTimeout(navTimer.current)
+    }
+  }, [])
+
+  /** Update the search field instantly, but debounce the URL navigation so
+   * typing doesn't spam history entries or re-trigger list loads per key. */
+  const onSearchChange = (v: string) => {
+    onGlobalQuery(v)
+    if (navTimer.current) window.clearTimeout(navTimer.current)
+    const target = `${recPath}${v.trim() ? `?q=${encodeURIComponent(v.trim())}` : ''}`
+    navTimer.current = window.setTimeout(() => onNavigate(target), 350)
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -137,11 +153,7 @@ export default function Header({
             ref={searchRef}
             type="search"
             value={globalQuery}
-            onChange={(e) => {
-              const v = e.target.value
-              onGlobalQuery(v)
-              onNavigate(`${recPath}${v.trim() ? `?q=${encodeURIComponent(v.trim())}` : ''}`)
-            }}
+            onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search records…"
             aria-label="Global search"
             className="h-10 w-full rounded-field border border-line bg-surface-secondary pl-9 pr-12 text-sm text-ink-text placeholder:text-ink-text-faint shadow-sm transition-all focus:border-transparent focus:bg-white focus:shadow-glow-sm focus:ring-2 focus:ring-brand-500 dark:border-white/10 dark:bg-navy-900/70 dark:text-navy-100 dark:placeholder:text-navy-400 dark:focus:bg-navy-900"

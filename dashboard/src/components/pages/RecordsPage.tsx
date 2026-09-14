@@ -24,7 +24,7 @@ function verdictTone(s: ScanRow): 'emerald' | 'amber' | 'rose' | 'cyan' {
 }
 
 export default function RecordsPage() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { toast } = useToast()
@@ -228,6 +228,7 @@ export default function RecordsPage() {
         reports={reports}
         onClose={() => setSelected(null)}
         onRefresh={() => void load()}
+        canReview={['admin', 'super_admin', 'inspector'].includes(String(profile?.role ?? ''))}
       />
     </div>
   )

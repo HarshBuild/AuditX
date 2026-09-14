@@ -5,19 +5,19 @@ import { cn } from '../../utils/format'
 
 const faqs = [
   {
-    q: 'How do I add a new compliance record?',
-    a: 'Click the "+ Add New Record" button in the dashboard or Records page. Fill in the product details, category, net quantity, MRP and inspection score, then save. The record appears instantly and all KPI cards update.',
+    q: 'How do I scan a product label?',
+    a: 'Open the "Scan Product" page, then add up to 6 photos of the label (front, back and sides) — drag & drop or tap to upload. You can optionally enter the price / net quantity details, barcode or manufacturer. Tap "Analyze label" and the report opens with the compliance score, rule-by-rule checks and evidence.',
   },
   {
     q: 'How does the AI label scan work?',
-    a: 'The Gemini-powered scanner reads a product label image, extracts declarations, and scores them against 10 legal metrology rules. Paste your Gemini API key in the vanilla app’s settings to enable it.',
+    a: 'Each photo is sharpened and read field-by-field across every image, then checked against legal metrology rules. The scanner tries the fastest OCR path first and falls back through the AI engine to a free on-device OCR engine when the server is unreachable, so a scan always completes. High-accuracy Gemini reading can be enabled with your own API key in Settings.',
   },
   {
-    q: 'Can I export my records?',
-    a: 'Yes. Use the Export button in the Records toolbar to download the currently filtered set as a CSV or JSON file. Individual records can also be exported from their detail view.',
+    q: 'Can I export my inspection report?',
+    a: 'Yes. The inspection report has a Download button that exports a formatted PDF, plus Copy and Share options. Report exports are also available from your scan history.',
   },
   {
-    q: 'How do I connect this to my Firebase backend?',
+    q: 'How is my data stored and secured?',
     a: 'All data (scans, violations, reports, users, products) lives in Firestore with role-based security rules. Every write is authorized by the Firebase security rules — the dashboard only pre-checks roles for a better UX.',
   },
   {

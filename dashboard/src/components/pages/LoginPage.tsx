@@ -49,7 +49,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (googleBusy) return
+    if (busy || googleBusy) return
     setError('')
     if (!EMAIL_RE.test(email)) {
       setError('Please enter a valid email address.')

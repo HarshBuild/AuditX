@@ -52,6 +52,14 @@ export default function AdminScansPage() {
     void load()
   }, [load])
 
+  // The header's global search writes ?q= into the URL. Sync it into the local
+  // query state so URLs like /admin/scans?q=... actually filter the table.
+  useEffect(() => {
+    const q = searchParams.get('q') ?? ''
+    setQuery((prev) => (prev === q ? prev : q))
+    setPage(1)
+  }, [searchParams])
+
   const openDetail = async (s: ScanRow) => {
     setSelected(s)
     try {

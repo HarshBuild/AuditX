@@ -36,7 +36,13 @@ export default function EvidencePage() {
       setError(null)
       try {
         const uid = auth.currentUser?.uid
-        if (!uid) return
+        if (!uid) {
+          if (!cancelled) {
+            setItems([])
+            setError('Sign in to view the evidence gallery.')
+          }
+          return
+        }
         const q = query(
           collection(db, 'scans'),
           orderBy('created_at', 'desc'),

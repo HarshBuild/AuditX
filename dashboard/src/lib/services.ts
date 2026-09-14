@@ -27,13 +27,14 @@ import { auth, db } from './firebase'
 import { COLLECTIONS } from './db'
 import { syncUserClaims } from './claims'
 import { CONFIG } from './config'
+import { fetchWithTimeout } from './net'
 import type { ManualResult, ScanRow, Severity } from './types2'
 
 /* ------------------------------------------------------------------ */
 /* Pre-flight authorization (UX only — rules are the boundary)         */
 /* ------------------------------------------------------------------ */
 
-async function requireStaff(): Promise<{ uid: string; name: string }> {
+async function requireStaff(): Promise<{ uid: string; name: string; role: string }> {
   const user = auth.currentUser
   if (!user) throw new Error('Not authenticated')
   const snap = await getDoc(doc(db, COLLECTIONS.USERS, user.uid))
@@ -46,18 +47,16 @@ async function requireStaff(): Promise<{ uid: string; name: string }> {
   if (status !== 'active') {
     throw new Error('Forbidden: account is not active')
   }
-  return { uid: user.uid, name: String(snap.data()?.full_name ?? user.displayName ?? '') }
+  return { uid: user.uid, name: String(snap.data()?.full_name ?? user.displayName ?? ''), role }
 }
 
 /** Managers only (admin + super_admin, incl. legacy admin docs) — for user/product/rule administration. */
 async function requireManager(): Promise<{ uid: string; name: string }> {
   const actor = await requireStaff()
-  const snap = await getDoc(doc(db, COLLECTIONS.USERS, actor.uid))
-  const role = String(snap.data()?.role ?? 'user')
-  if (role !== 'admin' && role !== 'super_admin') {
+  if (actor.role !== 'admin' && actor.role !== 'super_admin') {
     throw new Error('Forbidden: manager access required')
   }
-  return actor
+  return { uid: actor.uid, name: actor.name }
 }
 
 async function logActivity(actor: { uid: string; name: string }, action: string, targetType: string, targetId: string, details: Record<string, unknown>) {
@@ -131,7 +130,7 @@ export async function createScan(
     language: input.language ?? '',
     created_at: new Date().toISOString(),
   })
-  await notify(
+  void notify(
     uid,
     'scan',
     'Analysis completed',
@@ -344,7 +343,7 @@ export async function approveAdminRequest(targetUserId: string, approve: boolean
       reviewed_at: new Date().toISOString(),
     })
   }
-  await notify(
+  void notify(
     targetUserId,
     'account',
     approve ? 'Admin access approved' : 'Admin request rejected',
@@ -374,7 +373,7 @@ export async function setAdminStatus(targetUserId: string, status: 'active' | 'b
     status,
     updated_at: new Date().toISOString(),
   })
-  await notify(
+  void notify(
     targetUserId,
     'account',
     status === 'blocked' ? 'Account blocked' : status === 'active' ? 'Account activated' : 'Account pending',
@@ -404,7 +403,7 @@ export async function setUserStatus(targetUserId: string, status: 'active' | 'bl
     status,
     updated_at: new Date().toISOString(),
   })
-  await notify(
+  void notify(
     targetUserId,
     'account',
     status === 'blocked' ? 'Account blocked' : 'Account activated',
@@ -536,7 +535,7 @@ export async function submitReport(input: {
     const r = d.data()
     return (r.role === 'admin' || r.role === 'super_admin' || r.role === 'inspector') && r.status === 'active'
   })
-  await Promise.all(
+  void Promise.all(
     staff.map((d) =>
       notify(
         d.id,
@@ -547,7 +546,7 @@ export async function submitReport(input: {
         { report_id: ref.id },
       ),
     ),
-  )
+  ).catch((e) => console.error('submitReport notify failed', e))
   return ref.id
 }
 
@@ -698,7 +697,7 @@ async function apiUpsertProduct(input: {
   if (!auth.currentUser) throw new Error('Not signed in for product API')
   const idToken = await auth.currentUser.getIdToken(true)
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
-  const res = await fetch(`${base}/api/products`, {
+  const res = await fetchWithTimeout(`${base}/api/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
     body: JSON.stringify(input),
@@ -722,7 +721,7 @@ async function apiDeleteProduct(productId: string): Promise<void> {
   const idToken = await auth.currentUser?.getIdToken(true)
   if (!idToken) throw new Error('Not signed in for product API')
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
-  const res = await fetch(`${base}/api/products/${encodeURIComponent(productId)}`, {
+  const res = await fetchWithTimeout(`${base}/api/products/${encodeURIComponent(productId)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${idToken}` },
   })

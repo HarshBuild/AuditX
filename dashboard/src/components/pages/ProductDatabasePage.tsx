@@ -66,6 +66,16 @@ export default function ProductDatabasePage() {
   const openNew = () => { setForm(EMPTY); setFormOpen(true) }
   const openEdit = (p: ProductRow) => { setForm(p); setFormOpen(true) }
 
+  // Close the create/edit dialog on Escape, matching native modal behavior.
+  useEffect(() => {
+    if (!formOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFormOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [formOpen])
+
   const handleSave = async () => {
     if (!form.barcode.trim() || !form.name.trim()) {
       toast('error', 'Validation', 'Barcode and name are required.')

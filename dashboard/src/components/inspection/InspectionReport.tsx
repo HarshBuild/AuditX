@@ -615,7 +615,9 @@ function EvidenceModal({ scan, imageIndex, title, onClose }: { scan: ScanRow; im
               key={i}
               className={`overflow-hidden rounded-xl border ${i === imageIndex ? 'border-amber-400 ring-2 ring-amber-300/60' : 'border-slate-200 dark:border-white/10'}`}
             >
-              <img src={u} alt={`Product photo ${i + 1}`} className="h-44 w-full object-contain bg-slate-50 mix-blend-multiply dark:bg-navy-950 dark:mix-blend-screen" />
+              <a href={u} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                <img src={u} alt={`Product photo ${i + 1}`} className="h-44 w-full object-contain bg-slate-50 mix-blend-multiply dark:bg-navy-950 dark:mix-blend-screen" />
+              </a>
               <div className="flex items-center justify-between px-3 py-2">
                 <span className="text-[11px] font-bold text-slate-400">Image {i + 1}</span>
                 {i === imageIndex && (
@@ -630,7 +632,7 @@ function EvidenceModal({ scan, imageIndex, title, onClose }: { scan: ScanRow; im
       )}
       {scan.image_urls && scan.image_urls.length > 0 && (
         <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
-          <ExternalLink className="h-3.5 w-3.5" /> Click the highlighted photo above — it was used to verify the related declaration.
+          <ExternalLink className="h-3.5 w-3.5" /> Open the highlighted photo — it was used to verify the related declaration.
         </p>
       )}
     </Modal>
@@ -1630,9 +1632,8 @@ export default function InspectionReport({
     try {
       await userCorrectField(scan.id, correcting.key, v)
       // Apply the correction locally so the report updates instantly.
-      if (scan.extractions) {
-        ;(scan.extractions as Record<string, string | null | undefined>)[correcting.key] = v
-      }
+      scan.extractions ||= {}
+      ;(scan.extractions as Record<string, string | null | undefined>)[correcting.key] = v
       const efMap = scan.extraction_fields
       if (efMap && correcting) {
         const ef = efMap[correcting.key]
@@ -2184,7 +2185,7 @@ export default function InspectionReport({
                   <summary className="flex cursor-pointer select-none flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                     <span className="min-w-0">Image {i + 1} — {block.position} ({block.text.length} chars)</span>
-                    {block.languages.length > 0 && <span className="ml-1 shrink-0 text-slate-400">[{block.languages.join(', ')}]</span>}
+                    {(block.languages ?? []).length > 0 && <span className="ml-1 shrink-0 text-slate-400">[{block.languages.join(', ')}]</span>}
                     <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
                   </summary>
                   <p className="mt-2 break-words rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:bg-navy-950/50 dark:text-slate-400">

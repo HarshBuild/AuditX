@@ -343,9 +343,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const signOut = useCallback(async () => {
-    await fbSignOut(auth)
-    setUser(null)
-    setProfile(null)
+    try {
+      await fbSignOut(auth)
+    } catch (e) {
+      // Still clear local session state — the user asked to sign out.
+      console.error('Firebase signOut failed', e)
+    } finally {
+      setUser(null)
+      setProfile(null)
+    }
   }, [])
 
   const updateProfile = useCallback(

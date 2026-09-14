@@ -105,10 +105,19 @@ export function AdminDashboardPage() {
   const reports = reportsData ?? []
   const [distribution, setDistribution] = useState<RiskDistribution>({ Low: 0, Medium: 0, High: 0, Critical: 0 })
   useEffect(() => {
-    void scanRiskDistribution(scans).then(setDistribution)
+    let active = true
+    void scanRiskDistribution(scans).then((d) => {
+      if (active) setDistribution(d)
+    })
+    return () => {
+      active = false
+    }
   }, [scans])
 
-  const highRisk = scans.filter((s) => (s.risk_score ?? 100 - s.overall_score) >= 51).length
+  const highRisk = scans.filter((s) => {
+    const r = Number(s.risk_score)
+    return (Number.isFinite(r) ? r : 100 - Number(s.overall_score)) >= 51
+  }).length
   const openViolations = violations.filter((v) => !['Resolved', 'Rejected'].includes(v.status))
   const pendingReports = reports.filter((r) => r.status === 'Pending')
   const insights = generateInsights(scans, violations).slice(0, 4)
