@@ -161,21 +161,27 @@ def _run_enhanced_ocr_parallel(images: List[np.ndarray], lang: str) -> List[Tupl
 
 
 def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_checked: Optional[List[int]] = None) -> Dict[str, Any]:
-    """Assemble final result from OCR lines."""
-    from correction import collapse_whitespace, join_ocr
+    """Assemble final result from OCR lines. Noise-filtered, deduped, token-cleaned
+    text reaches field extraction + the user; raw OCR is kept for the debug view."""
+    from correction import collapse_whitespace, filter_tokens, join_ocr
     from fields import extract_all
     from rules import evaluate
 
     ocr_blocks = []
     blocks_detail = []
     combined = []
+    raw_combined = []
     for i, lines in enumerate(all_lines):
         if not lines:
             continue
+        raw_text = join_ocr(lines)
+        raw_combined.append(raw_text)
+        raw_conf = round(float(np.mean([l["confidence"] for l in lines]) if lines else 0), 3)
+        ocr_blocks.append({"position": f"photo_{i+1}", "text": raw_text, "confidence": raw_conf, "lines": len(lines)})
+        # Cleaned, de-duplicated lines feed blocks + field extraction.
         lines = collapse_whitespace(lines)
-        text = join_ocr(lines)
+        text = filter_tokens(join_ocr(lines))
         conf = round(float(np.mean([l["confidence"] for l in lines]) if lines else 0), 3)
-        ocr_blocks.append({"position": f"photo_{i+1}", "text": text, "confidence": conf, "lines": len(lines)})
         per = {"image_id": f"image_{i+1}", "blocks": []}
         for j, ln in enumerate(lines):
             rect = _rect_from_box(ln.get("box"))
@@ -194,7 +200,8 @@ def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_ch
             per["missed_regions_checked"] = int(missed_checked[i]) if missed_checked else 0
             blocks_detail.append(per)
         combined.append(text)
-    ocr_text = " ".join(c for c in combined if c).strip()
+    raw_ocr_text = " ".join(r for r in raw_combined if r).strip()
+    ocr_text = filter_tokens(" ".join(c for c in combined if c).strip())
 
     fields = extract_all(ocr_text)
     rules, result = evaluate(fields)
@@ -202,6 +209,7 @@ def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_ch
     return {
         "ok": True,
         "ocr_text": ocr_text,
+        "raw_ocr_text": raw_ocr_text,
         "ocr_blocks": ocr_blocks,
         "blocks_detail": blocks_detail,
         "fields": {k: {"value": v["value"], "confidence": v["confidence"], "source": v.get("source")} for k, v in fields.items()},
@@ -258,6 +266,10 @@ def _run_missed_region_ocr(img: np.ndarray, lines: List[Dict[str, Any]], lang: s
         if preprocess.needs_enhancement(crop):
             target = preprocess.enhance(target)
         found = [l for l in ocr_mod.read_text(target, lang) if l.get("text")]
+        if not found:
+            continue
+        from correction import is_noise_line
+        found = [l for l in found if not is_noise_line(l["text"])]
         if not found:
             continue
         seen = {l["text"].strip() for l in lines}
@@ -509,6 +521,8 @@ async def verify_region_endpoint(request: Request) -> Dict[str, Any]:
             enhanced = True
         lines = ocr_mod.read_text(target, lang)
         lines = [l for l in lines if l.get("text")]
+        from correction import is_noise_line
+        lines = [l for l in lines if not is_noise_line(l["text"])]
         best = max(lines, key=lambda l: l["confidence"]) if lines else None
         return {
             "index": idx,

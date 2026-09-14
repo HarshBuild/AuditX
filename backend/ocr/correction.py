@@ -64,6 +64,75 @@ GARBAGE_RE = re.compile(r"[\x00-\x1f\x7f\u200b-\u200f]")
 
 _DIGIT_SUSPECTS = {"0": "O", "1": "l", "1": "I", "8": "B", "5": "S", "6": "G", "2": "Z", "9": "g"}
 
+# ---------------------------------------------------------------------------
+# OCR noise filtering (spec §3 — OCR CLEANING).
+#
+# Design rules:
+#   * Cost is based on SYMBOL DENSITY and duplicates, never length, so legit
+#     short values (A1, B12, 500, XL, ABC-120) always survive.
+#   * A line is noise when it is symbol-only, crammed with rare symbols around
+#     no real word, or an artifact repeat (e.g. "|||", "....", "-----").
+#   * A merged-text token is garbage when >half its characters are rare
+#     symbols around a ≤2-character alphanumeric core ("x7@#"), or it is a
+#     run of one punctuation char.
+#   * Allowed symbols (kept even in labels/addresses): . , : / ( ) + - % & ' # ₹ $ * = [ ]
+# ---------------------------------------------------------------------------
+_ALNUM = set("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+_RARE_RE = re.compile(r"(?u)[^0-9A-Za-z .,:/()+\-%&'#₹$*=\[\]]")
+
+
+def rare_symbol_ratio(text: str) -> float:
+    """Fraction of characters that are not letters/digits or allowed punctuation."""
+    if not text:
+        return 1.0
+    return len(_RARE_RE.findall(text)) / len(text)
+
+
+def is_noise_line(text: str) -> bool:
+    """True for OCR lines that carry no readable word — never length-based."""
+    t = str(text or "").strip()
+    if not t:
+        return True
+    if not any(c.isalnum() for c in t):
+        return True
+    rare = len(_RARE_RE.findall(t))
+    if rare and rare / len(t) >= 0.35 and len([c for c in t if c.isalnum()]) <= 1:
+        return True
+    if " " not in t and len(t) <= 6 and is_garbage_token(t):
+        return True
+    if len(set(t)) == 1 and set(t).isdisjoint(_ALNUM):
+        return True
+    return False
+
+
+def is_garbage_token(token: str) -> bool:
+    """True for embedded fragments like `x7@#` — drop them from merged text.
+    Short tokens that carry ANY rare symbol are suspect; longer strings
+    (emails, codes) only when symbol density is extreme."""
+    t = str(token or "").strip()
+    if not t:
+        return True
+    if not any(c.isalnum() for c in t):
+        return True
+    rare = len(_RARE_RE.findall(t))
+    alnum_count = len([c for c in t if c.isalnum()])
+    if rare > 0 and alnum_count <= 2 and len(t) <= 6:
+        return True
+    if rare_symbol_ratio(t) >= 0.5 and alnum_count <= 2:
+        return True
+    if re.fullmatch(r"([^0-9a-zA-Z])\1{2,}", t):
+        return True
+    return False
+
+
+def _dedupe_key(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def filter_tokens(text: str) -> str:
+    """Remove garbage tokens from merged OCR text (keeps short real values)."""
+    return " ".join(t for t in str(text or "").split() if not is_garbage_token(t)).strip()
+
 
 def clean_text(raw: str) -> str:
     t = str(raw or "")
@@ -74,9 +143,21 @@ def clean_text(raw: str) -> str:
 
 
 def collapse_whitespace(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Clean, noise-filter and de-duplicate an OCR line list. Duplicates keep
+    the highest-confidence first occurrence."""
+    out: List[Dict[str, Any]] = []
+    seen: set = set()
     for ln in lines:
-        ln["text"] = clean_text(ln.get("text", ""))
-    return [ln for ln in lines if ln["text"]]
+        t = clean_text(ln.get("text", ""))
+        if not t or is_noise_line(t):
+            continue
+        key = _dedupe_key(t)
+        if key in seen:
+            continue
+        seen.add(key)
+        ln["text"] = t
+        out.append(ln)
+    return out
 
 
 def fuzzy_label(text: str, threshold: int = 82) -> Tuple[str | None, float]:
