@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowUpRight, RefreshCw, ScanLine, Search } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, RefreshCw, ScanLine, Search } from 'lucide-react'
+import type { QueryDocumentSnapshot } from 'firebase/firestore'
 import Button from '../ui/Button'
 import DataTable, { type DataColumn } from '../table/DataTable'
 import { ToneBadge } from '../ui/Badge'
@@ -9,7 +10,7 @@ import { useToast } from '../ui/Toast'
 import PageHeader from '../ui/PageHeader'
 import Tabs, { type TabItem } from '../ui/Tabs'
 import { useAuth } from '../../lib/auth'
-import { fetchScansForUser, fetchViolationsForScan, fetchReportsForScan } from '../../lib/db'
+import { fetchScansForUserPage, fetchViolationsForScan, fetchReportsForScan } from '../../lib/db'
 import { scanStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
 import { displayProductName, displayText } from '../../lib/textnorm'
@@ -23,6 +24,9 @@ function verdictTone(s: ScanRow): 'emerald' | 'amber' | 'rose' | 'cyan' {
   return 'cyan'
 }
 
+/** Cursor-paginated batch size for the scan-history list. */
+const PAGE_SIZE = 50
+
 export default function RecordsPage() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
@@ -31,6 +35,10 @@ export default function RecordsPage() {
   const [scans, setScans] = useState<ScanRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const seenIds = useRef(new Set<string>())
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [status, setStatus] = useState('all')
   const [selected, setSelected] = useState<ScanRow | null>(null)
@@ -45,17 +53,39 @@ export default function RecordsPage() {
     setQuery(searchParams.get('q') ?? '')
   }, [searchParams])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!user?.id) return
+    if (!silent) setLoading(true)
+    seenIds.current.clear()
     try {
-      const rows = await fetchScansForUser(user.id, 200)
-      setScans(rows)
+      const page = await fetchScansForUserPage(user.id, PAGE_SIZE)
+      page.data.forEach((s) => seenIds.current.add(s.id))
+      setScans(page.data)
+      setLastDoc(page.lastDoc)
+      setHasMore(page.hasMore)
     } catch (e) {
       toast('error', 'Could not load scans', (e as Error).message)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [user?.id, toast])
+
+  const loadMore = useCallback(async () => {
+    if (!user?.id || !lastDoc) return
+    setLoadingMore(true)
+    try {
+      const page = await fetchScansForUserPage(user.id, PAGE_SIZE, lastDoc)
+      const fresh = page.data.filter((s) => !seenIds.current.has(s.id))
+      fresh.forEach((s) => seenIds.current.add(s.id))
+      setScans((prev) => [...prev, ...fresh])
+      setLastDoc(page.lastDoc)
+      setHasMore(page.hasMore)
+    } catch (e) {
+      toast('error', 'Could not load more scans', (e as Error).message)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [user?.id, lastDoc, toast])
 
   useEffect(() => {
     void load()
@@ -63,7 +93,7 @@ export default function RecordsPage() {
 
   const refresh = async () => {
     setRefreshing(true)
-    await load()
+    await load({ silent: true })
     setRefreshing(false)
   }
 
@@ -219,6 +249,13 @@ export default function RecordsPage() {
             onRowClick={(s) => void openDetail(s)}
             empty={<EmptyState title="Nothing matches" message="Try a different search or status filter." />}
           />
+          {hasMore && (
+            <div className="flex justify-center border-t border-line p-3 dark:border-navy-700/60">
+              <Button variant="outline" icon={loadingMore ? undefined : <ChevronDown className="h-4 w-4" />} onClick={() => void loadMore()} loading={loadingMore} disabled={loadingMore}>
+                {loadingMore ? 'Loading more…' : 'Load more'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

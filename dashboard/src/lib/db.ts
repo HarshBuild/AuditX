@@ -35,9 +35,11 @@ import {
   onSnapshot,
   orderBy,
   query,
+  startAfter,
   updateDoc,
   where,
   type DocumentData,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import { getLocalScans } from './localStore'
@@ -203,6 +205,51 @@ export async function fetchScansForUser(uid: string, cap = 200): Promise<ScanRow
   }
   merged.sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
   return merged
+}
+
+export interface ScanPageResult {
+  data: ScanRow[]
+  /** Opaque cursor suitable for `startAfter` on the next page load. */
+  lastDoc: QueryDocumentSnapshot | null
+  hasMore: boolean
+}
+
+/**
+ * Cursor-paginated scan history for a single user. Newest-first (created_at
+ * desc). The optional `lastDoc` cursor continues from the previous page.
+ * Falls back to an index-free query if the composite (where+orderBy) index is
+ * not provisioned in this environment, so the history never silently empties.
+ */
+export async function fetchScansForUserPage(uid: string, pageSize = 50, lastDoc: QueryDocumentSnapshot | null = null): Promise<ScanPageResult> {
+  const ref = collection(db, COLLECTIONS.SCANS)
+  let snapshot: { docs: QueryDocumentSnapshot[] }
+  const paged = lastDoc !== null
+  try {
+    const base = query(ref, where('user_id', '==', uid), orderBy('created_at', 'desc'), limit(pageSize))
+    snapshot = await getDocs(lastDoc ? query(base, startAfter(lastDoc)) : base)
+  } catch {
+    // Composite index may be unprovisioned — use the old index-free query so
+    // pagination degrades gracefully instead of losing the cloud list.
+    snapshot = await getDocs(query(ref, where('user_id', '==', uid), limit(pageSize)))
+  }
+  const docs = snapshot.docs
+  const cloud = rowsFrom<ScanRow>({ docs })
+  if (!paged) {
+    // First page also prepends any locally-persisted scans (offline cub).
+    const local = getLocalScans(uid)
+    const seen = new Set<string>()
+    const merged: ScanRow[] = []
+    for (const s of [...cloud, ...local]) {
+      if (!seen.has(s.id)) { seen.add(s.id); merged.push(s) }
+    }
+    merged.sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
+    return { data: merged, lastDoc: docs[docs.length - 1] ?? null, hasMore: docs.length === pageSize }
+  }
+  return {
+    data: cloud,
+    lastDoc: docs[docs.length - 1] ?? null,
+    hasMore: docs.length === pageSize,
+  }
 }
 
 export async function fetchViolationsForScan(scanId: string): Promise<ViolationRow[]> {
