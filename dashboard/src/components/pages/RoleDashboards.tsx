@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
+  ArrowUpRight,
   ClipboardCheck,
   FileCheck2,
   FileText,
@@ -162,7 +163,7 @@ export function AdminDashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:gap-4">
         {stats.map((stat) => (
           <StatCard key={stat.id} stat={stat} prominent={stat.id === 'total'} />
         ))}
@@ -173,8 +174,8 @@ export function AdminDashboardPage() {
       ) : error ? (
         <ErrorState message={error} onRetry={refetch} />
       ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-3">
+          <div className="min-w-0 xl:col-span-2">
             <AnalyticsCard
               title="Recent scans"
               subtitle="Latest product-label compliance checks"
@@ -183,7 +184,7 @@ export function AdminDashboardPage() {
                   View all →
                 </Link>
               }
-              bodyClassName="p-0"
+              bodyClassName="p-0 overflow-x-auto"
             >
               {scans.length === 0 ? (
                 <div className="p-5">
@@ -195,11 +196,11 @@ export function AdminDashboardPage() {
             </AnalyticsCard>
           </div>
 
-          <div className="space-y-5">
-            <AnalyticsCard title="Risk distribution" subtitle="Scans by risk band" bodyClassName="p-5">
+          <div className="flex flex-col gap-5 xl:sticky xl:top-24">
+            <AnalyticsCard title="Risk distribution" subtitle="Scans by risk band" bodyClassName="p-5" className="flex-1">
               {scans.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">No data yet</p> : <RiskBars distribution={distribution} total={scans.length} />}
             </AnalyticsCard>
-            <AnalyticsCard title="AI insights" subtitle="Derived from live scan & violation data" bodyClassName="p-5">
+            <AnalyticsCard title="AI insights" subtitle="Derived from live scan & violation data" bodyClassName="p-5" className="flex-1">
               {insights.length === 0 ? (
                 <p className="py-6 text-center text-sm text-slate-400">No signals yet — keep scanning.</p>
               ) : (
@@ -222,7 +223,7 @@ export function AdminDashboardPage() {
             </AnalyticsCard>
           </div>
 
-          <div className="lg:col-span-2">
+          <div className="min-w-0 xl:col-span-2">
             <AnalyticsCard
               title="Recent violations"
               subtitle="Non-compliant items surfaced from reviews"
@@ -231,7 +232,7 @@ export function AdminDashboardPage() {
                   View all →
                 </Link>
               }
-              bodyClassName="p-0"
+              bodyClassName="p-0 overflow-x-auto"
             >
               {violations.length === 0 ? (
                 <div className="p-5">
@@ -243,20 +244,23 @@ export function AdminDashboardPage() {
             </AnalyticsCard>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:sticky lg:top-24 lg:self-start">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:sticky xl:top-24">
             {links.map((l) => {
               const Icon = l.icon
               return (
                 <Link
                   key={l.path}
                   to={l.path}
-                  className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card transition-colors hover:border-brand-300 dark:border-white/10 dark:bg-navy-900 dark:hover:border-brand-500/40"
+                  className="panel-interactive group flex flex-col p-5"
                 >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <p className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">{l.label}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">{l.desc}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-card bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-text-faint transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-brand-600 dark:text-navy-500 dark:group-hover:text-brand-400" />
+                  </div>
+                  <p className="mt-4 text-sm font-bold text-ink-text dark:text-navy-50">{l.label}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-text-soft dark:text-navy-400">{l.desc}</p>
                 </Link>
               )
             })}
@@ -339,7 +343,7 @@ export function SuperAdminDashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:gap-4">
         {stats.map((stat) => (
           <StatCard key={stat.id} stat={stat} prominent={stat.id === 'users'} />
         ))}
@@ -350,8 +354,8 @@ export function SuperAdminDashboardPage() {
       ) : error ? (
         <ErrorState message={error} onRetry={refetch} />
       ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-3">
+          <div className="min-w-0 xl:col-span-2">
             <AnalyticsCard
               title="Pending admin requests"
               subtitle="People waiting for staff access"
@@ -360,7 +364,7 @@ export function SuperAdminDashboardPage() {
                   Review →
                 </Link>
               }
-              bodyClassName="p-0"
+              bodyClassName="p-0 overflow-x-auto"
             >
               {!counts?.pendingRequests.length ? (
                 <div className="p-5">
@@ -372,26 +376,29 @@ export function SuperAdminDashboardPage() {
             </AnalyticsCard>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:sticky lg:top-24 lg:self-start">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:sticky xl:top-24">
             {SUPER_LINKS.map((l) => {
               const Icon = l.icon
               return (
                 <Link
                   key={l.path}
                   to={l.path}
-                  className="group rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card transition-colors hover:border-brand-300 dark:border-white/10 dark:bg-navy-900 dark:hover:border-brand-500/40"
+                  className="panel-interactive group flex flex-col p-5"
                 >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <p className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">{l.label}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">{l.desc}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-card bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-text-faint transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-brand-600 dark:text-navy-500 dark:group-hover:text-brand-400" />
+                  </div>
+                  <p className="mt-4 text-sm font-bold text-ink-text dark:text-navy-50">{l.label}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-text-soft dark:text-navy-400">{l.desc}</p>
                 </Link>
               )
             })}
           </div>
 
-          <div className="lg:col-span-3">
+          <div className="min-w-0 xl:col-span-3">
             <AnalyticsCard
               title="Recent activity"
               subtitle="Audit trail of staff and system actions"
@@ -400,7 +407,7 @@ export function SuperAdminDashboardPage() {
                   Full log →
                 </Link>
               }
-              bodyClassName="p-0"
+              bodyClassName="p-0 overflow-x-auto"
             >
               {!counts?.logs.length ? (
                 <div className="p-5">

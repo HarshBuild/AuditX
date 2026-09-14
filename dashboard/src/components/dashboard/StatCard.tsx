@@ -16,19 +16,19 @@ export default function StatCard({ stat, prominent }: { stat: StatDefinition; pr
   return (
     <div
       className={cn(
-        'panel transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
+        'group panel flex h-full flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
         prominent &&
-          'border-brand-200/70 bg-gradient-to-br from-brand-50/70 via-surface to-surface sm:col-span-2 dark:border-brand-500/20 dark:from-brand-500/[0.08] dark:via-navy-900 dark:to-navy-900 lg:col-span-1',
+          'border-brand-200/70 bg-gradient-to-br from-brand-50/80 via-surface to-surface ring-1 ring-brand-500/10 dark:border-brand-500/25 dark:from-brand-500/[0.1] dark:via-navy-900 dark:to-navy-900 dark:ring-brand-500/10',
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-1 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-faint dark:text-navy-400">
             {stat.title}
           </p>
           <p
             className={cn(
-              'mt-2 font-extrabold tracking-tight text-ink-text dark:text-navy-50',
+              'mt-2 font-extrabold tracking-tight text-ink-text tabular-nums dark:text-navy-50',
               prominent ? 'text-4xl' : 'text-3xl',
             )}
           >
@@ -49,7 +49,7 @@ export default function StatCard({ stat, prominent }: { stat: StatDefinition; pr
               </span>
             )}
             {stat.hint && (
-              <span className="text-[11px] font-medium text-ink-text-faint dark:text-navy-400">
+              <span className="text-[11px] font-medium leading-tight text-ink-text-faint dark:text-navy-400">
                 {stat.hint}
               </span>
             )}
@@ -57,7 +57,7 @@ export default function StatCard({ stat, prominent }: { stat: StatDefinition; pr
         </div>
         <div
           className={cn(
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-105',
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-card transition-transform duration-200 group-hover:scale-105',
             accentMap[stat.accent],
           )}
         >

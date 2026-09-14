@@ -95,7 +95,7 @@ export default function UserDashboardPage() {
         }
       />
 
-      <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-4 lg:gap-4">
         {stats.map((stat) => (
           <StatCard key={stat.id} stat={stat} prominent={stat.id === 'scans'} />
         ))}
@@ -106,8 +106,8 @@ export default function UserDashboardPage() {
       ) : error ? (
         <ErrorState message={error} onRetry={() => setRefresh((x) => x + 1)} />
       ) : (
-        <div className="stagger grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+        <div className="stagger grid grid-cols-1 items-start gap-5 xl:grid-cols-3">
+          <div className="min-w-0 xl:col-span-2">
             <AnalyticsCard
               title="Recent scans"
               subtitle="Your latest product-label checks"
@@ -116,7 +116,7 @@ export default function UserDashboardPage() {
                   View all →
                 </Link>
               }
-              bodyClassName="p-0"
+              bodyClassName="p-0 overflow-x-auto"
             >
               {scans.length === 0 ? (
                 <div className="p-5">
@@ -137,18 +137,18 @@ export default function UserDashboardPage() {
             </AnalyticsCard>
           </div>
 
-          <div className="space-y-5">
-            <AnalyticsCard title="Risk distribution" subtitle="Your scans by risk band" bodyClassName="p-5">
+          <div className="flex flex-col gap-5 xl:sticky xl:top-24">
+            <AnalyticsCard title="Risk distribution" subtitle="Your scans by risk band" bodyClassName="p-5" className="flex-1">
               {scans.length === 0 ? (
                 <p className="py-8 text-center text-sm text-slate-400">No data yet</p>
               ) : (
                 <RiskBars distribution={distribution} total={scans.length} />
               )}
             </AnalyticsCard>
-            <AnalyticsCard title="Keep reporting" subtitle="Spot a non-compliant product?">
+            <AnalyticsCard title="Keep reporting" subtitle="Spot a non-compliant product?" className="flex-1">
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 dark:bg-rose-500/15">
-                  <ClipboardCheck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-warning-50 dark:bg-warning-500/15">
+                  <ClipboardCheck className="h-5 w-5 text-warning-600 dark:text-warning-500" />
                 </div>
                 <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
                   Your reports and scans help inspectors act faster on non-compliant products.
