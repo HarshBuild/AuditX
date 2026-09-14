@@ -118,6 +118,22 @@ export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Prom
     category: null,
   })
 
+  // Conflicting fields (different photos showed different values) are never
+  // trusted: null their value so the engine treats them as missing+uncertain.
+  for (const c of parsed.conflicts) {
+    if (parsed.fields[c.field]) {
+      parsed.fields[c.field] = { ...parsed.fields[c.field], value: null }
+    }
+    if (!parsed.uncertain.includes(c.field)) parsed.uncertain.push(c.field)
+  }
+
+  const qualityNote =
+    parsed.conflicts.length > 0
+      ? ` Conflicting values detected for: ${parsed.conflicts.map((c) => c.field).join(', ')} (needs manual verification).`
+      : parsed.quality?.needs_manual_verification
+        ? ` Low-confidence reading — verify manually.`
+        : ''
+
   const engineFields = parsed.fields as Record<string, EngineField>
   const outcome = timSync(perf, 'validation', () =>
     runComplianceEngine({
@@ -210,7 +226,7 @@ labels: parsed.labels.map((l) => ({ ...l, verdict: 'VERIFIED' as DetectedLabel['
       ocr: { text: parsed.ocrText, languages: parsed.ocrLangs },
       ocr_blocks: parsed.ocrBlocks,
       assistant,
-      language_note: 'Analyzed with Google Gemini AI (vision extraction + compliance rules).',
+      language_note: 'Analyzed with Google Gemini AI (vision extraction + compliance rules).' + qualityNote,
       extractions: exForStore as ScanRow['extractions'],
       extraction_fields: storedFields,
       uncertain: parsed.uncertain,
@@ -257,9 +273,9 @@ labels: parsed.labels.map((l) => ({ ...l, verdict: 'VERIFIED' as DetectedLabel['
     ocr: { text: parsed.ocrText, languages: parsed.ocrLangs },
     ocr_blocks: parsed.ocrBlocks,
     assistant,
-    language_note: persisted
+    language_note: (persisted
       ? 'Analyzed with Google Gemini AI (vision extraction + compliance rules).'
-      : 'Analyzed with Google Gemini AI — saved locally only (cloud write failed).',
+      : 'Analyzed with Google Gemini AI — saved locally only (cloud write failed).') + qualityNote,
     extractions: exForStore as ScanRow['extractions'],
     extraction_fields: storedFields,
     detected: detectedFrom(outcome),

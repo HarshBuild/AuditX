@@ -15,109 +15,126 @@ export const SUPPORTED_LANGS: Record<string, string> = {
 }
 
 export function buildExtractionPrompt(lang: string): string {
-  const langName = SUPPORTED_LANGS[lang] ?? 'English'
   return `You are a precise label transcription engine for Indian packaged commodities.
-You receive multiple photographs of THE SAME product package. EACH photograph is labeled with its position (front, back, side, other).
+You receive multiple photographs of the SAME product package. EACH photograph is labeled with its position (front, back, side, other).
 
-YOUR JOB: Read the text on the label and extract specific fields. You are a transcription machine, NOT a compliance judge.
+CRITICAL HONESTY RULES:
+- You are a transcription machine, NOT a compliance judge. Never decide compliance, never judge the package.
+- ONLY extract text that is ACTUALLY VISIBLE AND LEGIBLE on the labels.
+- If a field is completely absent from all photos -> value: null.
+- If a field IS printed but blurry/cut off/illegible -> value: null AND add the field key to "uncertain".
+- NEVER reconstruct, guess, infer, or hallucinate ANY value. Use the EXACT VERBATIM text as printed.
+- For MRP: include the full printed string exactly as shown (e.g. "MRP Rs.249.00 incl. of all taxes"). If MULTIPLE prices are visible, put each in "uncertain" and value:null.
+- For addresses: include the complete address verbatim with commas, PIN, etc.
+- For dates: include the full date string exactly as printed (e.g. "Mfg. Date: 08/2025").
+- For net quantity: reproduce the exact text including unit.
+- The label language is ${SUPPORTED_LANGS[lang] ?? 'English'}. Read text in this language AND in English (many labels are bilingual).
+- "category" must be one of: ${ALLOWED_CATEGORIES.join(', ')}.
 
-=== CRITICAL RULES ===
-1. ONLY extract text ACTUALLY VISIBLE AND LEGIBLE on the labels.
-2. NEVER reconstruct, guess, infer, or hallucinate ANY value. If you are unsure, return null.
-3. Use the EXACT VERBATIM text as printed — preserve digits, units, symbols, abbreviations.
-4. If a field is completely absent from ALL photos -> value: null, confidence: "low".
-5. If a field IS printed but blurry/cut off/illegible -> value: null, add key to "uncertain", confidence: "low".
-6. The label language is ${langName}. Read text in this language AND in English (many labels are bilingual).
-7. "category" must be one of: ${ALLOWED_CATEGORIES.join(', ')}.
+=== MULTI-IMAGE VERIFICATION ===
+You receive SEVERAL photos of the same package (front/back/side). Verify every field ACROSS all photos:
+- If a field appears more than once, KEEP ONLY the single best occurrence — the clearest, highest-confidence reading. NEVER merge two different values into one, and NEVER invent a value to reconcile them.
+- Combine COMPLEMENTARY info (e.g. the address is only legible on the back photo — use it).
+- If two different values for the SAME field appear on DIFFERENT photos (e.g. "Power: 100W" vs "Power: 120W"):
+    value: null, add the key to "uncertain", AND add a {field, values[], explanation} entry to "conflicts"
+    listing BOTH observed values and which photo each came from. NEVER pick one at random.
 
-=== FIELD-SPECIFIC EXTRACTION RULES ===
+=== OCR ERROR CORRECTION ===
+Transcribe EXACTLY as printed. Do NOT silently "correct" suspicious characters:
+- "0" vs "O", "1" vs "I"/"l", "5" vs "S", "8" vs "B", "2" vs "Z" are DIFFERENT characters.
+- Only change a suspect character when the photo clearly proves the correct reading (e.g. "12V 2.OA": if the image clearly shows a zero, transcribe "2.0A"; otherwise keep verbatim and add the field to "uncertain").
+- Preserve decimal points, units and separators exactly.
 
-MRP (Maximum Retail Price):
-- Common printed patterns: "MRP Rs.249", "MRP ₹249.00", "M.R.P.: Rs 249/-", "Maximum Retail Price Rs.249 incl. of all taxes", "MRP Rs 249 (inclusive of all taxes)"
-- Include the FULL printed line (price + "incl. of all taxes" if present).
-- If ONLY one price is visible, extract it. If MULTIPLE prices are visible (e.g., MRP + "offer price"), put the CLEAR retail MRP as value and note the others in uncertain.
-- NEVER return a value like "MRP" or "Rs" alone — always include the numeric amount.
+=== CONFLICTS & QUALITY ===
+- "status": "success" (no conflicts), "partial" (some fields missing/uncertain), or "conflict_detected" (any conflicting values found).
+- "conflicts": [{ "field": "power", "values": ["100W", "120W"], "explanation": "Front photo shows 100W, back photo shows 120W." }]
+- "quality": rate overall_confidence, image_quality (good|acceptable|poor), ocr_quality (good|acceptable|poor), and set needs_manual_verification=true when any low-confidence value or conflict remains.
 
-Net Quantity / Net Weight:
-- Common patterns: "Net Qty: 500 g", "Net Wt. 250g", "Net Weight: 1 kg", "Net Contents: 100 ml", "6 x 200ml"
-- Include the numeric value AND the unit exactly as printed.
-- For multipacks, include the full expression: "6 x 200 ml" (not just "1200 ml").
+FOR EACH extracted field, you MUST include:
+- value: the EXACT verbatim text as printed (null if absent/illegible)
+- confidence: "high" (clear, unambiguous), "medium" (partially legible), or "low" (barely readable, verify manually)
+- source_image: 0-based index of the photo where you found this value (0=first photo, 1=second, etc.)
 
-Manufacturer / Packer / Importer:
-- Common patterns: "Manufactured by: ITC Limited", "Packed by: XYZ Foods Pvt. Ltd.", "Marketed by: ABC Corp"
-- Include the FULL company name as printed (preserve uppercase, "Pvt. Ltd.", "Limited", etc.).
-- The address is a SEPARATE field — do not merge it with the company name.
+"ocr_blocks": For each photo, provide its transcribed text separately, labeled by position.
+"ocr.text": Combine all visible text from all photos into one transcription. Preserve line breaks, numbers, units, ₹ symbols.
 
-Address:
-- Common patterns: "Regd. Office: 123 Industrial Area, Delhi - 110001", "Factory: Plot 5, MIDC, Pune 411018"
-- Include the COMPLETE address including PIN code.
-- The address often follows the manufacturer/packer name on the next line.
+For food/beverage items, also extract:
+- fssai_license: the 14-digit FSSAI licence number if visible.
+- veg_nonveg: "veg" (green dot) / "nonveg" (brown dot) / null.
+- nutrition_info: verbatim nutrition-table text if a table is present (else null).
+- ingredients: the FULL verbatim ingredient list if present (else null).
+- allergens: verbatim allergen declaration text if present (else null).
 
-Country of Origin:
-- Common patterns: "Country of Origin: India", "Made in India", "Product of India"
-- Extract the country name ONLY.
+ADDITIONAL PRODUCT DETAILS — extract for EVERY product type (food and non-food):
+EXAMINE SMALL PRINT SHARPLY. Appliance/garment/tool labels are the MOST important source for these.
+- "model": model / product / article / item / style / catalog / stock / part number, EXACT code (e.g. "ABC-120").
+- "serial_number": serial number/SN, EXACT code.
+- "material": material / made of / fabric description (e.g. "100% Polyester").
+- "dimensions": size with units (e.g. "12 x 8 x 4 mm") — keep the x/× separators.
+- "capacity": capacity with unit (e.g. "1.5 L", "35 kg", "500 ml").
+- "voltage": e.g. "230V", "100-240V AC".
+- "power": e.g. "1200 W", "1.5 kW".
+- "current": e.g. "1.2 A".
+- "frequency": e.g. "50 Hz".
+- "website": any website printed on the label (e.g. "www.example.com").
+- "email": any e-mail printed on the label (e.g. "care@example.com").
+- "certifications": certification marks/standards (ISI, BIS, CE, RoHS, ISO 9001, EN 60335, Energy Star...).
+- "warnings": warning/caution/danger sentences or safety phrases ("Do not...", "Keep away from children", "Flammable").
+- "instructions": how-to-use / directions-for-use / dosage / usage instructions text.
+NEVER guess a code: transcribe EXACT verbatim characters (a misread "0" vs "O" is worse than null).
 
-Dates (Manufacturing / Best Before / Expiry):
-- Common patterns: "Mfg.Dt:08/2025", "Mfg. Date: 08/2025", "PKD: AUG 2025", "Mfg Month & Year: 08/2025", "Best Before: 12 months from manufacture", "Expiry: 01/2026"
-- For mfg_date: extract the date string EXACTLY as printed.
-- For best_before: extract the full line (duration or date).
-- If both mfg_date and best_before are on the same line, put the manufacturing date in mfg_date and the best-before in best_before.
+"uncertain": List field keys where text was printed but could not be read confidently.
 
-Consumer Care:
-- Common patterns: "Consumer Care: 1800-123-4567", "Customer Care: care@company.com", "Helpline: 1800 102 3040"
-- Include the FULL contact information (phone, email, web address).
-
-Lot / Batch Number:
-- Common patterns: "Lot No: AB123", "Batch: 2025-08-01A", "B.No: 12345"
-- Include the exact code as printed.
-
-FSSAI License (food items only):
-- Must be EXACTLY 14 digits starting with 1 or 2. Example: 10019011002543
-- If you see a 14-digit number that does NOT start with 1 or 2, it is NOT an FSSAI license.
-- Do NOT confuse batch codes, timestamps, or other numbers with FSSAI license.
-
-Veg / Non-Veg (food items only):
-- Green dot/brown dot symbol. Return "veg" or "nonveg" or null.
-
-Nutrition Info / Ingredients / Allergens (food items only):
-- Extract the FULL verbatim text from the nutrition table / ingredient list / allergen declaration.
-- These are often multi-line. Include ALL lines.
-
-=== OUTPUT FORMAT ===
-Respond ONLY with valid JSON. No markdown, no code fences, no commentary before or after.
-
+Respond ONLY with valid JSON. No markdown, no code fences, no commentary.
 {
-  "product_name": "exact product name as printed or null",
-  "brand": "brand name as printed or null",
-  "category": "one of: ${ALLOWED_CATEGORIES.join(', ')}",
-  "ocr": {"text": "all visible text combined from all photos", "languages": ["en"]},
+  "product_name": "exact as printed or null",
+  "brand": "exact as printed or null",
+  "category": "one allowed category",
+  "ocr": {"text": "combined transcription", "languages": ["en"]},
   "ocr_blocks": [
-    {"position": "front", "text": "text from photo 0", "languages": ["en"]},
-    {"position": "back", "text": "text from photo 1", "languages": ["en"]}
+    {"position": "front", "text": "text from first photo", "languages": ["en"]},
+    {"position": "back", "text": "text from second photo", "languages": ["en"]}
   ],
-  "labels": [{"label":"label name","label_text":"brief description"}],
+  "labels": [{"label":"product label name","label_text":"brief description"}],
   "extractions": {
-    "commodity_name": {"value":"exact text or null","confidence":"high|medium|low","source_image":0},
-    "mrp": {"value":"full MRP line with amount or null","confidence":"high|medium|low","source_image":0},
-    "net_quantity": {"value":"exact qty with unit or null","confidence":"high|medium|low","source_image":0},
-    "unit_sale_price": {"value":"exact USP or null","confidence":"high|medium|low","source_image":null},
-    "manufacturer": {"value":"company name only or null","confidence":"high|medium|low","source_image":null},
-    "packer": {"value":"company name only or null","confidence":"high|medium|low","source_image":null},
-    "importer": {"value":"company name only or null","confidence":"high|medium|low","source_image":null},
-    "address": {"value":"full address with PIN or null","confidence":"high|medium|low","source_image":null},
-    "country_of_origin": {"value":"country name only or null","confidence":"high|medium|low","source_image":null},
-    "mfg_date": {"value":"exact date string or null","confidence":"high|medium|low","source_image":null},
-    "best_before": {"value":"exact best-before line or null","confidence":"high|medium|low","source_image":null},
-    "consumer_care": {"value":"full contact info or null","confidence":"high|medium|low","source_image":null},
-    "lot_no": {"value":"exact batch/lot code or null","confidence":"high|medium|low","source_image":null},
-    "fssai_license": {"value":"14-digit FSSAI number or null","confidence":"high|medium|low","source_image":null},
-    "veg_nonveg": {"value":"veg|nonveg or null","confidence":"high|medium|low","source_image":null},
-    "nutrition_info": {"value":"verbatim nutrition table or null","confidence":"high|medium|low","source_image":null},
-    "ingredients": {"value":"verbatim ingredient list or null","confidence":"high|medium|low","source_image":null},
-    "allergens": {"value":"verbatim allergen text or null","confidence":"high|medium|low","source_image":null}
+    "commodity_name": {"value":"null or exact text","confidence":"high|medium|low","source_image":0},
+    "mrp": {"value":"null or full MRP string","confidence":"high|medium|low","source_image":0},
+    "net_quantity": {"value":"null or exact string","confidence":"high|medium|low","source_image":0},
+    "unit_sale_price": {"value":"null or exact string","confidence":"high|medium|low","source_image":null},
+    "manufacturer": {"value":"null or exact name","confidence":"high|medium|low","source_image":1},
+    "packer": {"value":"null or exact name","confidence":"high|medium|low","source_image":null},
+    "importer": {"value":"null or exact name","confidence":"high|medium|low","source_image":null},
+    "address": {"value":"null or full verbatim address","confidence":"high|medium|low","source_image":1},
+    "country_of_origin": {"value":"null or exact line","confidence":"high|medium|low","source_image":null},
+    "mfg_date": {"value":"null or exact date string","confidence":"high|medium|low","source_image":null},
+    "best_before": {"value":"null or exact line","confidence":"high|medium|low","source_image":null},
+    "consumer_care": {"value":"null or exact contact info","confidence":"high|medium|low","source_image":null},
+    "lot_no": {"value":"null or exact batch/lot code","confidence":"high|medium|low","source_image":null},
+    "fssai_license": {"value":"null or 14-digit FSSAI number","confidence":"high|medium|low","source_image":null},
+    "veg_nonveg": {"value":"null or veg/nonveg","confidence":"high|medium|low","source_image":null},
+    "nutrition_info": {"value":"null or verbatim table text","confidence":"high|medium|low","source_image":null},
+    "ingredients": {"value":"null or verbatim list","confidence":"high|medium|low","source_image":null},
+    "allergens": {"value":"null or verbatim text","confidence":"high|medium|low","source_image":null},
+    "model": {"value":"null or EXACT model/product/article/item/style/catalog/stock/part code","confidence":"high|medium|low","source_image":null},
+    "serial_number": {"value":"null or EXACT serial/SN code","confidence":"high|medium|low","source_image":null},
+    "material": {"value":"null or material/made of description","confidence":"high|medium|low","source_image":null},
+    "dimensions": {"value":"null or size with units (12 x 8 x 4 mm)","confidence":"high|medium|low","source_image":null},
+    "capacity": {"value":"null or capacity with unit (1.5 L)","confidence":"high|medium|low","source_image":null},
+    "voltage": {"value":"null or EXACT voltage (230V / 100-240V AC)","confidence":"high|medium|low","source_image":null},
+    "power": {"value":"null or EXACT power (1200 W / 1.5 kW)","confidence":"high|medium|low","source_image":null},
+    "current": {"value":"null or EXACT current (1.2 A)","confidence":"high|medium|low","source_image":null},
+    "frequency": {"value":"null or EXACT frequency (50 Hz)","confidence":"high|medium|low","source_image":null},
+    "website": {"value":"null or website as printed","confidence":"high|medium|low","source_image":null},
+    "email": {"value":"null or e-mail as printed","confidence":"high|medium|low","source_image":null},
+    "certifications": {"value":"null or certification marks/standards (ISI, BIS, CE, RoHS, ISO 9001)","confidence":"high|medium|low","source_image":null},
+    "warnings": {"value":"null or warning/caution/danger text","confidence":"high|medium|low","source_image":null},
+    "instructions": {"value":"null or usage/directions text","confidence":"high|medium|low","source_image":null}
   },
-  "uncertain": ["field keys where text was printed but illegible"],
-  "language_note": "short note about label languages"
+  "uncertain": ["list of field keys where value was printed but illegible"],
+  "language_note": "short sentence about label languages",
+  "status": "success | partial | conflict_detected",
+  "conflicts": [{"field":"field key","values":["value A","value B"],"explanation":"which photo shows which value"}],
+  "quality": {"overall_confidence":"high|medium|low","image_quality":"good|acceptable|poor","ocr_quality":"good|acceptable|poor","needs_manual_verification":false}
 }`
 }
 
@@ -322,6 +339,49 @@ export interface ParsedRaw {
   productName: string | null
   brand: string | null
   languageNote: string
+  /** success | partial | conflict_detected — reflects multi-image conflict detection. */
+  status: 'success' | 'partial' | 'conflict_detected'
+  /** Fields where different photos showed different values (never guessed). */
+  conflicts: RawConflict[]
+  quality: RawQuality | null
+}
+
+export interface RawConflict {
+  field: string
+  values: string[]
+  explanation: string
+}
+
+export interface RawQuality {
+  overall_confidence: 'high' | 'medium' | 'low'
+  image_quality: 'good' | 'acceptable' | 'poor'
+  ocr_quality: 'good' | 'acceptable' | 'poor'
+  needs_manual_verification: boolean
+}
+
+function toConflict(c: unknown): RawConflict | null {
+  if (!c || typeof c !== 'object') return null
+  const o = c as Record<string, unknown>
+  const field = norm(o.field) ?? ''
+  if (!field) return null
+  return {
+    field,
+    values: Array.isArray(o.values) ? o.values.map((v) => String(v)).map(cleanStructured).filter((v): v is string => !!v) : [],
+    explanation: cleanStructured(norm(o.explanation)) ?? '',
+  }
+}
+
+function toQuality(q: unknown): RawQuality | null {
+  if (!q || typeof q !== 'object') return null
+  const o = q as Record<string, unknown>
+  const pick = <T extends string>(v: unknown, all: readonly T[], fallback: T): T =>
+    typeof v === 'string' && (all as readonly string[]).includes(v) ? (v as T) : fallback
+  return {
+    overall_confidence: pick(o.overall_confidence, ['high', 'medium', 'low'], 'medium'),
+    image_quality: pick(o.image_quality, ['good', 'acceptable', 'poor'], 'acceptable'),
+    ocr_quality: pick(o.ocr_quality, ['good', 'acceptable', 'poor'], 'acceptable'),
+    needs_manual_verification: Boolean(o.needs_manual_verification),
+  }
 }
 
 export function parseRaw(
@@ -344,6 +404,17 @@ export function parseRaw(
         }))
     : []
   const uncertain = Array.isArray(raw.uncertain) ? raw.uncertain.map((l) => String(l).trim()).filter(Boolean) : []
+  const conflicts = Array.isArray(raw.conflicts)
+    ? raw.conflicts.map(toConflict).filter((c): c is RawConflict => c !== null)
+    : []
+  const quality = toQuality(raw.quality)
+  const statusRaw = String(raw.status ?? '').trim().toLowerCase()
+  const status =
+    statusRaw === 'conflict_detected' || statusRaw === 'partial' || statusRaw === 'success'
+      ? statusRaw
+      : conflicts.length > 0
+        ? 'conflict_detected'
+        : 'partial'
   const labels = Array.isArray(raw.labels)
     ? raw.labels
         .filter((l): l is Record<string, unknown> => Boolean(l) && typeof l === 'object')
@@ -361,6 +432,9 @@ export function parseRaw(
     productName,
     brand: cleanStructured(norm(raw.brand)),
     languageNote: cleanStructured(norm(raw.language_note)) ?? '',
+    status,
+    conflicts,
+    quality,
   }
 }
 

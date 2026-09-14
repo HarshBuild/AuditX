@@ -17,7 +17,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express'
 import admin from 'firebase-admin'
-import { buildExtractionPrompt, extractJson, norm, parseRaw, SUPPORTED_LANGS, type ParsedRaw, type SanitizedExtractions } from '../compliance/extraction.js'
+import { buildExtractionPrompt, extractJson, norm, parseRaw, type ParsedRaw, type SanitizedExtractions } from '../compliance/extraction.js'
 import { runComplianceEngine } from '../compliance/engine.js'
 import { detectContext } from '../compliance/context.js'
 import { ALLOWED_CATEGORIES } from '../compliance/data.js'
@@ -26,122 +26,13 @@ import { dataUrlToInline, DEFAULT_GEMINI_MODEL, geminiGenerateContent, type GemP
 
 const router = Router()
 
-/** Build the Gemini vision prompt (same as compliance/extraction.ts buildExtractionPrompt) */
-function buildVisionPrompt(lang: string): string {
-  const langName = SUPPORTED_LANGS[lang] ?? 'English'
-  return `You are a precise label transcription engine for Indian packaged commodities.
-You receive multiple photographs of THE SAME product package. EACH photograph is labeled with its position (front, back, side, other).
-
-YOUR JOB: Read the text on the label and extract specific fields. You are a transcription machine, NOT a compliance judge.
-
-=== CRITICAL RULES ===
-1. ONLY extract text ACTUALLY VISIBLE AND LEGIBLE on the labels.
-2. NEVER reconstruct, guess, infer, or hallucinate ANY value. If you are unsure, return null.
-3. Use the EXACT VERBATIM text as printed — preserve digits, units, symbols, abbreviations.
-4. If a field is completely absent from ALL photos -> value: null, confidence: "low".
-5. If a field IS printed but blurry/cut off/illegible -> value: null, add key to "uncertain", confidence: "low".
-6. The label language is ${langName}. Read text in this language AND in English (many labels are bilingual).
-7. "category" must be one of: ${ALLOWED_CATEGORIES.join(', ')}.
-
-=== FIELD-SPECIFIC EXTRACTION RULES ===
-
-MRP (Maximum Retail Price):
-- Common printed patterns: "MRP Rs.249", "MRP ₹249.00", "M.R.P.: Rs 249/-", "Maximum Retail Price Rs.249 incl. of all taxes", "MRP Rs 249 (inclusive of all taxes)"
-- Include the FULL printed line (price + "incl. of all taxes" if present).
-- If ONLY one price is visible, extract it. If MULTIPLE prices are visible (e.g., MRP + "offer price"), put the CLEAR retail MRP as value and note the others in uncertain.
-- NEVER return a value like "MRP" or "Rs" alone — always include the numeric amount.
-
-Net Quantity / Net Weight:
-- Common patterns: "Net Qty: 500 g", "Net Wt. 250g", "Net Weight: 1 kg", "Net Contents: 100 ml", "6 x 200ml"
-- Include the numeric value AND the unit exactly as printed.
-- For multipacks, include the full expression: "6 x 200 ml" (not just "1200 ml").
-
-Manufacturer / Packer / Importer:
-- Common patterns: "Manufactured by: ITC Limited", "Packed by: XYZ Foods Pvt. Ltd.", "Marketed by: ABC Corp"
-- Include the FULL company name as printed (preserve uppercase, "Pvt. Ltd.", "Limited", etc.).
-- The address is a SEPARATE field — do not merge it with the company name.
-
-Address:
-- Common patterns: "Regd. Office: 123 Industrial Area, Delhi - 110001", "Factory: Plot 5, MIDC, Pune 411018"
-- Include the COMPLETE address including PIN code.
-- The address often follows the manufacturer/packer name on the next line.
-
-Country of Origin:
-- Common patterns: "Country of Origin: India", "Made in India", "Product of India"
-- Extract the country name ONLY.
-
-Dates (Manufacturing / Best Before / Expiry):
-- Common patterns: "Mfg.Dt:08/2025", "Mfg. Date: 08/2025", "PKD: AUG 2025", "Mfg Month & Year: 08/2025", "Best Before: 12 months from manufacture", "Expiry: 01/2026"
-- For mfg_date: extract the date string EXACTLY as printed.
-- For best_before: extract the full line (duration or date).
-- If both mfg_date and best_before are on the same line, put the manufacturing date in mfg_date and the best-before in best_before.
-
-Consumer Care:
-- Common patterns: "Consumer Care: 1800-123-4567", "Customer Care: care@company.com", "Helpline: 1800 102 3040"
-- Include the FULL contact information (phone, email, web address).
-
-Lot / Batch Number:
-- Common patterns: "Lot No: AB123", "Batch: 2025-08-01A", "B.No: 12345"
-- Include the exact code as printed.
-
-FSSAI License (food items only):
-- Must be EXACTLY 14 digits starting with 1 or 2. Example: 10019011002543
-- If you see a 14-digit number that does NOT start with 1 or 2, it is NOT an FSSAI license.
-- Do NOT confuse batch codes, timestamps, or other numbers with FSSAI license.
-
-Veg / Non-Veg (food items only):
-- Green dot/brown dot symbol. Return "veg" or "nonveg" or null.
-
-Nutrition Info / Ingredients / Allergens (food items only):
-- Extract the FULL verbatim text from the nutrition table / ingredient list / allergen declaration.
-- These are often multi-line. Include ALL lines.
-
-=== OUTPUT FORMAT ===
-Respond ONLY with valid JSON. No markdown, no code fences, no commentary before or after.
-
-{
-  "product_name": "exact product name as printed or null",
-  "brand": "brand name as printed or null",
-  "category": "one of: ALLOWED_CATEGORIES",
-  "ocr": {"text": "all visible text combined from all photos", "languages": ["en"]},
-  "ocr_blocks": [
-    {"position": "front", "text": "text from photo 0", "languages": ["en"]},
-    {"position": "back", "text": "text from photo 1", "languages": ["en"]}
-  ],
-  "labels": [{"label":"label name","label_text":"brief description"}],
-  "extractions": {
-    "commodity_name": {"value":"exact text or null","confidence":"high|medium|low","source_image":0},
-    "mrp": {"value":"full MRP line with amount or null","confidence":"high|medium|low","source_image":0},
-    "net_quantity": {"value":"exact qty with unit or null","confidence":"high|medium|low","source_image":0},
-    "unit_sale_price": {"value":"exact USP or null","confidence":"high|medium|low","source_image":null},
-    "manufacturer": {"value":"company name only or null","confidence":"high|medium|low","source_image":null},
-    "packer": {"value":"company name only or null","confidence":"high|medium|low","source_image":null},
-    "importer": {"value":"company name only or null","confidence":"high|medium|low","source_image":null},
-    "address": {"value":"full address with PIN or null","confidence":"high|medium|low","source_image":null},
-    "country_of_origin": {"value":"country name only or null","confidence":"high|medium|low","source_image":null},
-    "mfg_date": {"value":"exact date string or null","confidence":"high|medium|low","source_image":null},
-    "best_before": {"value":"exact best-before line or null","confidence":"high|medium|low","source_image":null},
-    "consumer_care": {"value":"full contact info or null","confidence":"high|medium|low","source_image":null},
-    "lot_no": {"value":"exact batch/lot code or null","confidence":"high|medium|low","source_image":null},
-    "fssai_license": {"value":"14-digit FSSAI number or null","confidence":"high|medium|low","source_image":null},
-    "veg_nonveg": {"value":"veg|nonveg or null","confidence":"high|medium|low","source_image":null},
-    "nutrition_info": {"value":"verbatim nutrition table or null","confidence":"high|medium|low","source_image":null},
-    "ingredients": {"value":"verbatim ingredient list or null","confidence":"high|medium|low","source_image":null},
-    "allergens": {"value":"verbatim allergen text or null","confidence":"high|medium|low","source_image":null}
-  },
-  "uncertain": ["field keys where text was printed but illegible"],
-  "language_note": "short note about label languages"
-}
-`
-}
-
 /** Call Gemini Vision, parse the raw JSON extraction, and return EngineInputs-ready data. */
 async function geminiVisionOcr(
   images: Array<string | { data?: string }>,
   lang: string,
   ocrTextHint?: string,
 ): Promise<ParsedRaw> {
-  const prompt = buildVisionPrompt(lang)
+  const prompt = buildExtractionPrompt(lang)
   const parts: GemPart[] = [{ text: prompt }]
   // Optional Google Cloud Vision transcript — a second reference for small,
   // dense text. The photographs remain the PRIMARY source.
@@ -219,7 +110,16 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
     // 1️⃣ Gemini Vision OCR + structured extraction (parseRaw normalizes fields/ex)
     const parsed = await geminiVisionOcr(images as Array<string | { data?: string }>, lang, typeof ocr_text === 'string' ? ocr_text : undefined)
-    const { ex, fields, ocrText, ocrLangs, ocrBlocks, uncertain, labels, category: detectedCategory, barcode: parsedBarcode, productName, brand } = parsed
+    const { ex, fields, ocrText, ocrLangs, ocrBlocks, uncertain, labels, category: detectedCategory, barcode: parsedBarcode, productName, brand, conflicts, quality, status: extractionStatus } = parsed
+
+    // Conflicting fields (different photos show different values) are never trusted:
+    // null their value deterministically and mark them uncertain so the engine flags them.
+    for (const c of conflicts) {
+      if (fields[c.field]) {
+        fields[c.field] = { ...fields[c.field], value: null }
+      }
+      if (!uncertain.includes(c.field)) uncertain.push(c.field)
+    }
 
     // 2️⃣ Build deterministic EngineInputs and detect package context
     const engineInputs: EngineInputs = {
@@ -274,7 +174,9 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         reason: ctxResult.reason,
       },
       evidence_chain: outcome.summary.evidence_chain,
-      extraction_status: Object.values(ex).some((v) => v) ? 'ok' : 'failed',
+      extraction_status: extractionStatus === 'conflict_detected' ? 'conflict' : extractionStatus,
+      conflicts,
+      quality,
     }
 
     // 5️⃣ Persist to Firestore (best-effort, single batched write)
@@ -308,6 +210,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         counts: result.counts,
         context: result.context,
         evidence_chain: result.evidence_chain,
+        conflicts: result.conflicts,
+        quality: result.quality,
         risk_score: result.risk_score,
         status: 'analyzed',
         latitude: latitude ?? null,

@@ -30,6 +30,25 @@ CRITICAL HONESTY RULES:
 - For net quantity: reproduce the exact text including unit.
 - "category" must be one of: ${ALLOWED_CATEGORIES.join(', ')}.
 
+=== MULTI-IMAGE VERIFICATION ===
+You receive SEVERAL photos of the same package (front/back/side). Verify every field ACROSS all photos:
+- If a field appears more than once, KEEP ONLY the single best occurrence — the clearest, highest-confidence reading. NEVER merge two different values into one, and NEVER invent a value to reconcile them.
+- Combine COMPLEMENTARY info (e.g. the address is only legible on the back photo — use it).
+- If two different values for the SAME field appear on DIFFERENT photos (e.g. "Power: 100W" vs "Power: 120W"):
+    value: null, add the key to "uncertain", AND add a {field, values[], explanation} entry to "conflicts"
+    listing BOTH observed values and which photo each came from. NEVER pick one at random.
+
+=== OCR ERROR CORRECTION ===
+Transcribe EXACTLY as printed. Do NOT silently "correct" suspicious characters:
+- "0" vs "O", "1" vs "I"/"l", "5" vs "S", "8" vs "B", "2" vs "Z" are DIFFERENT characters.
+- Only change a suspect character when the photo clearly proves the correct reading (e.g. "12V 2.OA": if the image clearly shows a zero, transcribe "2.0A"; otherwise keep verbatim and add the field to "uncertain").
+- Preserve decimal points, units and separators exactly.
+
+=== CONFLICTS & QUALITY ===
+- "status": "success" (no conflicts), "partial" (some fields missing/uncertain), or "conflict_detected" (any conflicting values found).
+- "conflicts": [{ "field": "power", "values": ["100W", "120W"], "explanation": "Front photo shows 100W, back photo shows 120W." }]
+- "quality": rate overall_confidence, image_quality (good|acceptable|poor), ocr_quality (good|acceptable|poor), and set needs_manual_verification=true when any low-confidence value or conflict remains.
+
 FOR EACH extracted field, you MUST include:
 - value: the EXACT verbatim text as printed (null if absent/illegible)
 - confidence: "high" (clear, unambiguous), "medium" (partially legible), or "low" (barely readable, verify manually)
@@ -111,7 +130,10 @@ Respond ONLY with valid JSON. No markdown, no code fences, no commentary.
     "instructions": {"value":"null or usage/directions text","confidence":"high|medium|low","source_image":null}
   },
   "uncertain": ["list of field keys where value was printed but illegible"],
-  "language_note": "short sentence about label languages"
+  "language_note": "short sentence about label languages",
+  "status": "success | partial | conflict_detected",
+  "conflicts": [{"field":"field key","values":["value A","value B"],"explanation":"which photo shows which value"}],
+  "quality": {"overall_confidence":"high|medium|low","image_quality":"good|acceptable|poor","ocr_quality":"good|acceptable|poor","needs_manual_verification":false}
 }`
 }
 
@@ -314,6 +336,44 @@ export function sanitizeExtractions(value: unknown): SanitizedExtractions {
 /* ------------------------------------------------------------------ */
 /* Raw -> EngineInputs                                                 */
 /* ------------------------------------------------------------------ */
+export interface RawConflict {
+  field: string
+  values: string[]
+  explanation: string
+}
+
+export interface RawQuality {
+  overall_confidence: 'high' | 'medium' | 'low'
+  image_quality: 'good' | 'acceptable' | 'poor'
+  ocr_quality: 'good' | 'acceptable' | 'poor'
+  needs_manual_verification: boolean
+}
+
+function toConflict(c: unknown): RawConflict | null {
+  if (!c || typeof c !== 'object') return null
+  const o = c as Record<string, unknown>
+  const field = norm(o.field) ?? ''
+  if (!field) return null
+  return {
+    field,
+    values: Array.isArray(o.values) ? o.values.map((v) => String(v)).map(cleanStructured).filter((v): v is string => !!v) : [],
+    explanation: cleanStructured(norm(o.explanation)) ?? '',
+  }
+}
+
+function toQuality(q: unknown): RawQuality | null {
+  if (!q || typeof q !== 'object') return null
+  const o = q as Record<string, unknown>
+  const pick = <T extends string>(v: unknown, all: readonly T[], fallback: T): T =>
+    typeof v === 'string' && (all as readonly string[]).includes(v) ? (v as T) : fallback
+  return {
+    overall_confidence: pick(o.overall_confidence, ['high', 'medium', 'low'], 'medium'),
+    image_quality: pick(o.image_quality, ['good', 'acceptable', 'poor'], 'acceptable'),
+    ocr_quality: pick(o.ocr_quality, ['good', 'acceptable', 'poor'], 'acceptable'),
+    needs_manual_verification: Boolean(o.needs_manual_verification),
+  }
+}
+
 export interface ParsedRaw {
   fields: Record<string, NormField>
   ex: Extractions
@@ -327,6 +387,11 @@ export interface ParsedRaw {
   productName: string | null
   brand: string | null
   languageNote: string
+  /** success | partial | conflict_detected — reflects multi-image conflict detection. */
+  status: 'success' | 'partial' | 'conflict_detected'
+  /** Fields where different photos showed different values (never guessed). */
+  conflicts: RawConflict[]
+  quality: RawQuality | null
 }
 
 export function parseRaw(
@@ -349,6 +414,17 @@ export function parseRaw(
         }))
     : []
   const uncertain = Array.isArray(raw.uncertain) ? raw.uncertain.map((l) => String(l).trim()).filter(Boolean) : []
+  const conflicts = Array.isArray(raw.conflicts)
+    ? raw.conflicts.map(toConflict).filter((c): c is RawConflict => c !== null)
+    : []
+  const quality = toQuality(raw.quality)
+  const statusRaw = String(raw.status ?? '').trim().toLowerCase()
+  const status =
+    statusRaw === 'conflict_detected' || statusRaw === 'partial' || statusRaw === 'success'
+      ? statusRaw
+      : conflicts.length > 0
+        ? 'conflict_detected'
+        : 'partial'
   const labels = Array.isArray(raw.labels)
     ? raw.labels
         .filter((l): l is Record<string, unknown> => Boolean(l) && typeof l === 'object')
@@ -366,6 +442,9 @@ export function parseRaw(
     productName,
     brand: cleanStructured(norm(raw.brand)),
     languageNote: cleanStructured(norm(raw.language_note)) ?? '',
+    status,
+    conflicts,
+    quality,
   }
 }
 
