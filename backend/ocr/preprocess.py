@@ -99,3 +99,105 @@ def resize_for_hash(img: np.ndarray, max_dim: int = 128) -> np.ndarray:
     scale = max_dim / max(h, w)
     new_w, new_h = int(w * scale), int(h * scale)
     return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+
+# ---------------------------------------------------------------------------
+# Adaptive / region-level helpers (evidence-based OCR)
+# ---------------------------------------------------------------------------
+
+def _gray(img: np.ndarray) -> np.ndarray:
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+
+
+def blur_score(img: np.ndarray) -> float:
+    """Variance of Laplacian — lower means blurrier."""
+    g = _gray(img)
+    if g.size == 0:
+        return 0.0
+    return float(cv2.Laplacian(g, cv2.CV_64F).var())
+
+
+def estimate_quality(img: np.ndarray) -> dict:
+    """Cheap, non-OCR image-quality assessment used for honest prompts and
+    the trust-score 'image quality' signal. No heavy processing."""
+    h, w = img.shape[:2]
+    g = _gray(img).astype(np.float32)
+    mean_ = float(np.mean(g))
+    std_ = float(np.std(g))
+    blur = blur_score(img)
+    blur_pct = float(np.clip(100 - (blur / 40.0) * 100, 0, 100))  # lower blur -> higher pct
+    res_score = float(np.clip((min(h, w) / 900.0) * 100, 0, 100))
+    # brightness not too dark (<35) and not blown out (>235)
+    bright_pct = float(np.clip(100 - (abs(mean_ - 140) * 1.1), 20, 100))
+    contrast_pct = float(np.clip(100 - (abs(std_ - 70) * 1.2), 20, 100))
+    overall = round(0.3 * blur_pct + 0.25 * res_score + 0.2 * bright_pct + 0.25 * contrast_pct, 1)
+    issues = []
+    if blur < 90:
+        issues.append("Image is blurry — retake the photo closer to the label.")
+    if min(h, w) < 500:
+        issues.append("Image resolution is low — capture the label more closely.")
+    if mean_ < 45:
+        issues.append("Image is too dark — use better lighting.")
+    if mean_ > 215:
+        issues.append("Image is over-exposed — reduce glare/lighting.")
+    if not issues:
+        issues.append("Image quality looks good.")
+    return {
+        "score": overall,
+        "resolution": [w, h],
+        "blur_score": round(blur, 2),
+        "brightness": round(mean_, 1),
+        "contrast": round(std_, 1),
+        "verdict": "good" if overall >= 75 else "acceptable" if overall >= 50 else "poor",
+        "message": " ".join(issues),
+    }
+
+
+def needs_enhancement(img: np.ndarray) -> bool:
+    """Decide whether a crop needs preprocessing BEFORE targeted re-OCR.
+    Only enhance when the region is blurry, dull, or very low resolution."""
+    if img.size == 0:
+        return False
+    h, w = img.shape[:2]
+    if min(h, w) < 160:
+        return True
+    return blur_score(img) < 120 or float(np.std(_gray(img))) < 30
+
+
+def enhance(img: np.ndarray) -> np.ndarray:
+    """Light, crop-appropriate enhancement: denoise -> CLAHE contrast -> sharpen."""
+    out = img.copy()
+    if out.ndim == 3:
+        out = cv2.fastNlMeansDenoisingColored(out, None, 6, 6, 5, 15)
+    else:
+        out = cv2.fastNlMeansDenoising(out, None, 6, 5, 15)
+    gray = _gray(out)
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+    out = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR) if out.ndim == 3 else gray
+    blr = cv2.GaussianBlur(out, (0, 0), 2.0)
+    out = cv2.addWeighted(out, 1.4, blr, -0.4, 0)
+    return out
+
+
+def crop_region(img: np.ndarray, region: tuple, margin_fraction: float = 0.12) -> np.ndarray:
+    """Extract a region [x,y,w,h] plus a small margin, clamped to image bounds."""
+    h, w = img.shape[:2]
+    x, y, rw, rh = (int(v) for v in region)
+    mx = max(6, int(rw * margin_fraction))
+    my = max(6, int(rh * margin_fraction))
+    x0, y0 = max(0, x - mx), max(0, y - my)
+    x1, y1 = min(w, x + rw + mx), min(h, y + rh + my)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return img[y:y + rh, x:x + rw].copy()
+    return img[y0:y1, x0:x1].copy()
+
+
+def upscale_for_ocr(img: np.ndarray, min_side: int = 420) -> np.ndarray:
+    """Upscale a small crop so tiny label text becomes readable by OCR. No-op
+    when the crop is already large enough."""
+    h, w = img.shape[:2]
+    if min(h, w) >= min_side:
+        return img
+    scale = min_side / float(min(h, w))
+    return cv2.resize(img, (max(2, int(w * scale)), max(2, int(h * scale))), interpolation=cv2.INTER_CUBIC)

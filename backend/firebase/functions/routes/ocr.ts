@@ -83,6 +83,9 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       processing_time_ms: data.processing_time_ms,
       cache_hits: data.cache_hits,
       reocr_count: data.reocr_count,
+      // Adaptive evidence layer: per-block bounding boxes + per-image quality.
+      regions: Array.isArray(data.blocks_detail) ? data.blocks_detail : [],
+      image_quality: Array.isArray(data.image_quality) ? data.image_quality : [],
       // Full deterministic extraction so the frontend can decide whether the
       // fast path already produced a valid result (skip Gemini when it did).
       fields: data.fields,

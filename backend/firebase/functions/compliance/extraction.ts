@@ -138,6 +138,152 @@ Respond ONLY with valid JSON. No markdown, no code fences, no commentary.
 }`
 }
 
+/**
+ * Pass 1 — raw verbatim OCR transcription. Returns per-image text blocks +
+ * combined text only. Run BEFORE buildExtractionPrompt so the structured pass
+ * can use this verbatim transcript as a reference.
+ */
+export function buildTranscriptPrompt(): string {
+  return `You are a high-accuracy OCR text extraction engine.
+Your ONLY task is to extract text that is actually visible in the provided product image.
+
+## RULES
+
+1. Extract ALL readable text from the image.
+2. Preserve the text as it appears.
+3. Do NOT summarize.
+4. Do NOT rewrite.
+5. Do NOT translate.
+6. Do NOT add missing information.
+7. Do NOT guess unclear characters.
+8. Preserve capitalization, numbers, symbols, decimals and units.
+9. Preserve product/model/serial numbers exactly.
+10. Keep separate text blocks separate when their position indicates they are separate.
+11. Remove obvious OCR garbage and duplicate text.
+12. If a character is genuinely unreadable, use "[UNCLEAR]" rather than guessing.
+13. Never create text that is not visible in the image.
+
+## IMPORTANT CHARACTER CHECK
+
+Carefully distinguish:
+
+0 / O
+1 / I / l
+2 / Z
+5 / S
+8 / B
+6 / G
+9 / g
+
+Also verify:
+
+* decimal points
+* commas
+* hyphens
+* "/" (forward slash)
+* "%"
+* "+"
+* "-"
+* ":"
+* "₹" (Indian rupee)
+* currency symbols
+* measurement units
+
+## PRODUCT LABEL PRIORITY
+
+Pay special attention to:
+
+* Brand name
+* Product name
+* Model number
+* SKU
+* Serial number
+* Barcode numbers
+* Specifications
+* Dimensions
+* Weight
+* Capacity
+* Voltage
+* Power
+* Dates
+* Price
+* Ingredients/materials
+* Certifications
+* Warnings
+* Instructions
+
+## MULTIPLE IMAGES
+
+If multiple images are provided:
+
+* Extract text from EVERY image.
+* Do not ignore the second image.
+* Combine only when the images clearly show the same information.
+* Remove exact duplicates.
+* Keep different information from different images.
+
+## CONFIDENCE
+
+For each text block, assign:
+
+HIGH = clearly readable
+MEDIUM = mostly readable with minor uncertainty
+LOW = difficult to read
+
+Do not assign HIGH confidence to guessed text.
+
+## OUTPUT
+
+Return ONLY JSON:
+
+{
+  "images": [
+    {
+      "image_id": "image_1",
+      "text_blocks": [
+        {
+          "text": "",
+          "confidence": "high | medium | low"
+        }
+      ]
+    }
+  ],
+  "combined_text": "",
+  "overall_confidence": "high | medium | low",
+  "unreadable_regions": []
+}
+
+FINAL REQUIREMENT:
+
+The extracted text must be based ONLY on visible evidence in the image.
+
+If text is unclear, do not hallucinate it.`
+}
+
+/** Extract the verbatim combined text (or per-image blocks) from a transcript response. */
+export function rawTranscriptText(raw: unknown): string {
+  if (!raw || typeof raw !== 'object') return ''
+  const o = raw as Record<string, unknown>
+  const combined = typeof o.combined_text === 'string' ? o.combined_text.trim() : ''
+  if (combined) return combined
+  if (Array.isArray(o.images)) {
+    return o.images
+      .filter((im): im is Record<string, unknown> => Boolean(im) && typeof im === 'object')
+      .map((im) =>
+        Array.isArray(im.text_blocks)
+          ? (im.text_blocks as unknown[])
+              .filter((b): b is Record<string, unknown> => Boolean(b) && typeof b === 'object')
+              .map((b) => String(b.text ?? '').trim())
+              .filter(Boolean)
+              .join('\n')
+          : '',
+      )
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  return ''
+}
+
 /* ------------------------------------------------------------------ */
 /* JSON parsing + normalization helpers                                 */
 /* ------------------------------------------------------------------ */

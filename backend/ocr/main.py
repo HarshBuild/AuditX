@@ -68,6 +68,22 @@ def _image_hash(img: np.ndarray) -> str:
     return hashlib.md5(small.tobytes()).hexdigest()[:16]
 
 
+def _rect_from_box(box) -> Optional[List[int]]:
+    """Convert a PaddleOCR quad [[x,y]x4] into a [x,y,width,height] rect."""
+    if not box:
+        return None
+    try:
+        xs = [float(p[0]) for p in box]
+        ys = [float(p[1]) for p in box]
+        x, y = int(min(xs)), int(min(ys))
+        w, h = int(max(xs)) - x, int(max(ys)) - y
+        if w < 1 or h < 1:
+            return None
+        return [x, y, w, h]
+    except Exception:
+        return None
+
+
 def _decode(data_url: str) -> np.ndarray:
     raw = data_url.split(",", 1)[1] if "," in data_url else data_url
     img = preprocess.decode_base64(raw)
@@ -148,12 +164,27 @@ def _assemble_results(all_lines: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
     from rules import evaluate
 
     ocr_blocks = []
+    blocks_detail = []
     combined = []
     for i, lines in enumerate(all_lines):
         lines = collapse_whitespace(lines)
         text = join_ocr(lines)
         conf = round(float(np.mean([l["confidence"] for l in lines]) if lines else 0), 3)
         ocr_blocks.append({"position": f"photo_{i+1}", "text": text, "confidence": conf, "lines": len(lines)})
+        per = {"image_id": f"image_{i+1}", "blocks": []}
+        for j, ln in enumerate(lines):
+            rect = _rect_from_box(ln.get("box"))
+            if not rect:
+                continue
+            per["blocks"].append({
+                "text": str(ln.get("text", "")),
+                "confidence": round(float(ln.get("confidence", 0)), 3),
+                "region": rect,
+                "region_id": f"img{i+1}_r{j+1}",
+                "enhanced": bool(ln.get("enhanced", False)),
+            })
+        if per["blocks"]:
+            blocks_detail.append(per)
         combined.append(text)
     ocr_text = " ".join(c for c in combined if c).strip()
 
@@ -164,6 +195,7 @@ def _assemble_results(all_lines: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
         "ok": True,
         "ocr_text": ocr_text,
         "ocr_blocks": ocr_blocks,
+        "blocks_detail": blocks_detail,
         "fields": {k: {"value": v["value"], "confidence": v["confidence"], "source": v.get("source")} for k, v in fields.items()},
         "rules": rules,
         "result": result,
@@ -222,6 +254,9 @@ async def ocr_endpoint(request: Request) -> Dict[str, Any]:
 
     # Optimize images (resize large ones) BEFORE any processing
     images = [_optimize_image(img) for img in images]
+
+    # Cheap quality assessment (used for honest prompts + trust-score input)
+    quality_info = [preprocess.estimate_quality(img) for img in images]
 
     # Check cache for each image
     cached_results = []
@@ -301,7 +336,98 @@ async def ocr_endpoint(request: Request) -> Dict[str, Any]:
     result["processing_time_ms"] = round((time.time() - start_time) * 1000, 1)
     result["cache_hits"] = len(cached_results)
     result["reocr_count"] = len(reocr_needed)
+    result["image_quality"] = quality_info
     return result
+
+
+@app.post("/verify-region")
+async def verify_region_endpoint(request: Request) -> Dict[str, Any]:
+    """ADAPTIVE TARGETED RE-SCAN — the core evidence-based optimization.
+
+    Input (JSON): { "image": "<data URL or base64>", "regions": [[x,y,w,h], ...],
+                     "lang": "en", "enhance": true }
+    Crops ONLY the requested regions, applies conditional preprocessing
+    (detect blur/dull -> denoise/CLAHE/sharpen, upscale small crops) and re-runs
+    OCR on each crop. The full image is NEVER re-scanned.
+    """
+    start_time = time.time()
+    try:
+        data = json.loads(await request.body())
+    except Exception:
+        raise HTTPException(400, 'Send JSON {"image": <data URL>, "regions": [[x,y,w,h], ...]}')
+
+    image_b64 = data.get("image")
+    regions = data.get("regions")
+    lang = str(data.get("lang") or "en")
+    enhance = bool(data.get("enhance", True))
+
+    if not image_b64 or not isinstance(image_b64, str):
+        raise HTTPException(400, "Missing image (data URL or base64).")
+    if not isinstance(regions, list) or not regions:
+        raise HTTPException(400, "Missing regions — send at least one [x,y,width,height].")
+    if len(regions) > 24:
+        raise HTTPException(400, "At most 24 regions per image.")
+
+    img = _decode(image_b64)
+    h, w = img.shape[:2]
+    tasks: List[Tuple] = []
+    for idx, r in enumerate(regions):
+        if not isinstance(r, (list, tuple)) or len(r) != 4:
+            raise HTTPException(400, "Each region must be [x, y, width, height].")
+        try:
+            x, y, rw, rh = (int(v) for v in r)
+        except Exception:
+            raise HTTPException(400, "Region coordinates must be numbers.")
+        if rw < 4 or rh < 4:
+            raise HTTPException(400, "Region is too small.")
+        if x < 0 or y < 0 or x + rw > w or y + rh > h:
+            # clamp instead of rejecting (slightly out-of-bounds is common)
+            x = max(0, min(x, w - 1))
+            y = max(0, min(y, h - 1))
+            rw = max(4, min(rw, w - x))
+            rh = max(4, min(rh, h - y))
+        tasks.append((idx, x, y, rw, rh))
+
+    def _run_one(task) -> Dict[str, Any]:
+        idx, x, y, rw, rh = task
+        crop = preprocess.crop_region(img, (x, y, rw, rh))
+        enhanced = False
+        t0 = time.time()
+        target = crop
+        if enhance and preprocess.needs_enhancement(crop):
+            target = preprocess.enhance(preprocess.upscale_for_ocr(crop))
+            enhanced = True
+        elif crop.shape[1] < 200:
+            # tiny crop: always upscale so glyphs are legible
+            target = preprocess.upscale_for_ocr(crop)
+            enhanced = True
+        lines = ocr_mod.read_text(target, lang)
+        lines = [l for l in lines if l.get("text")]
+        best = max(lines, key=lambda l: l["confidence"]) if lines else None
+        return {
+            "index": idx,
+            "region": [x, y, rw, rh],
+            "text": best["text"] if best else None,
+            "confidence": round(best["confidence"], 3) if best else 0.0,
+            "enhanced": enhanced,
+            "lines": [{"text": l["text"], "confidence": round(l["confidence"], 3)} for l in lines],
+            "processed_ms": round((time.time() - t0) * 1000, 1),
+        }
+
+    results: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(4, len(tasks))) as executor:
+        futures = [executor.submit(_run_one, t) for t in tasks]
+        for fut in as_completed(futures):
+            try:
+                results.append(fut.result())
+            except Exception as e:
+                print(f"Region verify failed: {e}")
+    results.sort(key=lambda r: r["index"])
+    return {
+        "ok": True,
+        "results": results,
+        "processing_time_ms": round((time.time() - start_time) * 1000, 1),
+    }
 
 
 if __name__ == "__main__":

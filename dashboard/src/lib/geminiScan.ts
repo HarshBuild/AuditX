@@ -11,7 +11,7 @@
  * This is the high-accuracy replacement for the Tesseract on-device fallback.
  */
 import { updateDoc, doc } from 'firebase/firestore'
-import { buildExtractionPrompt, parseRaw } from './compliance/extraction'
+import { buildExtractionPrompt, buildTranscriptPrompt, parseRaw, rawTranscriptText } from './compliance/extraction'
 import { runComplianceEngine, type ComplianceOutcome } from './compliance/engine'
 import type { ExtractedField as EngineField, Extractions } from './compliance/types'
 import { createScan } from './services'
@@ -22,6 +22,7 @@ import { COLLECTIONS } from './db'
 import { CONFIG } from './config'
 import { dataUrlToInline, extractJson, geminiApiKey, geminiGenerateContent, type GemPart } from './gemini'
 import type { LocalScanInput } from './localEngine'
+import { clientsideVerify } from './compliance/adaptiveClient'
 import type {
   AIIinsight,
   DetectedLabel,
@@ -83,30 +84,60 @@ export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Prom
   const lang = input.lang ?? 'en'
   if (!geminiApiKey()) throw new Error('Gemini API key is not configured.')
 
-  const prompt = buildExtractionPrompt(lang)
-  const parts: GemPart[] = [{ text: prompt }]
-  // Optional Google Cloud Vision transcript — a reference for small/dense
-  // text. The photographs remain the PRIMARY source; OCR noise must be ignored.
-  if (input.ocrHint?.trim()) {
-    parts.push({
-      text: `REFERENCE TRANSCRIPT (Google Cloud Vision OCR — may contain noise):\n${input.ocrHint.trim().slice(0, 30000)}\n\nUse the photographs as the primary source. Only transcribe text that is actually visible and legible in the photos — do not copy OCR noise verbatim.`,
-    })
-  }
+  const imageParts: GemPart[] = []
   for (const img of input.images) {
     if (!img) continue
     let url = img
     if (!url.startsWith('data:')) url = `data:image/jpeg;base64,${url}`
-    parts.push(dataUrlToInline(url))
+    imageParts.push(dataUrlToInline(url))
   }
-  if (parts.length <= 1) throw new Error('No valid image data provided.')
+  if (imageParts.length === 0) throw new Error('No valid image data provided.')
 
-  const rawText = await geminiGenerateContent({
-    model: CONFIG.GEMINI_VISION_MODEL,
-    system: 'You are a machine. Output strict JSON only, no commentary.',
-    parts,
-    temperature: 0,
-    maxOutputTokens: 4096,
-  })
+  const call = async (gemParts: GemPart[]): Promise<string | null> => {
+    try {
+      return await geminiGenerateContent({
+        model: CONFIG.GEMINI_VISION_MODEL,
+        system: 'You are a machine. Output strict JSON only, no commentary.',
+        parts: gemParts,
+        temperature: 0,
+        maxOutputTokens: 4096,
+      })
+    } catch {
+      return null
+    }
+  }
+
+  // Pass 1 — raw verbatim transcription (per-image blocks + combined text).
+  let transcriptRaw: unknown = null
+  const transcriptText0 = await call([{ text: buildTranscriptPrompt() }, ...imageParts])
+  if (transcriptText0) {
+    try {
+      transcriptRaw = extractJson(transcriptText0)
+    } catch {
+      transcriptRaw = null
+    }
+  }
+
+  // Pass 2 — structured field extraction, feeding the verbatim transcript back
+  // as a reference. The photographs remain the PRIMARY source of truth.
+  const parts: GemPart[] = [{ text: buildExtractionPrompt(lang) }]
+  const references: string[] = []
+  // Optional Google Cloud Vision transcript — a reference for small/dense text.
+  if (input.ocrHint?.trim()) {
+    references.push(`REFERENCE TRANSCRIPT (Google Cloud Vision OCR — may contain noise):\n${input.ocrHint.trim().slice(0, 12000)}`)
+  }
+  const transcriptText = rawTranscriptText(transcriptRaw)
+  if (transcriptText) {
+    references.push(`REFERENCE TRANSCRIPT (LLM vision transcript — verbatim text visible in the photos):\n${transcriptText.slice(0, 20000)}`)
+  }
+  if (references.length > 0) {
+    parts.push({
+      text: `${references.join('\n\n')}\n\nUse the photographs as the primary source. Only transcribe text that is actually visible and legible in the photos — do not copy OCR noise verbatim.`,
+    })
+  }
+  parts.push(...imageParts)
+
+  const rawText = await call(parts)
   const raw = rawText ? extractJson(rawText) : null
   if (!raw || typeof raw !== 'object') {
     throw new Error('Gemini did not return structured extraction data.')
@@ -125,6 +156,20 @@ export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Prom
       parsed.fields[c.field] = { ...parsed.fields[c.field], value: null }
     }
     if (!parsed.uncertain.includes(c.field)) parsed.uncertain.push(c.field)
+  }
+
+  // Adaptive evidence layer — verify Gemini values against the fast-OCR
+  // blocks (honest flags + cross-image agreement + trust score). Best-effort:
+  // runs only when the fast OCR pass forwarded per-image blocks.
+  const adaptive = clientsideVerify(
+    parsed.fields as unknown as Record<string, { value: string | null; confidence?: string | null }>,
+    [...parsed.uncertain],
+    input.ocrBlocks ?? [],
+    input.qualityScores,
+    input.ocrInitialMs,
+  )
+  if (adaptive) {
+    for (const key of adaptive.uncertain) if (!parsed.uncertain.includes(key)) parsed.uncertain.push(key)
   }
 
   const qualityNote =
@@ -188,15 +233,29 @@ export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Prom
   const storedFields: NonNullable<ScanRow['extraction_fields']> = {}
   for (const [k, f] of Object.entries(parsed.fields)) {
     if (f.value == null) continue
+    const fv = adaptive?.verification[k]
     storedFields[k] = {
       value: f.value,
       confidence: f.confidence ?? 'low',
       source_image: f.source_image,
-      status: 'VERIFIED',
-      confidence_score: f.confidence === 'high' ? 0.9 : f.confidence === 'medium' ? 0.6 : 0.3,
+      status: fv
+        ? fv.verified && !fv.needsVerification
+          ? 'VERIFIED'
+          : 'NEEDS_REVIEW'
+        : 'VERIFIED',
+      confidence_score: fv ? fv.confidence_score : f.confidence === 'high' ? 0.9 : f.confidence === 'medium' ? 0.6 : 0.3,
       conflict: false,
       votes: 1,
-      evidence: [],
+      evidence: (fv?.evidence ?? []).map((e) => ({
+        source_image: e.source_image,
+        bbox: e.region ? { x0: e.region[0], y0: e.region[1], x1: e.region[2], y1: e.region[3] } : null,
+        region_text: e.region_text,
+        pass: e.pass,
+        ocr_conf: e.ocr_conf ?? 0,
+        value: e.value,
+        crop: null,
+      })),
+      verification: fv ? (fv.verified && !fv.needsVerification ? 'verified' : 'needs_verification') : undefined,
     }
   }
 
@@ -229,6 +288,11 @@ labels: parsed.labels.map((l) => ({ ...l, verdict: 'VERIFIED' as DetectedLabel['
       language_note: 'Analyzed with Google Gemini AI (vision extraction + compliance rules).' + qualityNote,
       extractions: exForStore as ScanRow['extractions'],
       extraction_fields: storedFields,
+      verification: adaptive?.verification ?? null,
+      trust_score: adaptive?.trust.score ?? null,
+      trust_breakdown: adaptive?.trust.breakdown ?? null,
+      processing: adaptive?.processing ?? null,
+      uncertain_regions: adaptive?.scanned_regions ?? 0,
       uncertain: parsed.uncertain,
       detected: detectedFrom(outcome),
       counts,
@@ -278,6 +342,11 @@ labels: parsed.labels.map((l) => ({ ...l, verdict: 'VERIFIED' as DetectedLabel['
       : 'Analyzed with Google Gemini AI — saved locally only (cloud write failed).') + qualityNote,
     extractions: exForStore as ScanRow['extractions'],
     extraction_fields: storedFields,
+    verification: adaptive?.verification,
+    trust_score: adaptive?.trust.score,
+    trust_breakdown: adaptive?.trust.breakdown,
+    processing: adaptive?.processing,
+    uncertain_regions: adaptive?.scanned_regions ?? 0,
     detected: detectedFrom(outcome),
     counts,
     context,

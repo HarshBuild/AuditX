@@ -142,6 +142,58 @@ export async function createScan(
   return ref.id
 }
 
+/**
+ * User correction loop — a scanned field the OCR read wrong is corrected by
+ * the user. Evidence-first: the previous (AI/OCR) value is KEPT as
+ * `original_value`, never silently overwritten, and the correction is logged
+ * on the scan so the audit trail stays intact. Only the owner or a staff
+ * member may correct a scan.
+ */
+export async function userCorrectField(scanId: string, field: string, corrected: string): Promise<void> {
+  const actor = auth.currentUser
+  if (!actor) throw new Error('Not authenticated')
+  const scanned = await getDoc(doc(db, COLLECTIONS.SCANS, scanId))
+  if (!scanned.exists()) throw new Error('Scan not found')
+  const data = scanned.data()
+  const ownerId = data.user_id ? String(data.user_id) : ''
+  const isStaff = await isStaffUser(actor.uid).catch(() => false)
+  if (ownerId && ownerId !== actor.uid && !isStaff) throw new Error('You can only correct scans you created.')
+
+  const key = field.replace(/[^a-zA-Z0-9_]/g, '_')
+  const prevField = data.extraction_fields?.[key]
+  const prevValue = typeof prevField?.value === 'string' ? prevField.value : null
+  const prevExtraction = data.extractions?.[key]
+
+  const fresh: Record<string, unknown> = {
+    [`extraction_fields.${key}`]: {
+      ...(prevField ?? {}),
+      value: corrected,
+      verification: 'user_corrected',
+      status: 'USER_CORRECTED',
+      confidence_score: 1,
+      conflict: false,
+      original_value: prevValue ?? prevExtraction ?? null,
+    },
+    [`extractions.${key}`]: corrected,
+    [`user_corrections.${key}`]: {
+      corrected_value: corrected,
+      original_value: prevValue ?? prevExtraction ?? null,
+      corrected_by: actor.uid,
+      corrected_at: new Date().toISOString(),
+    },
+    updated_at: new Date().toISOString(),
+  }
+
+  await updateDoc(doc(db, COLLECTIONS.SCANS, scanId), fresh)
+  void logActivity({ uid: actor.uid, name: actor.displayName ?? actor.email ?? '' }, 'scan.field_corrected', 'scan', scanId, { field: key, value: corrected, original: prevValue ?? prevExtraction ?? null })
+}
+
+async function isStaffUser(uid: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, COLLECTIONS.USERS, uid))
+  const role = String(snap.data()?.role ?? 'user')
+  return role === 'admin' || role === 'super_admin'
+}
+
 export async function setScanStatus(scanId: string, status: ScanRow['status'], notes: string) {
   const actor = await requireStaff()
   const scan = await getDoc(doc(db, COLLECTIONS.SCANS, scanId))

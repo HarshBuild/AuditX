@@ -41,10 +41,33 @@ export interface FastOcrVerdict {
   counts: { passed: number; failed: number; review: number; na: number }
 }
 
+export interface VisionOcrBlock {
+  text: string
+  confidence: number | null
+}
+
+export interface RegionBlock {
+  text: string
+  confidence: number
+  region: [number, number, number, number]
+  region_id?: string
+}
+
+export interface RegionImage {
+  image_id?: string
+  blocks: RegionBlock[]
+}
+
+export interface ImageQualityScore {
+  score: number
+  verdict?: string
+  message?: string
+}
+
 export interface VisionOcrResult {
   provider: 'google_vision' | 'paddleocr'
   text: string
-  blocks: Array<{ text: string; confidence: number | null }>
+  blocks: VisionOcrBlock[]
   languages: string[]
   /** Fast deterministic extraction (PaddleOCR path only) — lets the caller
    *  return an immediate valid result instead of waiting for Gemini OCR. */
@@ -52,6 +75,9 @@ export interface VisionOcrResult {
   rules?: FastOcrResultRule[]
   result?: FastOcrVerdict
   processing_time_ms?: number
+  /** Adaptive evidence layer: per-image OCR blocks with bounding boxes. */
+  regions?: RegionImage[]
+  image_quality?: ImageQualityScore[]
 }
 
 /**
@@ -92,6 +118,8 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
     rules?: FastOcrResultRule[]
     result?: FastOcrVerdict
     processing_time_ms?: number
+    regions?: RegionImage[]
+    image_quality?: ImageQualityScore[]
   }
   try {
     data = (await res.json()) as typeof data
@@ -109,6 +137,8 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
     rules: data.rules,
     result: data.result,
     processing_time_ms: data.processing_time_ms,
+    regions: Array.isArray(data.regions) ? data.regions : [],
+    image_quality: Array.isArray(data.image_quality) ? data.image_quality : [],
   }
 }
 

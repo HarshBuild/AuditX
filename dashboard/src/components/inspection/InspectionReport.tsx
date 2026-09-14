@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { httpsCallable } from 'firebase/functions'
 import {
   AlertTriangle,
@@ -22,11 +22,15 @@ import {
   Loader2,
   MessageSquareText,
   MinusCircle,
+  Pencil,
   RefreshCw,
+  ScanSearch,
   Send,
   Share2,
+  ShieldCheck,
   ShoppingBag,
   Tag,
+  Undo2,
   XCircle,
 } from 'lucide-react'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
@@ -44,7 +48,8 @@ import { functions } from '../../lib/firebase'
 import { riskBand, riskTone } from '../../lib/risk'
 import { formatDateTime } from '../../utils/format'
 import { displayProductName, displaySentence, displayText } from '../../lib/textnorm'
-import type { EvidenceLink, ExtractedDeclarations, RuleCheck, ScanContext, ScanRow, StatusCounts } from '../../lib/types2'
+import type { EvidenceLink, ExtractedDeclarations, FieldVerification, RuleCheck, ScanContext, ScanRow, StatusCounts } from '../../lib/types2'
+import { userCorrectField } from '../../lib/services'
 
 /* ------------------------------------------------------------------ */
 /* Animated stat counters                                              */
@@ -79,6 +84,12 @@ function useAnimatedNumber(value: number, duration = 700): number {
 function AnimatedNumber({ value, className = '' }: { value: number; className?: string }) {
   const n = useAnimatedNumber(value)
   return <span className={className}>{n}</span>
+}
+
+/** Force a re-render after in-place prop mutations (e.g. user corrections). */
+function useForceUpdate(): () => void {
+  const [, tick] = useReducer((x: number) => x + 1, 0)
+  return tick
 }
 
 /* ------------------------------------------------------------------ */
@@ -688,9 +699,49 @@ function bandFor(pct: number): { label: string; bar: string } {
   return { label: 'Not confident', bar: 'bg-rose-500' }
 }
 
-function DeclarationsList({ scan }: { scan: ScanRow }) {
+/** Adaptive evidence layer — per-field verification badge. */
+function VerificationBadge({
+  verified,
+  pct,
+  corrected,
+}: {
+  verified: boolean
+  pct: number | null
+  corrected?: boolean
+}) {
+  if (corrected) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+        <Pencil className="h-2.5 w-2.5" /> Corrected by you
+      </span>
+    )
+  }
+  if (verified) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+        <ShieldCheck className="h-2.5 w-2.5" /> {pct != null ? `Verified — ${Math.round(pct)}%` : 'Verified'}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+      <AlertTriangle className="h-2.5 w-2.5" /> {pct != null ? `Needs verification — ${Math.round(pct)}%` : 'Needs verification'}
+    </span>
+  )
+}
+
+function DeclarationsList({
+  scan,
+  onCorrect,
+  onViewFieldEvidence,
+}: {
+  scan: ScanRow
+  onCorrect: (key: string, label: string, current: string, currentVerification: FieldVerification | undefined) => void
+  onViewFieldEvidence: (label: string, imageIndex: number, region: [number, number, number, number] | null) => void
+}) {
   const ex = scan.extractions as Record<string, string | null | undefined> | undefined
   const uncertain = scan.uncertain ?? []
+  const verification = scan.verification ?? {}
   if (!ex && uncertain.length === 0) {
     return <p className="py-6 text-center text-sm text-slate-400">No extracted declarations for this scan.</p>
   }
@@ -701,9 +752,11 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
 
   const rows = DECLARATION_LABELS.map((d) => {
     const rawValue = ex?.[d.key] ?? ''
-    const conf = scan.extraction_fields?.[d.key] as { value?: string | null; confidence?: string | null; source_image?: number | null } | undefined
+    const conf = scan.extraction_fields?.[d.key] as { value?: string | null; confidence?: string | null; source_image?: number | null; status?: string | null } | undefined
     const confidence = conf?.confidence ?? null
-    const needsReview = confidence === 'low' || uncertain.includes(d.key)
+    const fv = verification[d.key]
+    const corrected = conf?.status === 'USER_CORRECTED'
+    const needsReview = confidence === 'low' || uncertain.includes(d.key) || fv?.needsVerification === true
     const hasValue = String(rawValue ?? '').trim() !== ''
     const missing = !hasValue && !needsReview
     const sourceImg = conf?.source_image ?? null
@@ -712,7 +765,7 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
       status === 'ok' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
       : status === 'verify' ? <AlertTriangle className="h-4 w-4 text-amber-500" />
       : <XCircle className="h-4 w-4 text-rose-400" />
-    return { ...d, value: displayText(rawValue), confidence, needsReview, missing, sourceImg, status, icon }
+    return { ...d, value: displayText(rawValue), confidence, needsReview, missing, sourceImg, status, icon, fv, corrected, verified: !needsReview && hasValue }
   })
 
   return (
@@ -726,59 +779,336 @@ function DeclarationsList({ scan }: { scan: ScanRow }) {
         </span>
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/10">
-        {rows.map((row, i) => (
-          <details key={row.key} className={`group ${i > 0 ? 'border-t border-slate-100 dark:border-white/10' : ''}`}>
-            <summary className={`flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-2.5 ${row.status === 'miss' ? 'bg-rose-50/40 dark:bg-rose-500/5' : row.status === 'verify' ? 'bg-amber-50/30 dark:bg-amber-500/5' : 'bg-white dark:bg-navy-900'}`}>
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center">{row.icon}</span>
-              <span className="w-28 shrink-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:w-40">{row.label}</span>
-              <span title={row.value} className={`min-w-0 flex-1 truncate text-sm ${row.status === 'miss' ? 'italic text-rose-400' : row.status === 'verify' ? 'italic text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                {row.status === 'miss' ? 'Not detected' : row.status === 'verify' ? (row.value || 'Unable to verify from photos') : row.value}
-              </span>
-              {row.confidence && (
-                <span className={`hidden rounded-full px-2 py-0.5 text-[10px] font-bold sm:inline ${row.confidence === 'high' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : row.confidence === 'medium' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'}`}>
-                  {row.confidence.toUpperCase()}
+        {rows.map((row, i) => {
+          const hasEvidence = Boolean(row.fv?.evidence?.some((e) => e.region || e.source_image != null)) && (scan.image_urls ?? []).length > 0
+          const pct = row.fv?.confidence_score != null ? row.fv.confidence_score * 100 : null
+          return (
+            <details key={row.key} className={`group ${i > 0 ? 'border-t border-slate-100 dark:border-white/10' : ''}`}>
+              <summary className={`flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-2.5 ${row.status === 'miss' ? 'bg-rose-50/40 dark:bg-rose-500/5' : row.status === 'verify' ? 'bg-amber-50/30 dark:bg-amber-500/5' : 'bg-white dark:bg-navy-900'}`}>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center">{row.icon}</span>
+                <span className="w-28 shrink-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:w-40">{row.label}</span>
+                <span title={row.value} className={`min-w-0 flex-1 truncate text-sm ${row.status === 'miss' ? 'italic text-rose-400' : row.status === 'verify' ? 'italic text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                  {row.status === 'miss' ? 'Not detected' : row.status === 'verify' ? (row.value || 'Unable to verify from photos') : row.value}
                 </span>
-              )}
-              {row.sourceImg != null && row.sourceImg >= 0 && (
-                <span className="hidden text-[11px] text-slate-400 sm:inline">Img {row.sourceImg + 1}</span>
-              )}
-              <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Detected value</p>
-                  <p className={`mt-0.5 text-sm ${row.status === 'miss' ? 'italic text-rose-500 dark:text-rose-400' : row.status === 'verify' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                    {row.status === 'miss' ? 'Not detected — value missing' : row.value || 'Unable to verify from photos'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Status &amp; confidence</p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <RuleStatusBadge status={row.status === 'miss' ? 'NOT_DETECTED' : row.status === 'verify' ? 'WARNING' : 'PASS'} />
-                    {row.confidence && (
-                      <span className="w-16">
-                        <span className="flex items-center justify-between text-[10px] text-slate-400">
-                          <span>{row.confidence}</span><span>{CONF_PCT[row.confidence]}%</span>
+                {row.corrected && (
+                  <span className="hidden sm:inline"><VerificationBadge verified={false} pct={null} corrected /></span>
+                )}
+                {!row.corrected && row.fv && (
+                  <span className="hidden sm:inline"><VerificationBadge verified={row.verified} pct={pct} /></span>
+                )}
+                {row.confidence && (
+                  <span className={`hidden rounded-full px-2 py-0.5 text-[10px] font-bold sm:inline ${row.confidence === 'high' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : row.confidence === 'medium' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'}`}>
+                    {row.confidence.toUpperCase()}
+                  </span>
+                )}
+                {row.sourceImg != null && row.sourceImg >= 0 && (
+                  <span className="hidden text-[11px] text-slate-400 sm:inline">Img {row.sourceImg + 1}</span>
+                )}
+                <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Detected value</p>
+                    <p className={`mt-0.5 text-sm ${row.status === 'miss' ? 'italic text-rose-500 dark:text-rose-400' : row.status === 'verify' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                      {row.status === 'miss' ? 'Not detected — value missing' : row.value || 'Unable to verify from photos'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Status &amp; confidence</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <RuleStatusBadge status={row.status === 'miss' ? 'NOT_DETECTED' : row.status === 'verify' ? 'WARNING' : 'PASS'} />
+                      {row.fv && !row.corrected && <VerificationBadge verified={row.verified} pct={pct} />}
+                      {row.corrected && <VerificationBadge verified={false} pct={null} corrected />}
+                      {row.confidence && (
+                        <span className="w-16">
+                          <span className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span>{row.confidence}</span><span>{CONF_PCT[row.confidence]}%</span>
+                          </span>
+                          <span className="mt-0.5 block h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                            <span className={`block h-full rounded-full ${CONF_BAR[row.confidence]}`} style={{ width: `${CONF_PCT[row.confidence]}%` }} />
+                          </span>
                         </span>
-                        <span className="mt-0.5 block h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                          <span className={`block h-full rounded-full ${CONF_BAR[row.confidence]}`} style={{ width: `${CONF_PCT[row.confidence]}%` }} />
-                        </span>
-                      </span>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
+                {row.value && (
+                  <p className="mt-3 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs italic text-slate-500 dark:bg-navy-900/70 dark:text-slate-400">
+                    Read from the label: “{row.value}”
+                  </p>
+                )}
+                {row.fv && row.fv.evidence && row.fv.evidence.length > 0 && (
+                  <div className="mt-2 space-y-1 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-navy-900/60">
+                    <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      <ScanSearch className="h-3 w-3" /> Evidence
+                    </p>
+                    {row.fv.evidence.map((ev, j) => (
+                      <p key={j} className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                        {ev.pass === 'targeted_re_scan' ? 'Re-scanned region' : 'OCR read'} · Image {(ev.source_image ?? 0) + 1}
+                        {ev.ocr_conf != null ? ` · OCR ${Math.round(ev.ocr_conf * 100)}%` : ''} — “{displayText(ev.region_text, 60)}”
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {(hasEvidence || row.fv || !row.corrected) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {hasEvidence && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        icon={<Eye className="h-3.5 w-3.5" />}
+                        onClick={() => {
+                          const ev = (row.fv?.evidence ?? []).find((e) => e.region) ?? row.fv?.evidence?.[0]
+                          onViewFieldEvidence(row.label, ev?.source_image ?? (scan.image_urls ?? []).length - 1, ev?.region ?? null)
+                        }}
+                      >
+                        View evidence
+                      </Button>
+                    )}
+                    {row.value && !row.corrected && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        icon={<Pencil className="h-3.5 w-3.5" />}
+                        onClick={() => onCorrect(row.key, row.label, row.value, row.fv)}
+                      >
+                        Correct
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
-              {row.value && (
-                <p className="mt-3 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs italic text-slate-500 dark:bg-navy-900/70 dark:text-slate-400">
-                  Read from the label: “{row.value}”
-                </p>
-              )}
-            </div>
-          </details>
-        ))}
+            </details>
+          )
+        })}
       </div>
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* 7b · Trust score hero                                                */
+/* ------------------------------------------------------------------ */
+
+function TrustScoreCard({ scan }: { scan: ScanRow }) {
+  const trust = scan.trust_score ?? null
+  const breakdown = scan.trust_breakdown
+  const verification = scan.verification ?? {}
+  const entries = Object.values(verification)
+  const verifiedCount = entries.filter((v) => v?.verified && !v?.needsVerification).length
+  const needsCount = entries.filter((v) => v?.needsVerification).length
+
+  if (trust == null) {
+    return (
+      <AnalyticsCard title="Trust Score" subtitle="How confident this extraction is">
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+          <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+          <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+            This scan predates adaptive verification (targeted re-scan + confidence scoring), so a trust score was not generated for it.
+          </p>
+        </div>
+      </AnalyticsCard>
+    )
+  }
+
+  const R = 42
+  const CIRC = 2 * Math.PI * R
+  const frac = Math.max(0, Math.min(1, trust / 100))
+  const tone =
+    trust >= 85 ? { stroke: 'text-emerald-500', track: 'text-emerald-100', text: 'text-emerald-600 dark:text-emerald-400' }
+    : trust >= 60 ? { stroke: 'text-amber-500', track: 'text-amber-100', text: 'text-amber-600 dark:text-amber-400' }
+    : { stroke: 'text-rose-500', track: 'text-rose-100', text: 'text-rose-600 dark:text-rose-400' }
+
+  const bars: Array<{ label: string; value: number }> = breakdown
+    ? [
+        { label: 'OCR confidence', value: breakdown.ocr_confidence },
+        { label: 'Character verification', value: breakdown.character_verification },
+        { label: 'Image quality', value: breakdown.image_quality },
+        { label: 'Cross-image agreement', value: breakdown.cross_image_agreement },
+        { label: 'Verification rate', value: breakdown.verification_rate },
+      ]
+    : []
+
+  return (
+    <AnalyticsCard title="Trust Score" subtitle="Measured extraction confidence — derived only from the OCR pass, quality and cross-photo agreement">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+        <div className="flex shrink-0 flex-col items-center gap-3">
+          <div className="relative h-28 w-28">
+            <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90">
+              <circle cx="64" cy="64" r={R} fill="none" strokeWidth="12" className={`stroke-current ${tone.track}`} />
+              <circle cx="64" cy="64" r={R} fill="none" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${CIRC}`} strokeDashoffset={`${CIRC * (1 - frac)}`} className={`stroke-current ${tone.stroke} animate-gauge-fill`} />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <AnimatedNumber value={trust} className={`text-3xl font-extrabold leading-none tabular-nums ${tone.text}`} />
+              <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">/ 100</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <ShieldCheck className="h-2.5 w-2.5" /> {verifiedCount} verified
+            </span>
+            {needsCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                <AlertTriangle className="h-2.5 w-2.5" /> {needsCount} need verification
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            The trust score combines five measured signals — it never guesses. “Needs verification” fields are honestly flagged and the targeted re-scan only ran on the regions that were uncertain.
+          </p>
+          {bars.length > 0 && (
+            <div className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
+              {bars.map((b) => (
+                <div key={b.label}>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold">{b.label}</span>
+                    <span className="font-bold tabular-nums">{Math.max(0, Math.min(100, b.value))}%</span>
+                  </div>
+                  <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                    <span
+                      className={`block h-full rounded-full ${b.value >= 85 ? 'bg-emerald-500' : b.value >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                      style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }}
+                    />
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {scan.uncertain_regions != null && scan.uncertain_regions > 0 && (
+            <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
+              <ScanSearch className="h-3.5 w-3.5" /> {scan.uncertain_regions} region{scan.uncertain_regions === 1 ? '' : 's'} were re-scanned during verification.
+            </p>
+          )}
+        </div>
+      </div>
+    </AnalyticsCard>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* 7c · Needs-verification panel                                        */
+/* ------------------------------------------------------------------ */
+
+function NeedsVerificationPanel({
+  scan,
+  onCorrect,
+  onViewFieldEvidence,
+}: {
+  scan: ScanRow
+  onCorrect: (key: string, label: string, current: string, currentVerification: FieldVerification | undefined) => void
+  onViewFieldEvidence: (label: string, imageIndex: number, region: [number, number, number, number] | null) => void
+}) {
+  const verification = scan.verification ?? {}
+  const ex = scan.extractions as Record<string, string | null | undefined> | undefined
+  const labelOf = (key: string) => DECLARATION_LABELS.find((d) => d.key === key)?.label ?? SPEC_FIELDS.find((s) => s.key === key)?.label ?? key.replace(/_/g, ' ')
+  const items = Object.entries(verification)
+    .filter(([, v]) => v?.needsVerification && v?.before != null)
+    .map(([key, v]) => ({
+      key,
+      label: labelOf(key),
+      value: (ex?.[key] as string | undefined) ?? v.before ?? '',
+      pct: typeof v.confidence_score === 'number' ? Math.round(v.confidence_score * 100) : null,
+      evidence: v?.evidence ?? [],
+    }))
+  const uncertOnly = (scan.uncertain ?? [])
+    .filter((k) => !verification[k])
+    .filter((k) => ex?.[k])
+    .map((k) => ({ key: k, label: labelOf(k), value: String(ex?.[k] ?? ''), pct: null, evidence: [] }))
+  const rows = [...items, ...uncertOnly].slice(0, 12)
+
+  if (rows.length === 0) return null
+
+  return (
+    <AnalyticsCard title="Needs Verification" subtitle="Fields the extraction could not confirm — review them against the physical label">
+      <div className="space-y-2">
+        {rows.map((r) => {
+          const hasEvidence = r.evidence.length > 0 && (scan.image_urls ?? []).length > 0
+          return (
+            <div key={r.key} className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/40 px-3.5 py-2.5 dark:border-amber-500/20 dark:bg-amber-500/5">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{r.label}</p>
+                <p className="truncate text-xs text-amber-700 dark:text-amber-300">{r.value || 'Value not readable from the photos'}</p>
+              </div>
+              {r.pct != null && <span className="shrink-0 text-[11px] font-bold text-amber-600 dark:text-amber-400">{r.pct}%</span>}
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {hasEvidence && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<Eye className="h-3.5 w-3.5" />}
+                    onClick={() => {
+                      const ev = r.evidence.find((e) => e.region) ?? r.evidence[0]
+                      onViewFieldEvidence(r.label, ev?.source_image ?? (scan.image_urls ?? []).length - 1, ev?.region ?? null)
+                    }}
+                  >
+                    Evidence
+                  </Button>
+                )}
+                {r.value && (
+                  <Button size="sm" variant="outline" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => onCorrect(r.key, r.label, r.value, verification[r.key])}>
+                    Correct
+                  </Button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </AnalyticsCard>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* 7d · Per-field evidence modal (bbox overlay)                        */
+/* ------------------------------------------------------------------ */
+
+function FieldEvidenceModal({
+  url,
+  label,
+  region,
+  imageLabel,
+  onClose,
+}: {
+  url: string
+  label: string
+  region: [number, number, number, number] | null
+  imageLabel: string
+  onClose: () => void
+}) {
+  // OCR regions were computed on a ≤2048px re-scaled copy of the photo, so the
+  // highlight below is an approximation on the original-resolution image.
+  const MAX_DIM = 2048
+  const left = region ? Math.max(0, Math.min(100, (region[0] / MAX_DIM) * 100)) : 0
+  const top = region ? Math.max(0, Math.min(100, (region[1] / MAX_DIM) * 100)) : 0
+  const w = region ? Math.max(0, Math.min(100 - left, (region[2] / MAX_DIM) * 100)) : 0
+  const h = region ? Math.max(0, Math.min(100 - top, (region[3] / MAX_DIM) * 100)) : 0
+  return (
+    <Modal open onClose={onClose} title={`Evidence — ${label}`} description={imageLabel}>
+      <div className="relative inline-block max-w-full overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
+        <img src={url} alt={label} className="block h-auto max-w-full bg-slate-50 object-contain mix-blend-multiply dark:bg-navy-950 dark:mix-blend-screen" />
+        {region && (
+          <div
+            className="pointer-events-none absolute border-2 border-amber-400 ring-2 ring-amber-300/40"
+            style={{ left: `${left}%`, top: `${top}%`, width: `${w}%`, height: `${h}%` }}
+          />
+        )}
+      </div>
+      {region ? (
+        <p className="mt-3 flex items-start gap-1.5 text-[11px] text-slate-400">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+          The highlight shows the approximate region that was OCR&apos;d for this field. It is approximate because OCR ran on a re-scaled copy of the photo.
+        </p>
+      ) : (
+        <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
+          <Info className="h-3.5 w-3.5 text-amber-500" /> No precise region was recorded for this field — the full image is shown as evidence.
+        </p>
+      )}
+    </Modal>
   )
 }
 
@@ -1203,6 +1533,11 @@ export default function InspectionReport({
   const [evidenceIdx, setEvidenceIdx] = useState<number | null>(null)
   const [evidenceTitle, setEvidenceTitle] = useState('Evidence from product label')
   const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [fieldEvidence, setFieldEvidence] = useState<{ label: string; imageIndex: number; region: [number, number, number, number] | null } | null>(null)
+  const [correcting, setCorrecting] = useState<{ key: string; label: string } | null>(null)
+  const [correctValue, setCorrectValue] = useState('')
+  const [savingCorrection, setSavingCorrection] = useState(false)
+  const forceUpdate = useForceUpdate()
 
   const t = (key: Parameters<typeof translate>[1]) => translate(lang, key)
   const counts = resolveCounts(scan)
@@ -1267,6 +1602,61 @@ export default function InspectionReport({
     const idx = sourceImage != null && sourceImage >= 0 ? sourceImage : 0
     if (label) setEvidenceTitle(label)
     setEvidenceIdx(idx)
+  }
+
+  const openFieldEvidence = (label: string, imageIndex: number, region: [number, number, number, number] | null) => {
+    setFieldEvidence({ label, imageIndex, region })
+  }
+
+  const openCorrection = (key: string, label: string, current: string) => {
+    setCorrecting({ key, label })
+    setCorrectValue(current)
+  }
+
+  /** User correction loop — persists via userCorrectField (evidence-first). */
+  const saveCorrection = async () => {
+    const v = correctValue.trim()
+    if (!correcting || !v) return
+    setSavingCorrection(true)
+    try {
+      await userCorrectField(scan.id, correcting.key, v)
+      // Apply the correction locally so the report updates instantly.
+      if (scan.extractions) {
+        ;(scan.extractions as Record<string, string | null | undefined>)[correcting.key] = v
+      }
+      const efMap = scan.extraction_fields
+      if (efMap && correcting) {
+        const ef = efMap[correcting.key]
+        if (ef) {
+          efMap[correcting.key] = {
+            ...ef,
+            value: v,
+            status: 'USER_CORRECTED',
+            verification: 'user_corrected',
+            confidence_score: 1,
+            conflict: false,
+            original_value: ef.value ?? ef.original_value ?? String(ef.value ?? ''),
+          }
+        } else {
+          efMap[correcting.key] = {
+            value: v,
+            confidence: 'high',
+            source_image: null,
+            status: 'USER_CORRECTED',
+            verification: 'user_corrected',
+            confidence_score: 1,
+            conflict: false,
+          }
+        }
+      }
+      toast('success', 'Field corrected', `${correcting.label} updated to “${v}”.`)
+      setCorrecting(null)
+      forceUpdate()
+    } catch (e) {
+      toast('error', 'Correction failed', (e as Error)?.message ?? 'Could not save your correction.')
+    } finally {
+      setSavingCorrection(false)
+    }
   }
 
   /** Plain-text copy of the report — used by both Copy Result and Share. */
@@ -1445,6 +1835,11 @@ export default function InspectionReport({
       {/* Compliance score + overall status */}
       <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
         <ScoreHero scan={scan} counts={counts} sig={sig} />
+      </div>
+
+      {/* Trust score — measured extraction confidence (adaptive evidence layer) */}
+      <div className="animate-fade-up" style={{ animationDelay: '90ms' }}>
+        <TrustScoreCard scan={scan} />
       </div>
 
       {/* Qualitative result status + key findings + recommendations */}
@@ -1661,9 +2056,22 @@ export default function InspectionReport({
       <FinalAssessment scan={scan} counts={counts} />
 
       {/* Extracted declarations */}
-      <AnalyticsCard title="Extracted Declarations & Verification" subtitle="Declarations read off the label, with confidence">
-        <DeclarationsList scan={scan} />
+      <AnalyticsCard title="Extracted Declarations & Verification" subtitle="Declarations read off the label, with verification status & evidence">
+        <DeclarationsList
+          scan={scan}
+          onCorrect={openCorrection}
+          onViewFieldEvidence={openFieldEvidence}
+        />
       </AnalyticsCard>
+
+      {/* Fields that could not be automatically verified */}
+      <div className="animate-fade-up">
+        <NeedsVerificationPanel
+          scan={scan}
+          onCorrect={openCorrection}
+          onViewFieldEvidence={openFieldEvidence}
+        />
+      </div>
 
       {/* AI assistant */}
       <AnalyticsCard title={t('ai_assistant')} subtitle={t('suggest_next')}>
@@ -1803,6 +2211,48 @@ export default function InspectionReport({
 
       {/* Evidence modal */}
       <EvidenceModal scan={scan} imageIndex={evidenceIdx} title={evidenceTitle} onClose={() => setEvidenceIdx(null)} />
+
+      {/* Per-field evidence modal (bbox overlay) */}
+      {fieldEvidence && (
+        <FieldEvidenceModal
+          url={(scan.image_urls ?? [])[fieldEvidence.imageIndex] ?? (scan.image_urls ?? [])[0]}
+          label={fieldEvidence.label}
+          region={fieldEvidence.region}
+          imageLabel={`Image ${fieldEvidence.imageIndex + 1}`}
+          onClose={() => setFieldEvidence(null)}
+        />
+      )}
+
+      {/* User correction modal — evidence-first, never silently overwrites */}
+      <Modal
+        open={correcting !== null}
+        onClose={() => setCorrecting(null)}
+        title="Correct field value"
+        description={correcting ? `Update the "${correcting.label}" reading. The original value stays recorded as evidence.` : undefined}
+      >
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">Corrected value</span>
+            <input
+              value={correctValue}
+              onChange={(e) => setCorrectValue(e.target.value)}
+              autoFocus
+              placeholder="Type the correct value as printed on the label"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100"
+            />
+          </label>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" onClick={() => setCorrecting(null)}>Cancel</Button>
+            <Button icon={savingCorrection ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} onClick={() => void saveCorrection()} disabled={savingCorrection || !correctValue.trim()}>
+              Save correction
+            </Button>
+          </div>
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-400">
+            <Undo2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            The AI reading is kept as the original value on the record — this correction is logged, not hidden.
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }

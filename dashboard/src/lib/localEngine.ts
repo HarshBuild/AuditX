@@ -32,6 +32,7 @@ import { brandFromManufacturer, type KeyOfExtractions } from './textract/fields'
 import { type TexField, type PanelPrior } from './textract/types'
 import { runPipeline, type PipelineOutput } from './textract/pipeline'
 import { evidenceThumb } from './textract/image'
+import { clientsideVerify, type BlocksImage } from './compliance/adaptiveClient'
 
 export interface LocalScanInput {
   images: string[] // data URLs
@@ -42,6 +43,9 @@ export interface LocalScanInput {
   barcode?: string
   positions?: PanelPrior[] // label panel per photo (order follows images)
   ocrHint?: string // Google Cloud Vision transcript (best-effort reference)
+  ocrBlocks?: BlocksImage[] // fast-OCR blocks with bounding boxes (adaptive evidence)
+  qualityScores?: number[]
+  ocrInitialMs?: number
 }
 
 const TESS_LANGS: Record<string, string> = {
@@ -213,6 +217,28 @@ export async function runLocalScan(input: LocalScanInput, perf?: PerfRun): Promi
 
   const barcodeCheck = output.barcodeCheck
 
+  // Adaptive evidence layer: verify extracted fields against the fast-OCR
+  // blocks (honest flags + cross-image agreement + trust score). Best-effort.
+  const adaptive = clientsideVerify(
+    texFields as unknown as Record<string, { value: string | null; confidence?: string | null }>,
+    uncertain,
+    input.ocrBlocks ?? [],
+    input.qualityScores,
+    input.ocrInitialMs,
+  )
+  if (adaptive) {
+    for (const key of adaptive.uncertain) if (!uncertain.includes(key)) uncertain.push(key)
+    for (const [k, f] of Object.entries(storedFields)) {
+      const fv = adaptive.verification[k]
+      if (!fv) continue
+      if (f.value != null && fv.verified && !fv.needsVerification) {
+        storedFields[k] = { ...f, status: 'VERIFIED', confidence_score: Math.max(f.confidence_score ?? 0, fv.confidence_score), evidence: f.evidence }
+      } else if (f.conflict || uncertain.includes(k)) {
+        storedFields[k] = { ...f, status: 'NEEDS_REVIEW', confidence_score: f.confidence_score ?? fv.confidence_score, evidence: f.evidence }
+      }
+    }
+  }
+
   // Persistence is best-effort: the scan must always render, even when the
   // Cloud Function claims are missing or Firestore rules deny the write.
   let scanId = `local-${Date.now()}`
@@ -255,6 +281,11 @@ export async function runLocalScan(input: LocalScanInput, perf?: PerfRun): Promi
         needs_review: barcodeCheck.needsReview,
       },
       pipeline_version: output.version,
+      verification: adaptive?.verification ?? null,
+      trust_score: adaptive?.trust.score ?? null,
+      trust_breakdown: adaptive?.trust.breakdown ?? null,
+      processing: adaptive?.processing ?? null,
+      uncertain_regions: adaptive?.scanned_regions ?? 0,
       evidence_chain: summary.evidence_chain.map((e) => ({
         rule_id: e.rule_id,
         requirement: e.requirement,
@@ -309,6 +340,11 @@ export async function runLocalScan(input: LocalScanInput, perf?: PerfRun): Promi
       agree: barcodeCheck.agree,
       needs_review: barcodeCheck.needsReview,
     },
+    verification: adaptive?.verification,
+    trust_score: adaptive?.trust.score,
+    trust_breakdown: adaptive?.trust.breakdown,
+    processing: adaptive?.processing,
+    uncertain_regions: adaptive?.scanned_regions ?? 0,
     evidence_chain: summary.evidence_chain.map((e) => ({
       rule_id: e.rule_id,
       requirement: e.requirement,

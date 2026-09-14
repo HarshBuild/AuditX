@@ -33,12 +33,14 @@ import type {
   DetectedSummary,
   ExtractedDeclarations,
   ExtractedField,
+  FieldVerification,
   InspectorAssistant,
   OcrBlock,
   OcrExtract,
   RuleCheck,
   ScanEngine,
   ScanRow,
+  TrustBreakdown,
 } from './types2'
 import type { PanelPrior } from './textract/types'
 
@@ -228,6 +230,7 @@ export interface ScanAnalysisInput extends ScanAnalysisMeta {
 interface ScanAnalysisRequest extends ScanAnalysisMeta {
   images: { data: string }[]
   ocr_text?: string // Google Cloud Vision transcript (best-effort reference)
+  perImageBlocks?: Array<{ image_id?: string; blocks: Array<{ text: string; confidence: number; region: [number, number, number, number] }> }>
 }
 
 export interface RawAnalysis {
@@ -247,6 +250,12 @@ export interface RawAnalysis {
   assistant?: InspectorAssistant
   detected?: DetectedSummary
   uncertain?: string[]
+  /** Adaptive evidence layer — verification + trust score from the server path. */
+  verification?: Record<string, FieldVerification>
+  trust_score?: number
+  trust_breakdown?: TrustBreakdown
+  processing?: { initial_ocr_ms: number; verification_ms: number; total_ms: number }
+  uncertain_regions?: number
 }
 
 export interface ScanAnalysisOutput {
@@ -297,6 +306,11 @@ function buildScanRow(scanId: string, out: ScanAnalysisOutput, lang: string, met
     extraction_fields: out.result.extraction_fields,
     detected: out.result.detected,
     uncertain: out.result.uncertain,
+    verification: out.result.verification,
+    trust_score: out.result.trust_score,
+    trust_breakdown: out.result.trust_breakdown,
+    processing: out.result.processing,
+    uncertain_regions: out.result.uncertain_regions,
     manual_result: null,
     notes: '',
     latitude: null,
@@ -347,6 +361,7 @@ interface FastOcrPayload {
   result: FastOcrVerdict
   lang: string
   meta: ScanAnalysisMeta
+  processingTime?: number
 }
 
 function toFastRules(rules: FastOcrResultRule[]): RuleCheck[] {
@@ -393,6 +408,27 @@ async function buildFastScanRow(p: FastOcrPayload): Promise<ScanRow> {
     languages: [p.lang],
   }))
 
+  // Honest trust estimate from measured per-field confidence (fast path has no
+  // targeted re-scan, so verification mirrors the deterministic extraction).
+  const fieldScores = Object.values(extraction_fields).map((f) => f.confidence_score ?? 0)
+  const trust_score = fieldScores.length ? Math.round((fieldScores.reduce((a, b) => a + b, 0) / fieldScores.length) * 100) : 80
+  const verification: Record<string, FieldVerification> = Object.fromEntries(
+    Object.entries(extraction_fields).map(([k, f]) => [
+      k,
+      {
+        verified: f.status === 'VERIFIED' || f.status === 'HIGH_CONFIDENCE',
+        needsVerification: f.status === 'NEEDS_REVIEW' || f.status === 'LOW_CONFIDENCE' || f.status === 'INVALID',
+        via: 'direct' as const,
+        confidence_score: f.confidence_score ?? 0,
+        ocrConfidence: f.confidence_score ?? null,
+        before: f.value,
+        after: f.value,
+        evidence: [],
+      },
+    ]),
+  )
+  const processing = { initial_ocr_ms: p.processingTime ?? 0, verification_ms: 0, total_ms: p.processingTime ?? 0 }
+
   const counts = p.result.counts ?? { passed: 0, failed: 0, review: 0, na: 0 }
   const statusCounts = {
     passed: counts.passed,
@@ -435,21 +471,25 @@ async function buildFastScanRow(p: FastOcrPayload): Promise<ScanRow> {
     overall_score: p.result.score,
     verdict,
     summary,
-    image_url: '',
-    rules,
-    risk_score: riskScore,
-    status: 'analyzed',
-    ocr_text: p.text,
-    ai_insights: aiInsights,
-    image_urls: [],
-    labels: [],
-    ocr: { text: p.text, languages: [p.lang] },
-    ocr_blocks: ocrBlocks,
-    assistant,
-    language_note: 'Analyzed with the fast OCR engine (deterministic extraction + compliance rules).',
-    extractions,
-    extraction_fields,
-    detected,
+image_url: '',
+      rules,
+      risk_score: riskScore,
+      status: 'analyzed',
+      ocr_text: p.text,
+      ai_insights: aiInsights,
+      image_urls: [],
+      labels: [],
+      ocr: { text: p.text, languages: [p.lang] },
+      ocr_blocks: ocrBlocks,
+      assistant,
+      language_note: 'Analyzed with the fast OCR engine (deterministic extraction + compliance rules).',
+      extractions,
+      extraction_fields,
+      verification,
+      trust_score,
+      processing,
+      uncertain_regions: 0,
+      detected,
     counts: statusCounts,
     context: {
       package_type: 'General',
@@ -540,6 +580,7 @@ export async function runScanAnalysis(
           result: ocrHint.result!,
           lang: input.lang ?? 'en',
           meta: input,
+          processingTime: ocrHint.processing_time_ms,
         }),
       )
       onStage?.(3)
@@ -562,6 +603,7 @@ export async function runScanAnalysis(
         manufacturer: input.manufacturer,
         barcode: input.barcode,
         ocr_text: ocrHint?.text,
+        perImageBlocks: ocrHint?.regions ?? [],
       }),
     )
     out = res.data
@@ -582,6 +624,9 @@ export async function runScanAnalysis(
         barcode: input.barcode,
         positions: input.positions,
         ocrHint: ocrHint?.text,
+        ocrBlocks: (ocrHint?.regions ?? []).map((im) => ({ blocks: im.blocks ?? [] })),
+        qualityScores: (ocrHint?.image_quality ?? []).map((q) => q.score),
+        ocrInitialMs: ocrHint?.processing_time_ms ?? 0,
       }, pf)
       onStage?.(3)
       onStage?.(4)

@@ -165,7 +165,7 @@ export interface ExtractedField {
   confidence: 'high' | 'medium' | 'low' | null
   source_image: number | null
   /** Textract v2: fine-grained read status (single value -> VERIFIED..MISSING). */
-  status?: 'VERIFIED' | 'HIGH_CONFIDENCE' | 'MEDIUM_CONFIDENCE' | 'LOW_CONFIDENCE' | 'NEEDS_REVIEW' | 'MISSING' | 'INVALID'
+  status?: 'VERIFIED' | 'HIGH_CONFIDENCE' | 'MEDIUM_CONFIDENCE' | 'LOW_CONFIDENCE' | 'NEEDS_REVIEW' | 'MISSING' | 'INVALID' | 'USER_CORRECTED'
   /** Textract v2: blended multi-signal confidence 0..1. */
   confidence_score?: number
   conflict?: boolean
@@ -180,6 +180,47 @@ export interface ExtractedField {
     value: string
     crop: string | null
   }>
+  /** Adaptive evidence layer: pre-correction value kept when the user amends a field. */
+  original_value?: string
+  /** Adaptive evidence layer: verification outcome surfaced in the result UI. */
+  verification?: 'verified' | 'needs_verification' | 'user_corrected'
+}
+
+/** Adaptive evidence layer — per-field verification outcome (trust/evidence). */
+export interface FieldVerification {
+  verified: boolean
+  needsVerification: boolean
+  via: 'direct' | 'cross_image' | 'targeted_re_scan'
+  confidence_score: number
+  ocrConfidence: number | null
+  before: string | null
+  after: string | null
+  evidence: Array<{
+    source_image: number
+    region: [number, number, number, number] | null
+    region_text: string
+    pass: string
+    ocr_conf: number | null
+    value: string
+  }>
+}
+
+export interface TrustBreakdown {
+  ocr_confidence: number
+  character_verification: number
+  image_quality: number
+  cross_image_agreement: number
+  verification_rate: number
+}
+
+/** Adaptive evidence layer — scan-level verification summary. */
+export interface AdaptiveVerificationSummary {
+  verification: Record<string, FieldVerification>
+  trust: { score: number; breakdown: TrustBreakdown }
+  conflicts: Array<{ field: string; values: string[]; images: number[]; explanation: string }>
+  uncertain: string[]
+  scanned_regions: number
+  processing: { initial_ocr_ms: number; verification_ms: number; total_ms: number }
 }
 
 export interface ScanRow {
@@ -215,6 +256,12 @@ export interface ScanRow {
   uncertain?: string[]
   barcode_check?: { detected: string | null; from_ocr: string | null; agree: boolean; needs_review: boolean }
   pipeline_debug?: unknown
+  /** Adaptive evidence layer — verification of individual extracted fields. */
+  verification?: Record<string, FieldVerification>
+  trust_score?: number
+  trust_breakdown?: TrustBreakdown
+  processing?: { initial_ocr_ms: number; verification_ms: number; total_ms: number }
+  uncertain_regions?: number
   manual_result: ManualResult | null
   notes: string
   latitude: number | null
