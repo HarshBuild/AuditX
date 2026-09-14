@@ -26,7 +26,7 @@ import { ToneBadge } from '../ui/Badge'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../lib/auth'
 import { auth } from '../../lib/firebase'
-import { geminiApiKey, geminiGenerateContent } from '../../lib/gemini'
+import { geminiApiKey, geminiVerifyKey } from '../../lib/gemini'
 import { roleLabel, defaultPrefs, type UserPrefs } from '../../lib/rbac'
 import type { ThemeMode } from '../../hooks/useTheme'
 import { cn } from '../../utils/format'
@@ -67,16 +67,32 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
     const k = geminiKey.trim()
     if (!k) return
     setSavingKey(true)
-    localStorage.setItem('mc_gemini_api_key', k)
-    setHasKey(true)
     try {
-      await geminiGenerateContent({ parts: [{ text: 'Reply with exactly the single word: OK' }], maxOutputTokens: 512 })
-      setKeyMsg('Key verified — scans will now use Google Gemini vision extraction.')
-      toast('success', 'Gemini key saved & verified', 'High-accuracy AI analysis is active on this device.')
-    } catch (e) {
-      const msg = (e as { message?: string }).message ?? 'Connection failed.'
-      setKeyMsg(`Key saved, but the verification call failed: ${msg}`)
-      toast('error', 'Key saved but not verified', msg)
+      const check = await geminiVerifyKey(k)
+      if (check.kind === 'verified') {
+        localStorage.setItem('mc_gemini_api_key', k)
+        setHasKey(true)
+        setKeyMsg('Key verified — scans will now use Google Gemini vision extraction.')
+        toast('success', 'Gemini key saved & verified', 'High-accuracy AI analysis is active on this device.')
+      } else if (check.kind === 'quota') {
+        // Valid key, but the AI Studio project is out of generation quota —
+        // keep the key saved so scans retry on it; fall back to local OCR meanwhile.
+        localStorage.setItem('mc_gemini_api_key', k)
+        setHasKey(true)
+        setKeyMsg('Key saved. Your AI Studio quota is currently exhausted — the key is valid, but generation requests are throttled until the quota resets.')
+        toast('info', 'Key saved — quota throttled', 'Your key is valid but AI Studio has no quota left right now. Scans will fall back to the on-device OCR engine until quota resets.')
+      } else if (check.kind === 'invalid') {
+        setKeyMsg(`The key was rejected (HTTP ${check.status}). Check it in your AI Studio account — invalid keys cannot power scans.`)
+        toast('error', 'Invalid Gemini key', 'The key was rejected by Google. Open https://aistudio.google.com and copy the key again.')
+      } else {
+        setKeyMsg(`Key not saved — could not reach the Gemini API. ${check.message}`)
+        toast('error', 'Could not verify key', check.message)
+      }
+    } catch {
+      localStorage.setItem('mc_gemini_api_key', k)
+      setHasKey(true)
+      setKeyMsg('Key saved, but the verification call failed unexpectedly — scans will retry with this key.')
+      toast('info', 'Key saved but not verified', 'The verification call failed unexpectedly. Scans will retry with this key and fall back to on-device OCR if needed.')
     } finally {
       setSavingKey(false)
     }

@@ -24,6 +24,56 @@ export function geminiApiKey(): string {
   return (env ?? localStorage.getItem('mc_gemini_api_key') ?? '').trim()
 }
 
+export interface GeminiKeyCheck {
+  ok: boolean
+  status: number
+  kind: 'verified' | 'quota' | 'invalid' | 'network'
+  message: string
+}
+
+/** Gemini generation-quota error codes (a valid key may still be throttled). */
+const QUOTA_HINT = /429|resource_exhausted|quota|rate limit/i
+
+/**
+ * Verify a Gemini API key WITHOUT spending generation quota.
+ *
+ * `GET /v1beta/models?key=…` validates the key and lists the enabled models —
+ * the metadata call is not subject to the generateContent rate/per-day quota,
+ * so a key that is merely throttled (429) is correctly reported as VALID
+ * instead of being rejected like an invalid key.
+ */
+export async function geminiVerifyKey(key: string): Promise<GeminiKeyCheck> {
+  const clean = key.trim()
+  if (!clean) return { ok: false, status: 0, kind: 'invalid', message: 'No API key entered.' }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${BASE}/models?key=${encodeURIComponent(clean)}`, {
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const body = await res.text().catch(() => '')
+    if (res.ok) {
+      return { ok: true, status: res.status, kind: 'verified', message: 'Key is valid and models are reachable.' }
+    }
+    let msg = body.slice(0, 160)
+    try {
+      const j = JSON.parse(body)
+      if (j?.error?.message) msg = String(j.error.message).slice(0, 200)
+    } catch {
+      /* plain-text error body */
+    }
+    if (QUOTA_HINT.test(msg)) {
+      return { ok: true, status: res.status, kind: 'quota', message: msg }
+    }
+    return { ok: false, status: res.status, kind: 'invalid', message: msg || `Gemini HTTP ${res.status}` }
+  } catch {
+    return { ok: false, status: 0, kind: 'network', message: 'Could not reach the Gemini API (network). Check your connection.' }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** Turn a data URL ("data:image/jpeg;base64,...") or bare base64 into an inline_data part. */
 export function dataUrlToInline(url: string): GemPart {
   let mime = 'image/jpeg'
@@ -68,7 +118,18 @@ export async function geminiGenerateContent(opts: {
     })
     if (!res.ok) {
       const err = await res.text()
-      throw new Error(`Gemini ${res.status}: ${err.slice(0, 200)}`)
+      const status = res.status
+      let friendly = `Gemini ${status}: ${err.slice(0, 200)}`
+      if (QUOTA_HINT.test(err)) {
+        friendly = `Gemini quota exceeded (${status}). The key is valid but your AI Studio plan/billing is throttling requests — try again later or check https://ai.google.dev/gemini-api/docs/rate-limits.`
+      } else if (status === 400 || status === 401 || status === 403) {
+        friendly = `Gemini rejected the API key (${status}). Check the key in your AI Studio account.`
+      } else if (status === 404) {
+        friendly = `Gemini model "${model}" is unavailable for this key (${status}).`
+      }
+      const e = new Error(friendly) as Error & { status?: number }
+      e.status = res.status
+      throw e
     }
     const data: any = await res.json()
     const text =
