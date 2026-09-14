@@ -8,6 +8,7 @@ import DataTable, { type DataColumn } from '../table/DataTable'
 import { ToneBadge } from '../ui/Badge'
 import { LoadingState, ErrorState, EmptyState } from '../ui/States'
 import Button from '../ui/Button'
+import PageHeader from '../ui/PageHeader'
 import { useAuth } from '../../lib/auth'
 import { fetchScansForUser, scanRiskDistribution, type RiskDistribution } from '../../lib/db'
 import { riskBand, riskTone } from '../../lib/risk'
@@ -84,23 +85,19 @@ export default function UserDashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 rounded-2xl border border-brand-200/70 bg-gradient-to-r from-brand-50 to-transparent p-4 sm:flex-row sm:items-center sm:justify-between dark:border-brand-500/20 dark:from-brand-500/10">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-            Welcome back, {profile?.name?.split(' ')[0] ?? 'User'}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Scan product labels, review compliance and track your history.
-          </p>
-        </div>
-        <Link to="/scan-product" className="shrink-0">
-          <Button icon={<ScanLine className="h-4 w-4" />}>Scan a product</Button>
-        </Link>
-      </div>
+      <PageHeader
+        title={`Welcome back, ${profile?.name?.split(' ')[0] ?? 'User'}`}
+        subtitle="Scan product labels, review compliance and track your history."
+        actions={
+          <Link to="/scan-product" className="shrink-0">
+            <Button icon={<ScanLine className="h-4 w-4" />}>Scan a product</Button>
+          </Link>
+        }
+      />
 
       <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
-          <StatCard key={stat.id} stat={stat} />
+          <StatCard key={stat.id} stat={stat} prominent={stat.id === 'scans'} />
         ))}
       </div>
 

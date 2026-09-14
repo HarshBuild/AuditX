@@ -24,9 +24,9 @@ export function useToast(): ToastContextValue {
 }
 
 const icons: Record<ToastKind, ReactNode> = {
-  success: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
-  error: <XCircle className="h-5 w-5 text-rose-500" />,
-  info: <Info className="h-5 w-5 text-brand-500" />,
+  success: <CheckCircle2 className="h-5 w-5 text-success-600" />,
+  error: <XCircle className="h-5 w-5 text-danger-600" />,
+  info: <Info className="h-5 w-5 text-brand-600" />,
 }
 
 let nextId = 1
@@ -52,18 +52,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end"
+        className="pointer-events-none fixed inset-x-0 top-4 z-toast flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end"
       >
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="pointer-events-auto flex w-full max-w-sm animate-toast-in items-start gap-3 rounded-xl border border-slate-200/80 bg-white/95 p-3.5 shadow-[0_12px_32px_-8px_rgb(11_19_36/0.2)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl dark:border-white/10 dark:bg-navy-900/95 dark:ring-white/5"
+            className="pointer-events-auto flex w-full max-w-sm animate-toast-in items-start gap-3 rounded-xl border border-line bg-surface/95 p-3.5 shadow-lg ring-1 ring-line/80 backdrop-blur-xl dark:border-navy-700 dark:bg-navy-900/95 dark:ring-white/5"
           >
             <div className="mt-0.5 shrink-0">{icons[t.kind]}</div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.title}</p>
+              <p className="text-sm font-semibold text-ink-text dark:text-navy-50">{t.title}</p>
               {t.message && (
-                <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                <p className="mt-0.5 text-xs leading-relaxed text-ink-text-soft dark:text-navy-300">
                   {t.message}
                 </p>
               )}
@@ -72,7 +72,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               onClick={() => dismiss(t.id)}
               aria-label="Dismiss notification"
               className={cn(
-                'shrink-0 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800',
+                'shrink-0 rounded-control p-1 text-ink-text-faint transition-colors hover:bg-slate-100 hover:text-ink-text dark:text-navy-400 dark:hover:bg-white/10 dark:hover:text-navy-200',
               )}
             >
               <X className="h-4 w-4" />

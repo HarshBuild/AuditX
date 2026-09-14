@@ -126,7 +126,7 @@ export default function Workspace() {
           </div>
         </main>
 
-        <footer className="px-3 pb-24 pt-4 text-center text-xs text-slate-400 sm:px-6 lg:px-8 lg:pb-6 dark:text-white/35">
+        <footer className="px-3 pb-24 pt-4 text-center text-xs text-ink-text-faint sm:px-6 lg:px-8 lg:pb-6 dark:text-white/35">
           AuditX · Legal Metrology compliance dashboard · Role-Based Edition
         </footer>
       </div>

@@ -14,7 +14,7 @@ export default function AuthShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-slate-50 dark:bg-navy-950">
       <div aria-hidden="true" className="animated-bg" />
       {/* Brand panel */}
-      <aside className="relative hidden w-[45%] overflow-hidden bg-gradient-to-br from-navy-900 via-navy-950 to-[#070d1d] lg:block dark:lg:block">
+      <aside className="relative hidden w-[45%] overflow-hidden bg-gradient-to-br from-navy-900 via-navy-950 to-ink lg:block dark:lg:block">
         <div aria-hidden="true" className="absolute inset-0 bg-dots opacity-[0.07]" />
         <div aria-hidden="true" className="absolute -right-24 -top-24 h-96 w-96 animate-float rounded-full bg-brand-500/20 blur-3xl" />
         <div aria-hidden="true" className="absolute -bottom-28 -left-20 h-[28rem] w-[28rem] animate-float rounded-full bg-indigo-500/15 blur-3xl [animation-delay:1.2s]" />

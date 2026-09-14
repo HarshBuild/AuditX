@@ -16,7 +16,11 @@ interface ScanDoc {
   verdict?: string
 }
 
-const PIE_COLORS = ['#10b981', '#f59e0b', '#f97316', '#ef4444']
+const PIE_COLORS = ['#16A34A', '#D97706', '#EA580C', '#DC2626']
+const GRID = '#E5E7EB'
+const BRAND = '#4F46E5'
+const SUCCESS = '#22C55E'
+const VIOLET = '#8B5CF6'
 
 export default function AdminAnalyticsPage() {
   const [loading, setLoading] = useState(true)
@@ -173,11 +177,11 @@ export default function AdminAnalyticsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={categoryData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" fill={BRAND} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -192,13 +196,13 @@ export default function AdminAnalyticsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="scans" stroke="#6366f1" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="avgScore" stroke="#10b981" strokeWidth={2} dot={false} yAxisId={0} />
+                  <Line type="monotone" dataKey="scans" stroke={BRAND} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="avgScore" stroke={SUCCESS} strokeWidth={2} dot={false} yAxisId={0} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -213,11 +217,11 @@ export default function AdminAnalyticsPage() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={manufacturerData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
                   <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                   <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  <Bar dataKey="scans" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="scans" fill={VIOLET} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

@@ -19,11 +19,18 @@ export default function AnalyticsCard({
   bodyClassName,
 }: AnalyticsCardProps) {
   return (
-    <section className={cn('rounded-2xl border border-slate-200/80 bg-white shadow-card ring-1 ring-slate-900/[0.03] dark:border-white/[0.07] dark:bg-navy-900 dark:ring-white/[0.02]', className)}>
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4 dark:border-white/[0.07]">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h3>
-          {subtitle && <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{subtitle}</p>}
+    <section
+      className={cn(
+        'panel ',
+        className,
+      )}
+    >
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3 sm:px-5 sm:py-4 dark:border-navy-700/60">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-ink-text dark:text-navy-50">{title}</h3>
+          {subtitle && (
+            <p className="mt-0.5 text-xs text-ink-text-faint dark:text-navy-400">{subtitle}</p>
+          )}
         </div>
         {action}
       </header>

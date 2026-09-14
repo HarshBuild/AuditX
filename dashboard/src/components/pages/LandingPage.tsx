@@ -129,7 +129,7 @@ export default function LandingPage() {
       </header>
 
       <main>
-        <section className="relative overflow-hidden bg-gradient-to-br from-navy-900 via-navy-950 to-[#070d1d] text-white">
+        <section className="relative overflow-hidden bg-gradient-to-br from-navy-900 via-navy-950 to-ink text-white">
           <div aria-hidden="true" className="absolute inset-0 bg-dots opacity-[0.08]" />
           <div aria-hidden="true" className="absolute -top-40 left-1/2 h-[30rem] w-[30rem] -translate-x-1/2 animate-float rounded-full bg-brand-500/20 blur-3xl" />
           <div aria-hidden="true" className="absolute -bottom-32 -left-24 h-96 w-96 animate-float rounded-full bg-indigo-500/15 blur-3xl [animation-delay:1.1s]" />
@@ -281,7 +281,7 @@ export default function LandingPage() {
         </section>
 
         <section className="px-4 py-20 sm:px-6 dark:bg-navy-950">
-          <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-gradient-to-br from-navy-900 via-navy-950 to-[#070d1d] px-6 py-16 text-center text-white shadow-navy-lg ring-1 ring-white/10">
+          <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-gradient-to-br from-navy-900 via-navy-950 to-ink px-6 py-16 text-center text-white shadow-navy-lg ring-1 ring-white/10">
             <div aria-hidden="true" className="absolute inset-0 bg-dots opacity-[0.07]" />
             <div aria-hidden="true" className="absolute -top-24 right-0 h-72 w-72 animate-float rounded-full bg-brand-500/20 blur-3xl" />
             <div className="relative z-10">

@@ -6,6 +6,8 @@ import DataTable, { type DataColumn } from '../table/DataTable'
 import { ToneBadge } from '../ui/Badge'
 import { EmptyState, LoadingState } from '../ui/States'
 import { useToast } from '../ui/Toast'
+import PageHeader from '../ui/PageHeader'
+import Tabs, { type TabItem } from '../ui/Tabs'
 import { useAuth } from '../../lib/auth'
 import { fetchScansForUser, fetchViolationsForScan, fetchReportsForScan } from '../../lib/db'
 import { scanStatusTone } from '../../lib/ui'
@@ -84,6 +86,15 @@ export default function RecordsPage() {
       (query.trim() === '' || haystack(s).includes(query.trim().toLowerCase())),
   )
 
+  const statusTabs: TabItem[] = [
+    { key: 'all', label: 'All', count: scans.length },
+    { key: 'analyzed', label: 'Analyzed', count: scans.filter((s) => s.status === 'analyzed').length },
+    { key: 'flagged', label: 'Flagged', count: scans.filter((s) => s.status === 'flagged').length },
+    { key: 'manual_review', label: 'Manual review', count: scans.filter((s) => s.status === 'manual_review').length },
+    { key: 'pending_review', label: 'Pending review', count: scans.filter((s) => s.status === 'pending_review').length },
+    { key: 'resolved', label: 'Resolved', count: scans.filter((s) => s.status === 'resolved').length },
+  ]
+
   const columns: Array<DataColumn<ScanRow>> = [
     {
       key: 'product',
@@ -143,35 +154,33 @@ export default function RecordsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Scan History</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {scans.length} inspections · {filtered.length} matching filters
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            icon={<RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />}
-            loading={refreshing}
-            onClick={() => void refresh()}
-            disabled={refreshing}
-          >
-            Refresh
-          </Button>
-          <Button icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
-            New scan
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Scan History"
+        subtitle={`${scans.length} inspections · ${filtered.length} matching filters`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              icon={<RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />}
+              loading={refreshing}
+              onClick={() => void refresh()}
+              disabled={refreshing}
+            >
+              Refresh
+            </Button>
+            <Button icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
+              New scan
+            </Button>
+          </div>
+        }
+      />
 
       {loading ? (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card dark:border-white/[0.07] dark:bg-navy-900">
+        <div className="panel p-6">
           <LoadingState label="Loading your scans…" />
         </div>
       ) : scans.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card dark:border-white/[0.07] dark:bg-navy-900">
+        <div className="panel p-6">
           <EmptyState
             title="No scans yet"
             message="Scan your first product label — the AI inspection takes under a minute."
@@ -183,29 +192,25 @@ export default function RecordsPage() {
           />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card dark:border-white/[0.07] dark:bg-navy-900">
-          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center dark:border-white/[0.07]">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <div className="panel overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:flex-wrap sm:items-center dark:border-navy-700/60">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-text-faint dark:text-navy-400" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search product, brand, barcode…"
-                className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+                className="h-10 w-full rounded-field border border-line bg-surface-secondary pl-9 pr-3 text-sm text-ink-text placeholder:text-ink-text-faint shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-navy-100 dark:placeholder:text-navy-400"
               />
             </div>
-            <select
+            <Tabs
+              tabs={statusTabs}
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-200"
-            >
-              <option value="all">All statuses</option>
-              <option value="analyzed">Analyzed</option>
-              <option value="flagged">Flagged</option>
-              <option value="manual_review">Manual review</option>
-              <option value="pending_review">Pending review</option>
-              <option value="resolved">Resolved</option>
-            </select>
+              onChange={setStatus}
+              size="sm"
+              aria-label="Filter scans by status"
+              className="sm:ml-auto"
+            />
           </div>
           <DataTable
             columns={columns}

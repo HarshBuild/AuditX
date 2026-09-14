@@ -20,6 +20,7 @@ import DataTable, { type DataColumn } from '../table/DataTable'
 import { ToneBadge } from '../ui/Badge'
 import { LoadingState, ErrorState, EmptyState } from '../ui/States'
 import Button from '../ui/Button'
+import PageHeader from '../ui/PageHeader'
 import { useAuth } from '../../lib/auth'
 import {
   countCollection,
@@ -151,21 +152,19 @@ export function AdminDashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200/70 bg-gradient-to-r from-emerald-50 to-transparent p-4 sm:flex-row sm:items-center sm:justify-between dark:border-emerald-500/20 dark:from-emerald-500/10">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Admin Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Welcome, {profile?.name?.split(' ')[0] ?? 'Admin'}. Active admin access confirmed.
-          </p>
-        </div>
-        <Link to="/admin/scans">
-          <Button variant="secondary" icon={<FileText className="h-4 w-4" />}>View all scans</Button>
-        </Link>
-      </div>
+      <PageHeader
+        title="Admin Dashboard"
+        subtitle={`Welcome, ${profile?.name?.split(' ')[0] ?? 'Admin'}. Active admin access confirmed.`}
+        actions={
+          <Link to="/admin/scans">
+            <Button variant="secondary" icon={<FileText className="h-4 w-4" />}>View all scans</Button>
+          </Link>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
-          <StatCard key={stat.id} stat={stat} />
+          <StatCard key={stat.id} stat={stat} prominent={stat.id === 'total'} />
         ))}
       </div>
 
@@ -330,21 +329,19 @@ export function SuperAdminDashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 rounded-2xl border border-brand-200/70 bg-gradient-to-r from-brand-50 to-transparent p-4 sm:flex-row sm:items-center sm:justify-between dark:border-brand-500/20 dark:from-brand-500/10">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Super Admin Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Welcome, {profile?.name?.split(' ')[0] ?? 'Administrator'}. Full system control enabled.
-          </p>
-        </div>
-        <Link to="/admin-requests">
-          <Button icon={<ClipboardCheck className="h-4 w-4" />}>Review admin requests</Button>
-        </Link>
-      </div>
+      <PageHeader
+        title="Super Admin Dashboard"
+        subtitle={`Welcome, ${profile?.name?.split(' ')[0] ?? 'Administrator'}. Full system control enabled.`}
+        actions={
+          <Link to="/admin-requests">
+            <Button icon={<ClipboardCheck className="h-4 w-4" />}>Review admin requests</Button>
+          </Link>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
-          <StatCard key={stat.id} stat={stat} />
+          <StatCard key={stat.id} stat={stat} prominent={stat.id === 'users'} />
         ))}
       </div>
 

@@ -49,7 +49,7 @@ export default function Modal({
   if (!open) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-modal flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div
         className="absolute inset-0 bg-navy-950/60 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
@@ -62,23 +62,23 @@ export default function Modal({
         aria-label={title || 'Dialog'}
         tabIndex={-1}
         className={cn(
-          'relative w-full rounded-t-2xl bg-white shadow-[0_32px_64px_-12px_rgb(11_19_36/0.35)] ring-1 ring-slate-900/[0.06] animate-slide-in outline-none sm:rounded-2xl dark:bg-navy-900 dark:ring-white/10',
+          'relative w-full rounded-t-modal bg-surface shadow-overlay-lg ring-1 ring-line/80 animate-slide-in outline-none sm:rounded-modal dark:bg-navy-900 dark:ring-white/10',
           sizes[size],
-          'max-h-[92vh] overflow-hidden flex flex-col',
+          'max-h-[92vh] flex flex-col overflow-hidden',
         )}
       >
         {(title || description) && (
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-white/[0.07]">
-            <div>
-              {title && <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h2>}
+          <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6 dark:border-navy-700/60">
+            <div className="min-w-0">
+              {title && <h2 className="text-lg font-bold text-ink-text dark:text-navy-50">{title}</h2>}
               {description && (
-                <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{description}</p>
+                <p className="mt-0.5 text-sm text-ink-text-soft dark:text-navy-300">{description}</p>
               )}
             </div>
             <button
               onClick={onClose}
               aria-label="Close dialog"
-              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-200"
+              className="rounded-control p-1.5 text-ink-text-faint transition-colors hover:bg-slate-100 hover:text-ink-text dark:text-navy-400 dark:hover:bg-white/10 dark:hover:text-navy-200"
             >
               <X className="h-5 w-5" />
             </button>
@@ -86,7 +86,7 @@ export default function Modal({
         )}
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6 dark:border-white/[0.07] dark:bg-navy-950/60">
+          <div className="flex items-center justify-end gap-3 border-t border-line bg-surface-secondary px-5 py-4 sm:px-6 dark:border-navy-700/60 dark:bg-navy-950/60">
             {footer}
           </div>
         )}

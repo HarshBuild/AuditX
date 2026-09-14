@@ -386,7 +386,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
               <CameraCapture open={cameraOpen} onCapture={(r) => void addFiles([r.file])} onClose={() => setCameraOpen(false)} />
 
               {phase === 'analyzing' && (
-                <div className="mb-4 overflow-hidden rounded-2xl border border-brand-200/80 bg-gradient-to-br from-brand-50/80 via-white to-indigo-50/60 shadow-glow-sm dark:border-brand-500/20 dark:from-navy-900 dark:via-navy-950 dark:to-[#121b33]">
+                <div className="mb-4 overflow-hidden rounded-2xl border border-brand-200/80 bg-gradient-to-br from-brand-50/80 via-white to-indigo-50/60 shadow-glow-sm dark:border-brand-500/20 dark:from-navy-900 dark:via-navy-950 dark:to-ink">
                   <div className="relative px-4 pt-4 sm:px-5 sm:pt-5">
                     <div className="flex items-center gap-3">
                       <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">

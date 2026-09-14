@@ -264,7 +264,7 @@ function ScoreHero({ scan, counts, sig }: { scan: ScanRow; counts: StatusCounts;
     : `This ${risk}/100 risk score is derived only from the mandatory-declaration checks that actually ran on your label photos. Deficiency = higher risk. Anything the engine could not read is marked "Unable to verify" — it is never counted as pass or fail.`
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-indigo-50/40 to-brand-50/60 shadow-card dark:border-white/[0.07] dark:from-navy-900 dark:via-navy-950 dark:to-[#111a31]">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-indigo-50/40 to-brand-50/60 shadow-card dark:border-white/[0.07] dark:from-navy-900 dark:via-navy-950 dark:to-navy-950">
       <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 bg-dots opacity-30 lg:block" />
       <div className="relative grid grid-cols-1 gap-0 lg:grid-cols-[auto_1fr_auto]">
         {/* Risk score ring */}
@@ -1801,7 +1801,7 @@ export default function InspectionReport({
       </div>
 
       {/* Report header */}
-      <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-brand-50/40 p-5 shadow-card sheen dark:border-white/[0.07] dark:from-navy-900 dark:to-[#101a31]">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-brand-50/40 p-5 shadow-card sheen dark:border-white/[0.07] dark:from-navy-900 dark:to-navy-950">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">

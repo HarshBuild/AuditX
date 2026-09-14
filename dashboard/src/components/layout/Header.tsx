@@ -5,8 +5,9 @@ import ConfirmDialog from '../ui/ConfirmDialog'
 import NotificationsPanel from '../notifications/NotificationsPanel'
 import { cn } from '../../utils/format'
 import { useToast } from '../ui/Toast'
-import { initialsOf, roleLabel, homePath, type Role, type UserProfile } from '../../lib/rbac'
+import { roleLabel, homePath, type Role, type UserProfile } from '../../lib/rbac'
 import { AuditXMark } from '../brand/AuditXMark'
+import Avatar from '../ui/Avatar'
 
 export const PAGE_TITLES: Record<string, string> = {
   '/user-dashboard': 'Dashboard',
@@ -90,7 +91,6 @@ export default function Header({
   const title = pageTitle(path)
   const role: Role = profile?.role ?? 'user'
   const recPath = recordsPath(role)
-  const initials = profile ? initialsOf(profile.name) : 'U'
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -104,12 +104,12 @@ export default function Header({
   }, [])
 
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center gap-1.5 border-b border-slate-200/70 bg-white/70 px-3 backdrop-blur-xl sm:h-14 sm:gap-3 sm:px-6 dark:border-white/[0.06] dark:bg-navy-950/70">
+    <header className="sticky top-0 z-header flex h-12 items-center gap-1.5 border-b border-line bg-surface/80 px-3 backdrop-blur-xl sm:h-14 sm:gap-3 sm:px-6 dark:border-navy-700/60 dark:bg-navy-950/70">
 
       <button
         onClick={onMenu}
         aria-label="Open navigation menu"
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-white/10"
+        className="flex h-9 w-9 items-center justify-center rounded-control text-ink-text-soft transition-colors hover:bg-slate-100 lg:hidden dark:text-navy-300 dark:hover:bg-white/10"
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -120,19 +120,19 @@ export default function Header({
           onClick={() => onNavigate(homePath({ role, status: profile?.status ?? 'active' }))}
           aria-label="AuditX home"
           title="AuditX"
-          className="shrink-0 rounded-lg transition-opacity hover:opacity-90"
+          className="shrink-0 rounded-control transition-opacity hover:opacity-90"
         >
           <AuditXMark size="sm" />
         </button>
         <div className="min-w-0 leading-tight">
-          <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
-          <p className="hidden text-xs text-slate-400 sm:block">Legal Metrology Suite</p>
+          <p className="truncate text-sm font-bold text-ink-text dark:text-navy-50" title={title}>{title}</p>
+          <p className="hidden text-xs text-ink-text-faint sm:block dark:text-navy-400">Legal Metrology Suite</p>
         </div>
       </div>
 
 {recPath && (
         <div className="relative ml-auto hidden max-w-sm flex-1 md:block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-text-faint dark:text-navy-400" />
           <input
             ref={searchRef}
             type="search"
@@ -144,9 +144,9 @@ export default function Header({
             }}
             placeholder="Search records…"
             aria-label="Global search"
-            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-100/70 pl-9 pr-12 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-all focus:border-transparent focus:bg-white focus:shadow-glow-sm focus:ring-2 focus:ring-accent-500 dark:border-white/10 dark:bg-navy-900/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-navy-900"
+            className="h-10 w-full rounded-field border border-line bg-surface-secondary pl-9 pr-12 text-sm text-ink-text placeholder:text-ink-text-faint shadow-sm transition-all focus:border-transparent focus:bg-white focus:shadow-glow-sm focus:ring-2 focus:ring-brand-500 dark:border-white/10 dark:bg-navy-900/70 dark:text-navy-100 dark:placeholder:text-navy-400 dark:focus:bg-navy-900"
           />
-          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-400 lg:block dark:border-white/10 dark:bg-navy-900">
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-control border border-line bg-surface px-1.5 py-0.5 text-2xs font-medium text-ink-text-faint lg:block dark:border-white/10 dark:bg-navy-900 dark:text-navy-400">
             ⌘K
           </kbd>
         </div>
@@ -157,7 +157,7 @@ export default function Header({
           onClick={onCycleTheme}
           aria-label={`Switch theme (currently ${resolvedDark ? 'dark' : 'light'})`}
           title={`Theme: ${theme} (${resolvedDark ? 'dark' : 'light'})`}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
+          className="flex h-9 w-9 items-center justify-center rounded-control text-ink-text-soft transition-colors hover:bg-slate-100 dark:text-navy-300 dark:hover:bg-white/10"
         >
           {resolvedDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </button>
@@ -168,13 +168,13 @@ export default function Header({
             <button
               aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
               className={cn(
-                'relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10',
+                'relative flex h-9 w-9 items-center justify-center rounded-control text-ink-text-soft transition-colors hover:bg-slate-100 dark:text-navy-300 dark:hover:bg-white/10',
                 unread > 0 && 'text-brand-600 dark:text-brand-300',
               )}
             >
               {unread > 0 ? <BellRing className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
               {unread > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-rose-600 px-1 text-[10px] font-bold text-white shadow-sm">
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-br from-danger-500 to-danger-600 px-1 text-2xs font-bold text-white shadow-sm">
                   {unread}
                 </span>
               )}
@@ -189,16 +189,14 @@ export default function Header({
           trigger={
             <button
               aria-label={`Account menu for ${profile?.name ?? 'user'}`}
-              className="flex h-9 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-white/10 sm:pr-2"
+              className="flex h-9 items-center gap-2 rounded-control pr-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-white/10 sm:pr-2"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 text-xs font-bold text-white shadow-sm ring-1 ring-white/40 dark:ring-white/10">
-                {initials}
-              </span>
+              <Avatar name={profile?.name ?? 'User'} size="md" ring />
               <span className="hidden text-left sm:block">
-                <span className="block max-w-[140px] truncate text-sm font-semibold leading-tight text-slate-900 dark:text-slate-100">
+                <span className="block max-w-[140px] truncate text-sm font-semibold leading-tight text-ink-text dark:text-navy-50">
                   {profile?.name ?? 'User'}
                 </span>
-                <span className="block text-[11px] leading-tight text-slate-400">{roleLabel(role)}</span>
+                <span className="block text-[11px] leading-tight text-ink-text-faint">{roleLabel(role)}</span>
               </span>
             </button>
           }

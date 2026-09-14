@@ -11,7 +11,7 @@ html.dark {
 }
 
 body {
-  @apply antialiased text-slate-800 bg-slate-50 dark:text-slate-200 dark:bg-navy-950;
+  @apply antialiased text-ink-text bg-surface-bg dark:text-navy-100 dark:bg-navy-950;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans Devanagari', sans-serif;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   overscroll-behavior-y: none;
@@ -73,18 +73,35 @@ canvas {
 }
 
 ::selection {
-  @apply bg-brand-600/20 text-brand-900 dark:text-brand-100;
+  @apply bg-brand-500/20 text-brand-900 dark:text-brand-200;
 }
 
 :focus-visible {
-  @apply outline-none ring-2 ring-accent-500 ring-offset-2 ring-offset-white dark:ring-offset-navy-950;
+  @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-navy-950;
+}
+
+/* ---------- Design-system surface recipes ---------- */
+
+/* The canonical raised surface: containers, cards, panels. */
+.panel {
+  @apply rounded-card border border-line bg-surface shadow-sm dark:border-navy-700/60 dark:bg-navy-900 dark:shadow-none;
+}
+
+/* Interactive panel (hover lift) */
+.panel-interactive {
+  @apply panel transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-line-strong dark:hover:border-navy-700;
+}
+
+/* Inner section surface for nested content (inputs, toolbars) */
+.panel-inset {
+  @apply bg-surface-secondary border border-line rounded-field dark:bg-navy-950/60 dark:border-navy-700/50;
 }
 
 /* ---------- Premium surfaces & helpers ---------- */
 
-/* Skeleton loading shimmer (pair with bg-slate-100 dark:bg-slate-800) */
+/* Skeleton loading shimmer (pair with the .skeleton base) */
 .skeleton {
-  @apply relative overflow-hidden bg-slate-200/80 dark:bg-slate-800/80;
+  @apply relative overflow-hidden bg-slate-200/80 dark:bg-slate-700/40;
 }
 .skeleton::after {
   content: '';
@@ -112,12 +129,12 @@ html.dark .skeleton::after {
 /* Brand gradient text for hero headings / big numbers */
 .text-gradient {
   @apply bg-clip-text text-transparent;
-  background-image: linear-gradient(135deg, #2563eb 0%, #4f9bff 50%, #7c8cff 100%);
+  background-image: linear-gradient(135deg, #4338ca 0%, #4f46e5 45%, #818cf8 100%);
 }
 
 /* Accent glow behind AI / scanning visuals */
 .glow-ring {
-  box-shadow: 0 0 0 1px rgb(59 130 246 / 0.25), 0 0 24px -4px rgb(37 99 235 / 0.4);
+  box-shadow: 0 0 0 1px rgb(79 70 229 / 0.25), 0 0 24px -4px rgb(67 56 202 / 0.4);
 }
 
 /* Subtle dotted grid used behind hero-ish blocks */
@@ -140,6 +157,14 @@ html.dark .skeleton::after {
 }
 
 /* Slim scrollbars */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(148 163 184 / 0.5) transparent;
@@ -181,7 +206,7 @@ html.dark .skeleton::after {
   height: 44rem;
   left: -12rem;
   top: -12rem;
-  background: radial-gradient(circle, rgb(37 99 235 / 0.1) 0%, transparent 65%);
+  background: radial-gradient(circle, rgb(67 56 202 / 0.1) 0%, transparent 65%);
   animation: bg-blob-a 34s ease-in-out infinite;
 }
 .animated-bg::after {
@@ -189,14 +214,14 @@ html.dark .skeleton::after {
   height: 38rem;
   right: -12rem;
   bottom: -14rem;
-  background: radial-gradient(circle, rgb(99 102 241 / 0.09) 0%, transparent 65%);
+  background: radial-gradient(circle, rgb(129 140 248 / 0.09) 0%, transparent 65%);
   animation: bg-blob-b 46s ease-in-out infinite;
 }
 html.dark .animated-bg {
   background-image: radial-gradient(rgb(148 163 184 / 0.09) 1px, transparent 1px);
 }
 html.dark .animated-bg::before {
-  background: radial-gradient(circle, rgb(96 165 250 / 0.09) 0%, transparent 65%);
+  background: radial-gradient(circle, rgb(99 102 241 / 0.09) 0%, transparent 65%);
 }
 html.dark .animated-bg::after {
   background: radial-gradient(circle, rgb(129 140 248 / 0.07) 0%, transparent 65%);
@@ -271,14 +296,14 @@ html.dark .animated-bg::after {
   100% { transform: scale(1); }
 }
 @keyframes button-focus-glow {
-  0% { box-shadow: 0 0 0 1px rgb(59 130 246 / 0.25); }
-  100% { box-shadow: 0 0 0 1px rgb(59 130 246 / 0.4), 0 0 12px -4px rgb(37 99 235 / 0.3); }
+  0% { box-shadow: 0 0 0 1px rgb(79 70 229 / 0.25); }
+  100% { box-shadow: 0 0 0 1px rgb(79 70 229 / 0.4), 0 0 12px -4px rgb(67 56 202 / 0.3); }
 }
 
 /* ---------- Card hover keyframes ---------- */
 @keyframes card-hover-lift {
   transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 4px 20px rgba(79, 70, 229, 0.15);
 }
 @keyframes card-hover-scale {
   transform: scale(1.015);
@@ -305,8 +330,8 @@ html.dark .animated-bg::after {
   100% { top: 100%; opacity: 0.4; }
 }
 @keyframes scan-glow-pulse {
-  0% { box-shadow: 0 0 6px rgba(37, 99, 235, 0.4); }
-  100% { box-shadow: 0 0 20px rgba(37, 99, 235, 0.8); }
+  0% { box-shadow: 0 0 6px rgba(67, 56, 202, 0.4); }
+  100% { box-shadow: 0 0 20px rgba(67, 56, 202, 0.8); }
 }
 
 /* ---------- OCR progressive reveal keyframes ---------- */
@@ -342,11 +367,11 @@ html.dark .animated-bg::after {
 }
 
 /* ---------- Modal keyframes ---------- */
-@keymodal-scale-in {
+@keyframes modal-scale-in {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
-@keymodal-fade-in {
+@keyframes modal-fade-in {
   from { opacity: 0; }
   to { opacity: 0.8; }
 }
