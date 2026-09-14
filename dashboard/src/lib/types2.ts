@@ -3,7 +3,7 @@
 export type ScanStatus = 'pending_review' | 'analyzed' | 'flagged' | 'manual_review' | 'resolved'
 
 /** Which processing engine actually produced this scan (detected at runtime). */
-export type ScanEngine = 'cloud_function' | 'gemini' | 'local' | 'queued' | 'unknown'
+export type ScanEngine = 'cloud_function' | 'gemini' | 'local' | 'fast' | 'queued' | 'unknown'
 export type RiskBand = 'Low' | 'Medium' | 'High' | 'Critical'
 export type Severity = 'low' | 'medium' | 'high' | 'critical'
 export type ViolationStatus =

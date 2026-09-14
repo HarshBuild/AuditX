@@ -277,13 +277,16 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       extraction_status: Object.values(ex).some((v) => v) ? 'ok' : 'failed',
     }
 
-    // 5️⃣ Persist to Firestore (best-effort)
+    // 5️⃣ Persist to Firestore (best-effort, single batched write)
     let scanId: string = `scan-${Date.now()}`
     try {
       const db = admin.firestore()
       const scanRef = db.collection('scans').doc()
       scanId = scanRef.id
-      await scanRef.set({
+      const notifRef = db.collection('notifications').doc()
+      const batch = db.batch()
+      const now = new Date().toISOString()
+      batch.set(scanRef, {
         user_id: (req as any).uid,
         product_name: result.product_name,
         brand: result.brand,
@@ -312,14 +315,15 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         location_name: location_name ?? '',
         manual_result: null,
         notes: '',
-        created_at: new Date().toISOString(),
+        created_at: now,
       })
-      await db.collection('notifications').add({
+      batch.set(notifRef, {
         user_id: (req as any).uid, type: 'scan', title: 'Analysis completed',
         body: `${result.product_name || 'Product'} scored ${result.overall_score}/100 — ${result.verdict}.`,
         link: '/scan-history', read: false, read_at: null, data: { scan_id: scanRef.id },
-        created_at: new Date().toISOString(),
+        created_at: now,
       })
+      await batch.commit()
     } catch (persistErr) {
       console.warn('⚠️ Firestore persist error (non-fatal):', (persistErr as Error).message)
     }

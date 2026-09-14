@@ -278,6 +278,8 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
       })
       if (scan.pending) {
         toast('info', 'Analysis queued', 'AI is unavailable right now — scan saved for staff review.')
+      } else if (scan.scan.language_note?.includes('fast OCR engine')) {
+        toast('success', 'Analyzed — fast', `OCR extracted and scored "${displayProductName(scan.scan.product_name)}" ${scan.scan.overall_score}/100 in a single pass.`)
       } else if (scan.scan.language_note?.includes('Gemini')) {
         toast('success', 'Analyzed with AI', `Google Gemini read the label and scored "${displayProductName(scan.scan.product_name)}" ${scan.scan.overall_score}/100.`)
       } else if (scan.scan.language_note?.includes('on-device')) {
@@ -402,7 +404,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                           Processing your label
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          AI is reading and scoring your photos — step {Math.min(progressStep + 1, STAGES.length)} of {STAGES.length}
+                          Reading {picked.length} photo{picked.length > 1 ? 's' : ''} in parallel — step {Math.min(progressStep + 1, STAGES.length)} of {STAGES.length}
                         </p>
                       </div>
                       <span className="ml-auto shrink-0 rounded-full bg-white/80 px-2.5 py-1 text-xs font-bold text-brand-700 ring-1 ring-brand-200 dark:bg-navy-900/80 dark:text-brand-300 dark:ring-brand-500/25">
@@ -418,16 +420,32 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                     </div>
 
                     {picked.length > 0 && (
-                      <div className="relative mx-auto mt-4 max-w-xs overflow-hidden rounded-xl bg-slate-200/50 ring-1 ring-brand-500/25 dark:bg-navy-950">
-                        <img src={picked[0].dataUrl} alt="Scanning product label" className="h-40 w-full object-cover" />
-                        <div aria-hidden="true" className="absolute inset-0">
-                          <span className="absolute left-0 right-0 top-0 h-0.5 animate-scan-line-progress bg-gradient-to-b from-transparent via-accent-400 to-transparent shadow-[0_0_10px_rgba(79,155,255,0.9)]" />
-                          <span className="absolute left-2.5 top-2.5 h-6 w-6 animate-pulse rounded-tl-lg border-l-2 border-t-2 border-accent-400" />
-                          <span className="absolute right-2.5 top-2.5 h-6 w-6 animate-pulse rounded-tr-lg border-r-2 border-t-2 border-accent-400" />
-                          <span className="absolute bottom-2.5 left-2.5 h-6 w-6 animate-pulse rounded-bl-lg border-b-2 border-l-2 border-accent-400" />
-                          <span className="absolute bottom-2.5 right-2.5 h-6 w-6 animate-pulse rounded-br-lg border-b-2 border-r-2 border-accent-400" />
-                          <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 animate-pulse-glow rounded-full bg-accent-400" />
-                        </div>
+                      <div className={`mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 ${picked.length === 1 ? 'mx-auto max-w-xs grid-cols-1' : ''}`}>
+                        {picked.map((p, i) => {
+                          const imageDone = progressStep >= 3
+                          return (
+                            <div key={i} className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-200/50 ring-1 ring-brand-500/25 dark:bg-navy-950">
+                              <img src={p.dataUrl} alt={`Label ${i + 1} (${p.position})`} className="h-full w-full object-cover" loading="lazy" />
+                              {!imageDone ? (
+                                <div aria-hidden="true" className="absolute inset-0">
+                                  <span className="absolute left-0 right-0 top-0 h-0.5 animate-scan-line-progress bg-gradient-to-b from-transparent via-accent-400 to-transparent shadow-[0_0_10px_rgba(79,155,255,0.9)]" />
+                                  <span className="absolute left-1.5 top-1.5 h-4 w-4 animate-pulse rounded-tl-lg border-l-2 border-t-2 border-accent-400" />
+                                  <span className="absolute right-1.5 top-1.5 h-4 w-4 animate-pulse rounded-tr-lg border-r-2 border-t-2 border-accent-400" />
+                                  <span className="absolute bottom-1.5 left-1.5 h-4 w-4 animate-pulse rounded-bl-lg border-b-2 border-l-2 border-accent-400" />
+                                  <span className="absolute bottom-1.5 right-1.5 h-4 w-4 animate-pulse rounded-br-lg border-b-2 border-r-2 border-accent-400" />
+                                  <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 animate-pulse-glow rounded-full bg-accent-400" />
+                                </div>
+                              ) : (
+                                <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 shadow-md">
+                                  <CheckCircle2 className="h-3 w-3 text-white" />
+                                </span>
+                              )}
+                              <span className="absolute bottom-1.5 left-1.5 rounded-md bg-slate-900/70 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                {p.position}
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
 
@@ -472,7 +490,7 @@ const openGallery = () => document.getElementById('scan-label-files')?.click()
                     <div className="mt-4 flex items-start gap-2 rounded-xl bg-white/70 p-3 text-xs text-slate-600 dark:bg-navy-900/70 dark:text-slate-400">
                       <ScanText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600 dark:text-brand-400" />
                       <span>
-                        Each step runs only when the previous step actually completes. Complex labels can take a minute — your photos are not uploaded unless you save the scan.
+                        All {picked.length} photo{picked.length > 1 ? 's' : ''} are read together in parallel. Each step completes before the next starts — your photos are not uploaded unless you save the scan.
                       </span>
                     </div>
                   </div>

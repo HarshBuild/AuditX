@@ -242,3 +242,138 @@ html.dark .animated-bg::after {
 .stagger > *:nth-child(7) { animation-delay: 300ms; }
 .stagger > *:nth-child(8) { animation-delay: 350ms; }
 .stagger > *:nth-child(n + 9) { animation-delay: 400ms; }
+
+/* ---------- Page transitions ---------- */
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes page-fade-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes content-slide-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes background-shift {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(2px) translateY(-1px); }
+}
+
+/* ---------- Button micro-interaction keyframes ---------- */
+@keyframes button-hover-lift {
+  transform: translateY(-1px);
+}
+@keyframes button-press-scale {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+@keyframes button-focus-glow {
+  0% { box-shadow: 0 0 0 1px rgb(59 130 246 / 0.25); }
+  100% { box-shadow: 0 0 0 1px rgb(59 130 246 / 0.4), 0 0 12px -4px rgb(37 99 235 / 0.3); }
+}
+
+/* ---------- Card hover keyframes ---------- */
+@keyframes card-hover-lift {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.15);
+}
+@keyframes card-hover-scale {
+  transform: scale(1.015);
+}
+
+/* ---------- Progress & gauge keyframes ---------- */
+@keyframes progress-bar-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+@keyframes circular-progress-stroke {
+  0% { stroke-dashoffset: 100; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes number-count-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Scanner line keyframes (enhanced) ---------- */
+@keyframes scan-line-progress {
+  0% { top: 0%; opacity: 0.4; }
+  50% { top: 50%; opacity: 0.8; }
+  100% { top: 100%; opacity: 0.4; }
+}
+@keyframes scan-glow-pulse {
+  0% { box-shadow: 0 0 6px rgba(37, 99, 235, 0.4); }
+  100% { box-shadow: 0 0 20px rgba(37, 99, 235, 0.8); }
+}
+
+/* ---------- OCR progressive reveal keyframes ---------- */
+@keyframes ocr-appear {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes highlight-sweep {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* ---------- Confidence score animation keyframes ---------- */
+@keyframes confidence-count {
+  from { stroke-dashoffset: 100; opacity: 0; }
+  to { stroke-dashoffset: calc(100 - var(--target)); opacity: 1; }
+}
+
+/* ---------- AI insights pulse keyframes ---------- */
+@keyframes ai-pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ---------- Toast entrance keyframes ---------- */
+@keyframes toast-slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ---------- Modal keyframes ---------- */
+@keymodal-scale-in {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keymodal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 0.8; }
+}
+
+/* ---------- Subtle icon pulse keyframes ---------- */
+@keyframes icon-soft-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+/* ---------- PDF generation keyframes ---------- */
+@keyframes pdf-steps {
+  0% { opacity: 0; transform: translateY(12px); }
+  20% { opacity: 0.2; }
+  40% { opacity: 0.5; transform: translateY(6px); }
+  60% { opacity: 0.8; }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; }
+}
+
+/* ---------- Enhanced reduced-motion fallback ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .animated-bg::before, .animated-bg::after { animation: none; }
+  .stagger > * {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+  }
+  .btn-hover-lift, .btn-press-scale { animation: none !important; }
+  .page-transition { transition-duration: 0.01ms !important; }
+}

@@ -89,3 +89,13 @@ def decode_base64(b64: str) -> np.ndarray | None:
         return decode_bytes(base64.b64decode(b64))
     except Exception:
         return None
+
+
+def resize_for_hash(img: np.ndarray, max_dim: int = 128) -> np.ndarray:
+    """Resize image to small fixed size for fast perceptual hashing."""
+    h, w = img.shape[:2]
+    if max(h, w) <= max_dim:
+        return img
+    scale = max_dim / max(h, w)
+    new_w, new_h = int(w * scale), int(h * scale)
+    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)

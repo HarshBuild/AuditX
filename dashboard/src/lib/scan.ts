@@ -24,7 +24,7 @@ import { createScan } from './services'
 import { saveLocalScan } from './localStore'
 import { runLocalScan } from './localEngine'
 import { runGeminiScan } from './geminiScan'
-import { runVisionOcr } from './visionOcr'
+import { runVisionOcr, fastOcrIsUsable, type FastOcrField, type FastOcrResultRule, type FastOcrVerdict } from './visionOcr'
 import { PerfRun } from './perf'
 import { COLLECTIONS } from './db'
 import type {
@@ -328,13 +328,183 @@ export async function attachScanPhotos(scanId: string, files: File[]): Promise<s
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Fast deterministic result — built straight from the OCR extraction  */
+/* ------------------------------------------------------------------ */
+
+const PY_TO_STATUS: Record<string, RuleCheck['status']> = {
+  PASS: 'PASS',
+  FAIL: 'FAIL',
+  REVIEW: 'NOT_VERIFIABLE',
+  NA: 'NOT_APPLICABLE',
+}
+
+interface FastOcrPayload {
+  text: string
+  blocks: Array<{ text: string; confidence: number | null }>
+  fields: Record<string, FastOcrField>
+  rules: FastOcrResultRule[]
+  result: FastOcrVerdict
+  lang: string
+  meta: ScanAnalysisMeta
+}
+
+function toFastRules(rules: FastOcrResultRule[]): RuleCheck[] {
+  return (rules ?? []).map((r) => ({
+    rule_id: r.rule_id ?? '',
+    field: r.field ?? r.rule_id ?? '',
+    status: (PY_TO_STATUS[r.status] ?? 'NOT_VERIFIABLE') as RuleCheck['status'],
+    detected_value: r.detected_value ?? null,
+    reason: r.reason ?? '',
+    requirement: r.regulation ?? r.reason ?? '',
+    verification_type: 'IMAGE_VERIFIABLE',
+    weight: r.weight ?? 1,
+  }))
+}
+
+async function buildFastScanRow(p: FastOcrPayload): Promise<ScanRow> {
+  const rules = toFastRules(p.rules)
+  const verdict = p.result.verdict ?? (p.result.score >= 80 ? 'COMPLIANT' : p.result.score >= 50 ? 'PARTIALLY_COMPLIANT' : 'NON_COMPLIANT')
+  const risk = p.result.risk ?? (p.result.score >= 80 ? 'Low' : p.result.score >= 50 ? 'Medium' : 'High')
+  const riskScore = { Low: 100 - p.result.score, Medium: 50, High: 30, Critical: 10 }[risk] ?? 100 - p.result.score
+
+  const extractions: ExtractedDeclarations = {}
+  const extraction_fields: Record<string, ExtractedField> = {}
+  let productName = ''
+  for (const [k, f] of Object.entries(p.fields ?? {})) {
+    if (!f || f.value == null) continue
+    if (k === 'commodity_name') productName = f.value
+    extractions[k as keyof ExtractedDeclarations] = f.value
+    const confScore = f.confidence === 'high' ? 0.9 : f.confidence === 'medium' ? 0.6 : 0.3
+    extraction_fields[k] = {
+      value: f.value,
+      confidence: f.confidence,
+      source_image: null,
+      status: f.confidence === 'high' ? 'VERIFIED' : f.confidence === 'medium' ? 'MEDIUM_CONFIDENCE' : 'NEEDS_REVIEW',
+      confidence_score: confScore,
+      conflict: false,
+      votes: 1,
+    }
+  }
+
+  const ocrBlocks: OcrBlock[] = (p.blocks ?? []).map((b, i) => ({
+    position: i === 0 ? 'front' : i === 1 ? 'back' : 'side',
+    text: b.text,
+    languages: [p.lang],
+  }))
+
+  const counts = p.result.counts ?? { passed: 0, failed: 0, review: 0, na: 0 }
+  const statusCounts = {
+    passed: counts.passed,
+    failed: counts.failed,
+    warnings: counts.review,
+    not_detected: counts.review,
+    not_verifiable: counts.review,
+    requires_physical_inspection: 0,
+    not_applicable: counts.na,
+    uncertain: counts.review,
+  }
+  const detected: DetectedSummary = {
+    passed: counts.passed,
+    failed: counts.failed,
+    warnings: counts.review,
+    not_verifiable: counts.review,
+    not_applicable: counts.na,
+    missing: counts.review,
+    uncertain: counts.review,
+  }
+  const aiInsights: AIIinsight[] = rules
+    .filter((r) => r.status === 'FAIL' || r.status === 'WARNING' || r.status === 'NOT_VERIFIABLE')
+    .map((r) => ({ rule_id: r.rule_id, field: r.field, status: r.status, issue: r.reason ?? '' }))
+
+  const uid = auth.currentUser?.uid ?? null
+  const scanId = `fast-${Date.now()}`
+  const summary = p.result.summary ?? `${p.result.score}/100 — ${verdict} (risk ${risk}).`
+  const assistant: InspectorAssistant = { summary, suggestions: [] }
+
+  const row: ScanRow = {
+    id: scanId,
+    created_at: new Date().toISOString(),
+    user_id: uid,
+    engine: 'fast',
+    product_name: productName || p.meta.product_name || '',
+    brand: (p.fields.manufacturer?.value as string) ?? p.meta.product_name ?? '',
+    manufacturer: (p.fields.manufacturer?.value as string) ?? p.meta.manufacturer ?? '',
+    category: 'General',
+    barcode: p.meta.barcode ?? '',
+    overall_score: p.result.score,
+    verdict,
+    summary,
+    image_url: '',
+    rules,
+    risk_score: riskScore,
+    status: 'analyzed',
+    ocr_text: p.text,
+    ai_insights: aiInsights,
+    image_urls: [],
+    labels: [],
+    ocr: { text: p.text, languages: [p.lang] },
+    ocr_blocks: ocrBlocks,
+    assistant,
+    language_note: 'Analyzed with the fast OCR engine (deterministic extraction + compliance rules).',
+    extractions,
+    extraction_fields,
+    detected,
+    counts: statusCounts,
+    context: {
+      package_type: 'General',
+      origin: 'Unknown',
+      is_food: false,
+      sold_by: 'unknown',
+      reason: 'Fast deterministic OCR analysis.',
+    },
+    uncertain: [],
+    manual_result: null,
+    notes: '',
+    latitude: null,
+    longitude: null,
+    location_name: '',
+    language: p.lang,
+  }
+
+  // Persist best-effort; never block returning the result.
+  try {
+    const realId = await createScan({
+      product_name: row.product_name,
+      brand: row.brand,
+      manufacturer: row.manufacturer,
+      category: row.category,
+      overall_score: row.overall_score,
+      verdict: row.verdict,
+      summary: row.summary,
+      rules,
+      barcode: row.barcode,
+      ocr_text: p.text,
+      ai_insights: aiInsights,
+      risk_score: riskScore,
+      status: 'analyzed',
+      language: p.lang,
+    })
+    row.id = realId
+    row.engine = 'fast'
+  } catch {
+    /* local-only fallback below */
+  }
+  saveLocalScan(row)
+  return row
+}
+
 /**
  * Run the AI inspection over label photos.
  *
- * Priority: server `scanAnalysis` Cloud Function → Google Gemini AI →
- * on-device free OCR engine → staff-review queue. Persistence is
- * best-effort everywhere, so a result row is always returned and the user
- * never hits a hard analysis error.
+ * Priority: FAST deterministic OCR result (PaddleOCR, parallel) → server
+ * `scanAnalysis` Cloud Function (Gemini vision) → on-device free OCR engine
+ * → staff-review queue. The fast path returns as soon as the required fields
+ * are present and confident (skipping the expensive Gemini call); Gemini is
+ * only used when the fast result is low-confidence or missing key fields.
+ *
+ * Persistence is best-effort everywhere, so a result row is always returned
+ * and the user never hits a hard analysis error.
  *
  * `onStage` (optional) reports the REAL pipeline milestone at the seam where
  * it happens so the UI can show an honest step tracker — never an estimate:
@@ -346,9 +516,7 @@ export async function runScanAnalysis(
   perf?: PerfRun,
 ): Promise<{ scan: ScanRow; pending: boolean }> {
   const pf = perf ?? new PerfRun('analysis')
-  // Google Cloud Vision OCR (backend-only) — best-effort. Reads small/dense
-  // label text into a transcript that the AI analysis below uses as a
-  // reference. Any failure degrades silently to the normal pipeline.
+  // Fast OCR (backend-only) — parallel, cached, no heavy preprocessing.
   onStage?.(2)
   const ocrHint = await pf
     .timed('ocr', async () => {
@@ -358,6 +526,30 @@ export async function runScanAnalysis(
         return null
       }
     })
+
+  // FAST PATH: if the deterministic extraction already produced a valid,
+  // confident result, return it immediately — skip Gemini entirely.
+  if (ocrHint && fastOcrIsUsable(ocrHint)) {
+    try {
+      const scan = await pf.timed('fast-build', () =>
+        buildFastScanRow({
+          text: ocrHint.text,
+          blocks: ocrHint.blocks,
+          fields: ocrHint.fields!,
+          rules: ocrHint.rules!,
+          result: ocrHint.result!,
+          lang: input.lang ?? 'en',
+          meta: input,
+        }),
+      )
+      onStage?.(3)
+      onStage?.(4)
+      perf?.segment('start', 'result', 'analyze-total')
+      return { scan, pending: false }
+    } catch {
+      // Fast build failed — fall through to the full AI path below.
+    }
+  }
 
   const fn = httpsCallable<ScanAnalysisRequest, ScanAnalysisOutput>(functions, 'scanAnalysis')
   let out: ScanAnalysisOutput

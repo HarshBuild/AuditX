@@ -115,8 +115,8 @@ export async function runPipeline(
   input: PipelineInput,
 ): Promise<PipelineOutput> {
   const lang = input.lang ?? 'en'
-  const maxRegions = input.maxRegionsPerImage ?? 6
-  const maxPasses = input.maxTotalPasses ?? 24
+  const maxRegions = input.maxRegionsPerImage ?? 4
+  const maxPasses = input.maxTotalPasses ?? 14
   const positions: PanelPrior[] = input.positions ?? input.images.map((_, i) => (i === 0 ? 'front' : i === 1 ? 'back' : i === 2 ? 'side' : 'other'))
   const resolvedDetectedBarcode = normalizeBarcode(input.barcode)
   let totalPassCount = 0
@@ -182,18 +182,21 @@ export async function runPipeline(
       }
 
       const plan = planForRegion(region, report)
-      const passesForRegion: CroppedPass[] = []
+
+      // Interleaved render+OCR with a FAST PATH short-circuit: as soon as one
+      // pass reads the region cleanly (strong confidence + real content), the
+      // remaining enhancement passes are skipped — the expensive variants only
+      // run when the first read is weak/low-confidence.
+      let regionPasses: OcPass[] = []
       for (const entry of plan) {
         if (totalPassCount >= maxPasses) break
         const vUrl = await renderVariant(finalUrl, entry.kind, entry.upscale)
-        passesForRegion.push({ url: vUrl, label: `${entry.label}-r${region.id}` })
         totalPassCount++
-      }
-
-      let regionPasses: OcPass[] = []
-      for (const cp of passesForRegion) {
-        const result = await ocrCrop(worker, cp, { source: i, regionId: region.id, bbox: scaledBBox, crop: regionCropUrl })
-        if (result) regionPasses.push(result)
+        const result = await ocrCrop(worker, { url: vUrl, label: `${entry.label}-r${region.id}` }, { source: i, regionId: region.id, bbox: scaledBBox, crop: regionCropUrl })
+        if (result) {
+          regionPasses.push(result)
+          if (result.ocrConf >= 0.72 && result.text.trim().length >= 15) break
+        }
       }
 
       debugImage.regions.push({
@@ -226,6 +229,8 @@ export async function runPipeline(
         if (result) {
           allPasses.push(result)
           allOcrBlocks.push({ position: pos, text: result.text, languages: [lang] })
+          // FAST PATH: strong full-frame read → skip remaining rescue variants.
+          if (result.ocrConf >= 0.72 && result.text.trim().length >= 20) { totalPassCount++; break }
         }
         totalPassCount++
       }
