@@ -4,8 +4,18 @@
  */
 import admin from 'firebase-admin'
 
-// Parse private key — support both literal \\n and actual newlines
-const privateKey = process.env.PRIVATE_KEY?.replace(/\\n/gm, '\n') ?? ''
+// Validate required env vars
+const requiredVars = ['PROJECT_ID', 'CLIENT_EMAIL', 'PRIVATE_KEY'] as const
+for (const v of requiredVars) {
+  if (!process.env[v]) {
+    const msg = `❌ Missing required env var: ${v}`
+    console.error(msg)
+    throw new Error(msg)
+  }
+}
+
+// Parse private key — support both literal \n and actual newlines
+const privateKey = process.env.PRIVATE_KEY!.replace(/\\n/gm, '\n')
 
 try {
   admin.initializeApp({
@@ -18,5 +28,5 @@ try {
   console.log('✅ Firebase Admin initialized from env vars')
 } catch (err) {
   console.error('❌ Failed to initialize Firebase Admin:', err)
-  // Do NOT process.exit() here — the server framework will handle startup failures
+  throw err // Crash on startup so Render shows clear error
 }

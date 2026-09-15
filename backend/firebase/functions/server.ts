@@ -25,7 +25,7 @@ import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 
 // --- Firebase Admin initialization from env vars ---
-import './firebase-admin-init.js'
+import './firebase-admin-init'
 
 // --- API routers ---
 import scanRouter from './routes/scan.js'
