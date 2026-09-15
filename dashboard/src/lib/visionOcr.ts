@@ -47,6 +47,19 @@ export interface VisionOcrBlock {
   confidence: number | null
 }
 
+export interface FieldSource {
+  image?: number
+  text?: string
+  confidence?: number | null
+  bbox?: [number, number, number, number] | null
+}
+
+export interface FieldConflict {
+  field: string
+  label: string
+  values: Array<{ image: number; value: string }>
+}
+
 export interface RegionBlock {
   text: string
   confidence: number
@@ -93,6 +106,12 @@ export interface VisionOcrResult {
   image_quality?: ImageQualityScore[]
   /** Missed-text-region detection summary (#9). */
   image_regions?: ImageRegionsSummary
+  /** Misa-style multi-image merge metadata (PaddleOCR path). */
+  field_sources?: Record<string, number>
+  field_confidence?: Record<string, string | null>
+  field_evidence?: Record<string, FieldSource>
+  conflicts?: FieldConflict[]
+  category?: string | null
 }
 
 /**
@@ -101,7 +120,7 @@ export interface VisionOcrResult {
  * Returns null on any failure (credentials missing, backend offline, empty
  * text) — callers should treat null as "no OCR hint available".
  */
-export async function runVisionOcr(images: string[], lang = 'en'): Promise<VisionOcrResult | null> {
+export async function runVisionOcr(images: string[], lang = 'en', category?: string | null): Promise<VisionOcrResult | null> {
   if (!images || images.length === 0) return null
   const user = auth.currentUser
   if (!user) return null
@@ -117,7 +136,7 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ images: images.slice(0, MAX_IMAGES), language: lang, fast: true }),
+      body: JSON.stringify({ images: images.slice(0, MAX_IMAGES), language: lang, fast: true, category }),
     }, 45000)
   } catch {
     return null
@@ -136,6 +155,10 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
     regions?: RegionImage[]
     image_quality?: ImageQualityScore[]
     image_regions?: ImageRegionsSummary
+    field_sources?: Record<string, number>
+    field_confidence?: Record<string, string | null>
+    field_evidence?: Record<string, FieldSource>
+    conflicts?: FieldConflict[]
   }
   try {
     data = (await res.json()) as typeof data
@@ -156,6 +179,11 @@ export async function runVisionOcr(images: string[], lang = 'en'): Promise<Visio
     regions: Array.isArray(data.regions) ? data.regions : [],
     image_quality: Array.isArray(data.image_quality) ? data.image_quality : [],
     image_regions: data.image_regions,
+    field_sources: data.field_sources,
+    field_confidence: data.field_confidence,
+    field_evidence: data.field_evidence,
+    conflicts: Array.isArray(data.conflicts) ? data.conflicts : [],
+    category,
   }
 }
 

@@ -351,7 +351,9 @@ export async function runGeminiScan(input: LocalScanInput, perf?: PerfRun): Prom
         ? fv.verified && !fv.needsVerification
           ? 'VERIFIED'
           : 'NEEDS_REVIEW'
-        : 'VERIFIED',
+        // No independent OCR cross-check was available (fast OCR returned no
+        // blocks) — never claim VERIFIED from the model's self-report alone.
+        : 'NEEDS_REVIEW',
       confidence_score: fv ? fv.confidence_score : f.confidence === 'high' ? 0.9 : f.confidence === 'medium' ? 0.6 : 0.3,
       conflict: false,
       votes: 1,

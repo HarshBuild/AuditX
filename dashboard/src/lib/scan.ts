@@ -24,7 +24,8 @@ import { createScan } from './services'
 import { saveLocalScan } from './localStore'
 import { runLocalScan } from './localEngine'
 import { runGeminiScan } from './geminiScan'
-import { runVisionOcr, fastOcrIsUsable, type FastOcrField, type FastOcrResultRule, type FastOcrVerdict } from './visionOcr'
+import { runVisionOcr, fastOcrIsUsable, type FastOcrField, type FastOcrResultRule, type FastOcrVerdict, type RegionImage } from './visionOcr'
+import { matches } from './compliance/adaptiveClient'
 import { PerfRun } from './perf'
 import { COLLECTIONS } from './db'
 import type {
@@ -224,6 +225,8 @@ export interface ScanAnalysisMeta {
 export interface ScanAnalysisInput extends ScanAnalysisMeta {
   images: string[] // data URLs
   hiResImages?: string[] // near-original data URLs for the accuracy path
+  /** Inspection category hint ("edible" | "non_edible") for the compliance engine. */
+  category?: string
 }
 
 /** Wire shape expected by the Cloud Function (each image wrapped as {data}). */
@@ -359,6 +362,7 @@ const PY_TO_STATUS: Record<string, RuleCheck['status']> = {
 interface FastOcrPayload {
   text: string
   blocks: Array<{ text: string; confidence: number | null }>
+  regions?: RegionImage[]
   fields: Record<string, FastOcrField>
   rules: FastOcrResultRule[]
   result: FastOcrVerdict
@@ -389,20 +393,58 @@ async function buildFastScanRow(p: FastOcrPayload): Promise<ScanRow> {
 
   const extractions: ExtractedDeclarations = {}
   const extraction_fields: Record<string, ExtractedField> = {}
+  const verification: Record<string, FieldVerification> = {}
   let productName = ''
+
+  // Trace each value back to the OCR block that produced it. Per-image regions
+  // (when the service returns them) give a real source image + bounding box;
+  // otherwise we fall back to the flat block list with text + confidence only.
+  type FastBlock = { image: number; text: string; confidence: number | null; region: [number, number, number, number] | null }
+  const regionBlocks: FastBlock[] = (p.regions ?? []).flatMap((im, i) =>
+    (im.blocks ?? []).map((b) => ({ image: i, text: b.text, confidence: b.confidence, region: b.region ?? null })),
+  )
+  const flatBlocks: FastBlock[] = (p.blocks ?? []).map((b) => ({ image: 0, text: b.text, confidence: b.confidence, region: null }))
+  const allBlocks: FastBlock[] = regionBlocks.length ? regionBlocks : flatBlocks
+
   for (const [k, f] of Object.entries(p.fields ?? {})) {
     if (!f || f.value == null) continue
     if (k === 'commodity_name') productName = f.value
     extractions[k as keyof ExtractedDeclarations] = f.value
-    const confScore = f.confidence === 'high' ? 0.9 : f.confidence === 'medium' ? 0.6 : 0.3
+
+    const value = String(f.value)
+    const hit = allBlocks.find((b) => matches(value, b.text))
+    const blockConf = hit?.confidence ?? null
+    // Verified ONLY when the backend's high-confidence field is corroborated by
+    // a real OCR block read at >=95%. Otherwise it stays medium/review — no
+    // "Verified" badge without traceable evidence (#6/#7).
+    const isVerified = f.confidence === 'high' && (blockConf ?? 0) >= 0.95
+    const confScore = isVerified ? 0.92 : f.confidence === 'high' ? 0.9 : f.confidence === 'medium' ? 0.6 : 0.3
+    const status: ExtractedField['status'] = isVerified
+      ? 'VERIFIED'
+      : f.confidence === 'low'
+        ? 'NEEDS_REVIEW'
+        : 'MEDIUM_CONFIDENCE'
+
     extraction_fields[k] = {
-      value: f.value,
+      value,
       confidence: f.confidence,
-      source_image: null,
-      status: f.confidence === 'high' ? 'VERIFIED' : f.confidence === 'medium' ? 'MEDIUM_CONFIDENCE' : 'NEEDS_REVIEW',
+      source_image: hit ? hit.image : null,
+      status,
       confidence_score: confScore,
       conflict: false,
       votes: 1,
+    }
+    verification[k] = {
+      verified: isVerified,
+      needsVerification: !isVerified,
+      via: 'direct',
+      confidence_score: confScore,
+      ocrConfidence: blockConf,
+      before: value,
+      after: value,
+      evidence: hit
+        ? [{ source_image: hit.image, region: hit.region, region_text: hit.text, pass: 'initial_ocr', ocr_conf: hit.confidence ?? 0, value }]
+        : [],
     }
   }
 
@@ -412,25 +454,11 @@ async function buildFastScanRow(p: FastOcrPayload): Promise<ScanRow> {
     languages: [p.lang],
   }))
 
-  // Honest trust estimate from measured per-field confidence (fast path has no
-  // targeted re-scan, so verification mirrors the deterministic extraction).
+  // Honest trust estimate from measured per-field confidence. Fields without a
+  // traceable OCR block stay at their (lower) medium/review score, so an
+  // uncertain extraction cannot yield a confident-looking trust number.
   const fieldScores = Object.values(extraction_fields).map((f) => f.confidence_score ?? 0)
-  const trust_score = fieldScores.length ? Math.round((fieldScores.reduce((a, b) => a + b, 0) / fieldScores.length) * 100) : 80
-  const verification: Record<string, FieldVerification> = Object.fromEntries(
-    Object.entries(extraction_fields).map(([k, f]) => [
-      k,
-      {
-        verified: f.status === 'VERIFIED' || f.status === 'HIGH_CONFIDENCE',
-        needsVerification: f.status === 'NEEDS_REVIEW' || f.status === 'LOW_CONFIDENCE' || f.status === 'INVALID',
-        via: 'direct' as const,
-        confidence_score: f.confidence_score ?? 0,
-        ocrConfidence: f.confidence_score ?? null,
-        before: f.value,
-        after: f.value,
-        evidence: [],
-      },
-    ]),
-  )
+  const trust_score = fieldScores.length ? Math.round((fieldScores.reduce((a, b) => a + b, 0) / fieldScores.length) * 100) : 0
   const processing = { initial_ocr_ms: p.processingTime ?? 0, verification_ms: 0, total_ms: p.processingTime ?? 0 }
 
   const counts = p.result.counts ?? { passed: 0, failed: 0, review: 0, na: 0 }
@@ -566,7 +594,7 @@ export async function runScanAnalysis(
   const ocrHint = await pf
     .timed('ocr', async () => {
       try {
-        return await runVisionOcr(input.images, input.lang ?? 'en')
+        return await runVisionOcr(input.images, input.lang ?? 'en', input.category)
       } catch {
         return null
       }
@@ -580,6 +608,7 @@ export async function runScanAnalysis(
         buildFastScanRow({
           text: ocrHint.text,
           blocks: ocrHint.blocks,
+          regions: ocrHint.regions,
           fields: ocrHint.fields!,
           rules: ocrHint.rules!,
           result: ocrHint.result!,

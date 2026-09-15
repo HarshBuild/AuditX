@@ -62,16 +62,11 @@ export const CONFIG = {
     localStorage.getItem('mc_auditx_api_url') ||
     'https://auditx-api.onrender.com',
   /**
-   * Google Gemini API key for real-time AI analysis + assistant answers.
-   *
-   * SECURITY: never hardcode the key here. It is resolved at runtime from
-   * VITE_GEMINI_API_KEY (build/deploy env) or localStorage `mc_gemini_api_key`
-   * (operator-supplied after deployment) so the published bundle stays clean.
+   * Google Gemini API key — currently not required; assistant falls back to
+   * the compliance HTTP function and on-device local answers so operators
+   * never need to supply a key.
    */
-  GEMINI_API_KEY:
-    (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ||
-    localStorage.getItem('mc_gemini_api_key') ||
-    '',
+  GEMINI_API_KEY: '',
   /** Gemini models (tuned for fast, multimodal label extraction and Q&A). */
   GEMINI_MODEL: (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-3.6-flash',
   GEMINI_VISION_MODEL: (import.meta.env.VITE_GEMINI_VISION_MODEL as string | undefined) || 'gemini-3.6-flash',

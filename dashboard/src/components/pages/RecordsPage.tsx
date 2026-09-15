@@ -10,7 +10,7 @@ import { useToast } from '../ui/Toast'
 import PageHeader from '../ui/PageHeader'
 import Tabs, { type TabItem } from '../ui/Tabs'
 import { useAuth } from '../../lib/auth'
-import { fetchScansForUserPage, fetchViolationsForScan, fetchReportsForScan } from '../../lib/db'
+import { fetchScanById, fetchScansForUserPage, fetchViolationsForScan, fetchReportsForScan } from '../../lib/db'
 import { scanStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
 import { displayProductName, displayText } from '../../lib/textnorm'
@@ -108,6 +108,30 @@ export default function RecordsPage() {
       setReports([])
     }
   }
+
+  const openDetailById = async (id: string) => {
+    const found = await fetchScanById(id, user?.id ?? null)
+    if (!found) {
+      toast('error', 'Scan not found', 'That inspection is no longer available.')
+      return
+    }
+    await openDetail(found)
+  }
+
+  /* Deep link: /scan-history?open=<id> (used by the dashboard "recent scans"
+     list). Opens the matching detail once, then strips the param so a refresh
+     or back/forward does not reopen it or loop. */
+  const openedRef = useRef<string | null>(null)
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    if (!openId || !user?.id || openedRef.current === openId) return
+    openedRef.current = openId
+    void openDetailById(openId)
+    const next = new URLSearchParams(searchParams)
+    next.delete('open')
+    navigate({ search: next.toString() }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, user?.id, navigate])
 
   const haystack = (s: ScanRow) => [s.product_name, s.brand, s.manufacturer, s.category, s.barcode].join(' | ').toLowerCase()
   const filtered = scans.filter(

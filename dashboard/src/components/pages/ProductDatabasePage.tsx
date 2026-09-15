@@ -3,6 +3,7 @@ import { Package, Plus, Pencil, Trash2, Search, Loader2 } from 'lucide-react'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
+import Modal from '../ui/Modal'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import { useToast } from '../ui/Toast'
 import { subscribeProducts } from '../../lib/db'
@@ -65,16 +66,6 @@ export default function ProductDatabasePage() {
 
   const openNew = () => { setForm(EMPTY); setFormOpen(true) }
   const openEdit = (p: ProductRow) => { setForm(p); setFormOpen(true) }
-
-  // Close the create/edit dialog on Escape, matching native modal behavior.
-  useEffect(() => {
-    if (!formOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setFormOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [formOpen])
 
   const handleSave = async () => {
     if (!form.barcode.trim() || !form.name.trim()) {
@@ -188,34 +179,29 @@ export default function ProductDatabasePage() {
       </AnalyticsCard>
 
       {/* Create/Edit form dialog */}
-      {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onClick={() => setFormOpen(false)}>
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-navy-900" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">{form.id ? 'Edit Product' : 'Add Product'}</h2>
-            <div className="space-y-3">
-              <Input label="Barcode *" name="barcode" placeholder="8901234567890" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} disabled={!!form.id} />
-              <Input label="Product Name *" name="name" placeholder="Product name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              <Input label="Brand" name="brand" placeholder="Brand name" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-              <Input label="Manufacturer" name="manufacturer" placeholder="Manufacturer name" value={form.manufacturer} onChange={(e) => setForm({ ...form, manufacturer: e.target.value })} />
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">Category</label>
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-white/15 dark:bg-navy-950 dark:text-slate-100">
-                  {['Food', 'Cosmetic', 'Household', 'Electronics', 'Stationery', 'Other'].map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <Input label="Net Quantity" name="net_quantity" placeholder="500 g" value={form.net_quantity} onChange={(e) => setForm({ ...form, net_quantity: e.target.value })} />
-              <Input label="MRP" name="mrp" placeholder="₹ 120.00" value={form.mrp} onChange={(e) => setForm({ ...form, mrp: e.target.value })} />
-              <Input label="Consumer Care" name="consumer_care" placeholder="Phone / Email / Address" value={form.consumer_care} onChange={(e) => setForm({ ...form, consumer_care: e.target.value })} />
-              <Input label="Country of Origin" name="country_of_origin" placeholder="India" value={form.country_of_origin} onChange={(e) => setForm({ ...form, country_of_origin: e.target.value })} />
-              <Input label="Best Before / Expiry" name="best_before_label" placeholder="12 months from mfg" value={form.best_before_label} onChange={(e) => setForm({ ...form, best_before_label: e.target.value })} />
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button loading={saving} onClick={() => void handleSave()}>Save</Button>
-            </div>
+      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={form.id ? 'Edit Product' : 'Add Product'} size="lg">
+        <div className="space-y-3">
+          <Input label="Barcode *" name="barcode" placeholder="8901234567890" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} disabled={!!form.id} />
+          <Input label="Product Name *" name="name" placeholder="Product name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input label="Brand" name="brand" placeholder="Brand name" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
+          <Input label="Manufacturer" name="manufacturer" placeholder="Manufacturer name" value={form.manufacturer} onChange={(e) => setForm({ ...form, manufacturer: e.target.value })} />
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">Category</label>
+            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-white/15 dark:bg-navy-950 dark:text-slate-100">
+              {['Food', 'Cosmetic', 'Household', 'Electronics', 'Stationery', 'Other'].map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
+          <Input label="Net Quantity" name="net_quantity" placeholder="500 g" value={form.net_quantity} onChange={(e) => setForm({ ...form, net_quantity: e.target.value })} />
+          <Input label="MRP" name="mrp" placeholder="₹ 120.00" value={form.mrp} onChange={(e) => setForm({ ...form, mrp: e.target.value })} />
+          <Input label="Consumer Care" name="consumer_care" placeholder="Phone / Email / Address" value={form.consumer_care} onChange={(e) => setForm({ ...form, consumer_care: e.target.value })} />
+          <Input label="Country of Origin" name="country_of_origin" placeholder="India" value={form.country_of_origin} onChange={(e) => setForm({ ...form, country_of_origin: e.target.value })} />
+          <Input label="Best Before / Expiry" name="best_before_label" placeholder="12 months from mfg" value={form.best_before_label} onChange={(e) => setForm({ ...form, best_before_label: e.target.value })} />
         </div>
-      )}
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancel</Button>
+          <Button loading={saving} onClick={() => void handleSave()}>Save</Button>
+        </div>
+      </Modal>
 
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete product" message={`Remove "${deleteTarget?.name}" from the database?`} confirmLabel="Delete" onConfirm={() => void handleDelete()} />
     </div>

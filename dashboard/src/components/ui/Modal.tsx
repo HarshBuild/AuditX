@@ -30,11 +30,45 @@ export default function Modal({
   size = 'md',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (!open) return
+    const panel = panelRef.current
+    const restore = document.activeElement as HTMLElement | null
+    const focusables = () =>
+      panel
+        ? Array.from(
+            panel.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null || el === panel)
+        : []
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCloseRef.current()
+        return
+      }
+      if (e.key !== 'Tab' || !panel) return
+      // Trap focus inside the dialog (WCAG 2.4.3 / WAI-ARIA dialog pattern).
+      const items = focusables()
+      if (items.length === 0) {
+        e.preventDefault()
+        panel.focus()
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey && (active === first || active === panel || !panel.contains(active))) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
@@ -43,8 +77,9 @@ export default function Modal({
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
+      restore?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

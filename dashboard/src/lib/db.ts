@@ -252,6 +252,21 @@ export async function fetchScansForUserPage(uid: string, pageSize = 50, lastDoc:
   }
 }
 
+/** Fetch a single scan by id, local first then Firestore. Powers deep links
+ *  (?open=<id>) so a shared result URL survives refresh/back/forward. */
+export async function fetchScanById(id: string, uid: string | null): Promise<ScanRow | null> {
+  if (!id) return null
+  const local = getLocalScans(uid).find((s) => s.id === id)
+  if (local) return local
+  try {
+    const snap = await getDoc(doc(db, COLLECTIONS.SCANS, id))
+    if (!snap.exists()) return null
+    return docToRow<ScanRow>(snap)
+  } catch {
+    return null
+  }
+}
+
 export async function fetchViolationsForScan(scanId: string): Promise<ViolationRow[]> {
   const ref = collection(db, COLLECTIONS.VIOLATIONS)
   const snapshot = await getDocs(query(ref, where('scan_id', '==', scanId), limit(200)))

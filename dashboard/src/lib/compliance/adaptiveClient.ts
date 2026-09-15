@@ -71,7 +71,7 @@ function agree(a: string, b: string): boolean {
   return na.length >= 4 && nb.length >= 4 && (na.includes(nb) || nb.includes(na))
 }
 
-function matches(value: string, blockText: string): boolean {
+export function matches(value: string, blockText: string): boolean {
   const v = normText(value)
   const b = normText(blockText)
   if (!v || !b) return false
@@ -105,15 +105,17 @@ export function computeTrustFromVerification(
   crossImageAgreementScore: number,
 ): { score: number; breakdown: TrustBreakdown } {
   const verifiedCount = candidateKeys.filter((k) => verification[k]?.verified).length
-  const verificationRate = candidateKeys.length ? (verifiedCount / candidateKeys.length) * 100 : 100
+  const verificationRate = candidateKeys.length ? (verifiedCount / candidateKeys.length) * 100 : 0
 
   const ocrConfs = candidateKeys
     .map((k) => verification[k]?.ocrConfidence)
     .filter((c): c is number => typeof c === 'number' && c > 0)
-  const ocrConfidence = ocrConfs.length ? (ocrConfs.reduce((a, b) => a + b, 0) / ocrConfs.length) * 100 : candidateKeys.length ? 70 : 90
+  // Neutral fallbacks (not 70/95/80) — an unmeasured signal must never inflate
+  // the trust score into a confident-looking number.
+  const ocrConfidence = ocrConfs.length ? (ocrConfs.reduce((a, b) => a + b, 0) / ocrConfs.length) * 100 : candidateKeys.length ? 50 : 30
 
   const charScores = candidateKeys.map((k) => (verification[k]?.verified ? 100 : verification[k]?.needsVerification ? 40 : 80))
-  const characterVerification = charScores.length ? charScores.reduce((a, b) => a + b, 0) / charScores.length : 95
+  const characterVerification = charScores.length ? charScores.reduce((a, b) => a + b, 0) / charScores.length : 50
 
   const imageQuality = qualityAvg
 
@@ -268,10 +270,11 @@ export function clientsideVerify(
   // Trust score — derived ONLY from measured signals.
   // ---------------------------------------------------------------
   const keys = candidates.map(([k]) => k)
-  const imageQuality = qualityScores?.length ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length : 80
+  const imageQuality = qualityScores?.length ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length : 50
 
   const multi = Object.values(distinctByImage)
-  let crossImageAgreement = 100
+  // No cross-image data means agreement is unmeasured → neutral, not 100.
+  let crossImageAgreement = 50
   if (multi.length > 0) {
     const agreeing = multi.filter((m) => new Set(Array.from(m.values())).size === 1).length
     crossImageAgreement = (agreeing / multi.length) * 100

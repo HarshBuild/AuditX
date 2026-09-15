@@ -61,11 +61,12 @@ export default function ScanDetailModal({
 
   if (!scan) return null
 
-  const risk = scan.risk_score ?? 100 - scan.overall_score
+  const derivedRisk = Number.isFinite(scan.overall_score) ? 100 - scan.overall_score : 0
+  const risk = Number.isFinite(scan.risk_score) ? (scan.risk_score as number) : derivedRisk
   const band = riskBand(risk)
   const openViolations = violations.filter((v) => !['Resolved', 'Rejected'].includes(v.status))
   const stats: Array<{ label: string; value: React.ReactNode }> = [
-    { label: 'Compliance score', value: <span className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{scan.overall_score}<span className="text-base font-bold text-slate-400">/100</span></span> },
+    { label: 'Compliance score', value: <span className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{Number.isFinite(scan.overall_score) ? scan.overall_score : '—'}<span className="text-base font-bold text-slate-400">/100</span></span> },
     { label: 'Risk score', value: (
       <span className="inline-flex flex-wrap items-center justify-center gap-1.5">
         <span className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{risk}</span>
