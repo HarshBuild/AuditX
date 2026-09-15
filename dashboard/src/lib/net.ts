@@ -9,7 +9,7 @@ export async function fetchWithTimeout(url: string, init?: RequestInit, ms = 150
     return await fetch(url, { ...init, signal: ctrl.signal })
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') throw new Error(`Request timed out (${ms}ms): ${url}`)
-    throw e
+    throw new Error(`Backend unreachable (${url}): ${(e as Error)?.message ?? 'network error'}`)
   } finally {
     window.clearTimeout(timer)
   }
