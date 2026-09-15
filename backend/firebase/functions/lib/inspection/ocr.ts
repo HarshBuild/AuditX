@@ -220,33 +220,39 @@ export async function paddleProvider(input: ProviderInput): Promise<OcrProviderR
     }
   } catch (e) {
     console.warn('⚠️ Multipass failed, falling back to raw Paddle:', (e as Error)?.message ?? e)
-    // Degrade to the legacy single-pass behaviour
-    const data = await callPythonService(input.photos, input.lang, input.category)
-    const mapped: Record<string, string | null> = {}
-    const rawFields = (data.fields ?? {}) as Record<string, { value?: unknown; confidence?: unknown }>
-    for (const [pyKey, f] of Object.entries(rawFields)) {
-      const ourKey = PY_FIELD_MAP[pyKey] ?? pyKey
-      const v = f?.value
-      const s = v == null ? '' : String(v).trim()
-      if (s) mapped[ourKey] = s
+    try {
+      // Degrade to the legacy single-pass behaviour
+      const data = await callPythonService(input.photos, input.lang, input.category)
+      const mapped: Record<string, string | null> = {}
+      const rawFields = (data.fields ?? {}) as Record<string, { value?: unknown; confidence?: unknown }>
+      for (const [pyKey, f] of Object.entries(rawFields)) {
+        const ourKey = PY_FIELD_MAP[pyKey] ?? pyKey
+        const v = f?.value
+        const s = v == null ? '' : String(v).trim()
+        if (s) mapped[ourKey] = s
+      }
+      const perImages: PerImageExtract[] = [{
+        index: 0,
+        text: String(data.ocr_text ?? ''),
+        language: input.lang || 'en',
+        confidence: typeof data.ocr_confidence === 'number' ? data.ocr_confidence : 0.75,
+        fields: mapped,
+        field_confidence: Object.fromEntries(
+          Object.entries(rawFields).map(([k, f]) => [PY_FIELD_MAP[k] ?? k, confFromRaw(f?.confidence)]),
+        ),
+        field_evidence: Object.fromEntries(
+          Object.entries(mapped)
+            .filter(([, v]) => v)
+            .map(([k, v]) => [k, { text: String(v), confidence: null, bbox: null }]),
+        ),
+        regions: [],
+      }]
+      return { provider: 'paddle', demo: false, perImages, engines: ['paddle'], unclear: [] }
+    } catch (e2) {
+      console.warn('⚠️ Python OCR service unreachable, falling back to MOCK provider:', (e2 as Error)?.message ?? e2)
+      // Final fallback: mock provider so inspection never hard-fails
+      return mockProvider(input)
     }
-    const perImages: PerImageExtract[] = [{
-      index: 0,
-      text: String(data.ocr_text ?? ''),
-      language: input.lang || 'en',
-      confidence: typeof data.ocr_confidence === 'number' ? data.ocr_confidence : 0.75,
-      fields: mapped,
-      field_confidence: Object.fromEntries(
-        Object.entries(rawFields).map(([k, f]) => [PY_FIELD_MAP[k] ?? k, confFromRaw(f?.confidence)]),
-      ),
-      field_evidence: Object.fromEntries(
-        Object.entries(mapped)
-          .filter(([, v]) => v)
-          .map(([k, v]) => [k, { text: String(v), confidence: null, bbox: null }]),
-      ),
-      regions: [],
-    }]
-    return { provider: 'paddle', demo: false, perImages, engines: ['paddle'], unclear: [] }
   }
 }
 
