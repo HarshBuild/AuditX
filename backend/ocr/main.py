@@ -614,6 +614,52 @@ async def verify_region_endpoint(request: Request) -> Dict[str, Any]:
     }
 
 
+@app.post("/crop-region")
+async def crop_region_endpoint(request: Request) -> Dict[str, Any]:
+    """Crop regions from images and return base64 data-URLs for Gemini verification.
+
+    Input (JSON): { "images": ["data:image/...", ...], "regions": [{"image": 0, "bbox": [x,y,w,h]}, ...] }
+    Returns:      { "ok": true, "crops": ["data:image/jpeg;base64,...", ...] }
+    """
+    try:
+        data = json.loads(await request.body())
+    except Exception:
+        raise HTTPException(400, "Send JSON with images and regions.")
+
+    images_raw: List[str] = data.get("images") or []
+    regions: List[Dict[str, Any]] = data.get("regions") or []
+
+    if not images_raw or not regions:
+        raise HTTPException(400, "images and regions are required.")
+
+    crops: List[str] = []
+    for reg in regions:
+        img_idx = int(reg.get("image", 0))
+        bbox = reg.get("bbox")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            crops.append("")
+            continue
+        x, y, rw, rh = (int(v) for v in bbox)
+        if img_idx < 0 or img_idx >= len(images_raw):
+            crops.append("")
+            continue
+        img = _decode(images_raw[img_idx])
+        h, w = img.shape[:2]
+        x = max(0, min(x, w - 1))
+        y = max(0, min(y, h - 1))
+        rw = max(4, min(rw, w - x))
+        rh = max(4, min(rh, h - y))
+        crop = preprocess.crop_region(img, (x, y, rw, rh))
+        target = preprocess.upscale_for_ocr(crop) if crop.shape[1] < 200 else crop
+        if preprocess.needs_enhancement(crop):
+            target = preprocess.enhance(target)
+        _, buf = cv2.imencode(".jpg", target, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        b64 = base64.b64encode(buf).decode("ascii")
+        crops.append(f"data:image/jpeg;base64,{b64}")
+
+    return {"ok": True, "crops": crops}
+
+
 if __name__ == "__main__":
     import os
     import uvicorn

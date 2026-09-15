@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import admin from 'firebase-admin'
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectorHints, InspectionCategory } from './types.js'
+import { runMultipass, type MultipassOutcome } from './multipass.js'
 
 export interface ProviderInput {
   photos: PhotoInput[]
@@ -208,35 +209,45 @@ async function callPythonService(photos: PhotoInput[], lang: string, category: I
 }
 
 export async function paddleProvider(input: ProviderInput): Promise<OcrProviderResult> {
-  const data = await callPythonService(input.photos, input.lang, input.category)
-
-  const mapped: Record<string, string | null> = {}
-  const rawFields = (data.fields ?? {}) as Record<string, { value?: unknown; confidence?: unknown }>
-  for (const [pyKey, f] of Object.entries(rawFields)) {
-    const ourKey = PY_FIELD_MAP[pyKey] ?? pyKey
-    const v = f?.value
-    const s = v == null ? '' : String(v).trim()
-    if (s) mapped[ourKey] = s
+  try {
+    const outcome: MultipassOutcome = await runMultipass(input.photos, input.lang, input.category)
+    return {
+      provider: outcome.engines.join('+'),
+      demo: false,
+      perImages: outcome.perImages,
+      engines: outcome.engines,
+      unclear: outcome.unclearLines,
+    }
+  } catch (e) {
+    console.warn('⚠️ Multipass failed, falling back to raw Paddle:', (e as Error)?.message ?? e)
+    // Degrade to the legacy single-pass behaviour
+    const data = await callPythonService(input.photos, input.lang, input.category)
+    const mapped: Record<string, string | null> = {}
+    const rawFields = (data.fields ?? {}) as Record<string, { value?: unknown; confidence?: unknown }>
+    for (const [pyKey, f] of Object.entries(rawFields)) {
+      const ourKey = PY_FIELD_MAP[pyKey] ?? pyKey
+      const v = f?.value
+      const s = v == null ? '' : String(v).trim()
+      if (s) mapped[ourKey] = s
+    }
+    const perImages: PerImageExtract[] = [{
+      index: 0,
+      text: String(data.ocr_text ?? ''),
+      language: input.lang || 'en',
+      confidence: typeof data.ocr_confidence === 'number' ? data.ocr_confidence : 0.75,
+      fields: mapped,
+      field_confidence: Object.fromEntries(
+        Object.entries(rawFields).map(([k, f]) => [PY_FIELD_MAP[k] ?? k, confFromRaw(f?.confidence)]),
+      ),
+      field_evidence: Object.fromEntries(
+        Object.entries(mapped)
+          .filter(([, v]) => v)
+          .map(([k, v]) => [k, { text: String(v), confidence: null, bbox: null }]),
+      ),
+      regions: [],
+    }]
+    return { provider: 'paddle', demo: false, perImages, engines: ['paddle'], unclear: [] }
   }
-
-  const perImages: PerImageExtract[] = [{
-    index: 0,
-    text: String(data.ocr_text ?? ''),
-    language: input.lang || 'en',
-    confidence: typeof data.ocr_confidence === 'number' ? data.ocr_confidence : 0.75,
-    fields: mapped,
-    field_confidence: Object.fromEntries(
-      Object.entries(rawFields).map(([k, f]) => [PY_FIELD_MAP[k] ?? k, confFromRaw(f?.confidence)]),
-    ),
-    field_evidence: Object.fromEntries(
-      Object.entries(mapped)
-        .filter(([, v]) => v)
-        .map(([k, v]) => [k, { text: String(v), confidence: null, bbox: null }]),
-    ),
-    regions: [],
-  }]
-
-  return { provider: 'paddle', demo: false, perImages }
 }
 
 function confFromRaw(raw: unknown): OcrConfidence {

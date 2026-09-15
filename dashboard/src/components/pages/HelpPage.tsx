@@ -10,7 +10,7 @@ const faqs = [
   },
   {
     q: 'How does the AI label scan work?',
-    a: 'Each photo is sharpened and read field-by-field across every image, then checked against legal metrology rules. The scanner tries the fastest OCR path first and falls back through the AI engine to a free on-device OCR engine when the server is unreachable, so a scan always completes. High-accuracy Gemini reading can be enabled with your own API key in Settings.',
+    a: 'Each photo is sharpened and read field-by-field across every image, then checked against legal metrology rules. Text is extracted on the server using PaddleOCR and Google Cloud Vision, and difficult or low-confidence regions are cross-checked with a vision model — all fully automatic, with no API key needed on your device.',
   },
   {
     q: 'Can I export my inspection report?',

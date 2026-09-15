@@ -527,6 +527,11 @@ export default function ScanResultPage() {
           <span className="rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-navy-950">
             provider <span className="font-semibold text-ink-text dark:text-white">{doc.ocr_provider ?? 'unknown'}</span>
           </span>
+          {doc.ocr_engines && doc.ocr_engines.length > 0 && (
+            <span className="rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-navy-950">
+              engines <span className="font-semibold text-ink-text dark:text-white">{doc.ocr_engines.join(' + ')}</span>
+            </span>
+          )}
           <span className="rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-navy-950">
             confidence{' '}
             <span className="font-semibold text-ink-text dark:text-white">
@@ -542,6 +547,24 @@ export default function ScanResultPage() {
           <span className="text-xs text-slate-400">Raw transcript: {String(doc.ocr_text ?? '').length} chars</span>
         </div>
       </section>
+
+      {/* Unclear / low-confidence text */}
+      {doc.unclear_text && doc.unclear_text.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-50/60 p-5 dark:border-amber-500/20 dark:bg-amber-950/20">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Low-confidence / unclear text</h2>
+          <p className="mt-1 text-xs text-amber-600/70 dark:text-amber-400/60">
+            These lines were detected by only one engine or had conflicting readings.
+          </p>
+          <ul className="mt-3 space-y-1.5 text-sm text-ink-text dark:text-slate-200">
+            {doc.unclear_text.map((line, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                <span className="font-mono text-xs">{line}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Assistant */}
       <section className="mt-6 rounded-2xl border border-brand-500/30 bg-gradient-to-br from-brand-500/10 to-transparent p-5">

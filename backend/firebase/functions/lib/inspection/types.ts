@@ -156,6 +156,8 @@ export interface OcrProviderResult {
   provider: string
   demo: boolean
   perImages: PerImageExtract[]
+  engines?: string[]
+  unclear?: string[]
 }
 
 /** Photo input accepted by the pipeline (data URL or storage path). */
@@ -196,6 +198,8 @@ export interface AnalysisResult {
   ocr_confidence: number
   ocr_regions: unknown[]
   ocr_fields: Record<string, string | null>
+  ocr_engines?: string[]
+  unclear_text?: string[]
   field_sources: Record<string, FieldSource[]>
   field_confidence: Record<string, OcrConfidence>
   field_evidence: Record<string, FieldSource>

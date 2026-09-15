@@ -65,6 +65,8 @@ export interface InspectionDoc {
   ocr_confidence?: number | null
   ocr_regions?: unknown[]
   ocr_fields?: Record<string, string | null>
+  ocr_engines?: string[]
+  unclear_text?: string[]
   field_sources?: Record<string, Array<{ image: number; text: string; confidence?: number | null; bbox?: number[] | null }>>
   field_confidence?: Record<string, OcrConfidence>
   field_evidence?: Record<string, { image: number; text: string; confidence?: number | null; bbox?: number[] | null }>

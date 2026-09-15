@@ -159,6 +159,8 @@ export async function analyzeInspection(input: AnalysisInput): Promise<AnalyzeOu
     ocr_confidence: averageConfidence(providerResult.perImages),
     ocr_regions: merged.regions ?? [],
     ocr_fields,
+    ocr_engines: providerResult.engines,
+    unclear_text: providerResult.unclear,
     field_sources,
     field_confidence,
     field_evidence: merged.field_evidence,
