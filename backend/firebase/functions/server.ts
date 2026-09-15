@@ -91,7 +91,20 @@ function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction)
       const decoded = await admin.auth().verifyIdToken(idToken)
       const profileSnap = await admin.firestore().doc(`users/${decoded.uid}`).get()
       if (!profileSnap.exists) {
-        res.status(403).json({ ok: false, error: 'Account profile not found.' })
+        // Auto-create user profile for authenticated users (first login)
+        const email = decoded.email ?? ''
+        const displayName = decoded.name ?? decoded.email?.split('@')[0] ?? 'User'
+        await admin.firestore().doc(`users/${decoded.uid}`).set({
+          email,
+          display_name: displayName,
+          role: 'user',
+          status: 'active',
+          created_at: new Date().toISOString(),
+        })
+        ;(req as any).uid = decoded.uid
+        ;(req as any).role = 'user'
+        ;(req as any).status = 'active'
+        next()
         return
       }
       const data = profileSnap.data()
@@ -123,8 +136,14 @@ function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction)
         res.status(401).json({ ok: false, error: 'Unauthorized — invalid ID token.' })
         return
       }
-      console.error('⚠️ Firebase auth middleware error:', e?.message ?? e)
-      res.status(500).json({ ok: false, error: 'Authentication service error.' })
+      // Log full error for debugging
+      console.error('⚠️ Firebase auth middleware error:', {
+        code: e?.code,
+        message: e?.message,
+        stack: e?.stack,
+        projectId: process.env.PROJECT_ID,
+      })
+      res.status(500).json({ ok: false, error: `Authentication service error: ${e?.message ?? 'unknown'}` })
     }
   })().catch((e) => {
     console.error('⚠️ Auth middleware unexpected error:', e)

@@ -181,7 +181,7 @@ export function mockProvider(input: ProviderInput): OcrProviderResult {
     const pi = mockPerImage(i, input.hints ?? {}, input.category, input.lang)
     perImages.push(pi)
   }
-  return { provider: 'mock', demo: true, perImages }
+  return { provider: 'mock', demo: true, perImages, engines: ['mock'], unclear: [] }
 }
 
 /* ------------------------------------------------------------------ */
