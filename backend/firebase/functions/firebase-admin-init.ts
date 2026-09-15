@@ -4,7 +4,7 @@
  */
 import admin from 'firebase-admin'
 
-// Validate required env vars
+// Validate required env vars immediately
 const requiredVars = ['PROJECT_ID', 'CLIENT_EMAIL', 'PRIVATE_KEY'] as const
 for (const v of requiredVars) {
   if (!process.env[v]) {
@@ -14,8 +14,19 @@ for (const v of requiredVars) {
   }
 }
 
-// Parse private key — support both literal \n and actual newlines
-const privateKey = process.env.PRIVATE_KEY!.replace(/\\n/gm, '\n')
+// Parse private key — handle both literal \n and actual newlines
+let privateKey = process.env.PRIVATE_KEY!
+// If key contains literal \n (two chars), convert to actual newlines
+if (privateKey.includes('\\n')) {
+  privateKey = privateKey.replace(/\\n/gm, '\n')
+}
+// Ensure key has proper format
+if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+  throw new Error('❌ PRIVATE_KEY format invalid: missing BEGIN header')
+}
+if (!privateKey.includes('-----END PRIVATE KEY-----')) {
+  throw new Error('❌ PRIVATE_KEY format invalid: missing END header')
+}
 
 try {
   admin.initializeApp({
@@ -25,8 +36,17 @@ try {
       privateKey,
     }),
   })
-  console.log('✅ Firebase Admin initialized from env vars')
+  // Verify initialization worked
+  if (typeof admin.auth !== 'function') {
+    throw new Error('Firebase Admin init failed: admin.auth not available')
+  }
+  console.log('✅ Firebase Admin initialized successfully')
+  console.log('   Project:', process.env.PROJECT_ID)
+  console.log('   Client:', process.env.CLIENT_EMAIL)
 } catch (err) {
   console.error('❌ Failed to initialize Firebase Admin:', err)
-  throw err // Crash on startup so Render shows clear error
+  throw err
 }
+
+// Export initialized admin for routes to use
+export { admin }
