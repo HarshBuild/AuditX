@@ -45,24 +45,22 @@ def main() -> int:
 
     import numpy as np
     img = preprocess.decode_bytes(sample.read_bytes())
-    img = preprocess.normalize(img)
-    cv2 = __import__("cv2")
-    cv2.imwrite("sample_preprocessed.png", img)
 
-    from ocr import read_text
+    from multipass import run_multipass
     from correction import collapse_whitespace, join_ocr
     from fields import extract_all
     from rules import evaluate
 
-    print("running PaddleOCR (first run downloads models)...")
-    lines = read_text(img, "en")
+    print("running PaddleOCR (multi-pass voting, first run downloads models)...")
+    lines = run_multipass(img, "en", depth=4)
     lines = [l for l in lines if l["confidence"] > 0.3]
     print(f"detected {len(lines)} blocks")
     for l in lines:
-        print(f"  [{l['confidence']:.2f}] {l['text']}")
+        flag = " (uncertain)" if l.get("uncertain") else ""
+        print(f"  [{l['confidence']:.2f}]{flag} {l['text']}")
 
     text = join_ocr(collapse_whitespace(lines))
-    fields = extract_all(text)
+    fields = extract_all(text, lines)
     rules, result = evaluate(fields)
 
     print("\n--- OCR text ---")

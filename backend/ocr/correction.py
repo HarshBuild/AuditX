@@ -134,11 +134,26 @@ def filter_tokens(text: str) -> str:
     return " ".join(t for t in str(text or "").split() if not is_garbage_token(t)).strip()
 
 
+def _dedupe_repeats(text: str) -> str:
+    """Collapse an immediately repeated word sequence inside one line, e.g.
+    "Net Quantity: 250 g Net Quantity: 250 g" -> "Net Quantity: 250 g"."""
+    words = text.split()
+    n = len(words)
+    for size in range(n // 2, 2, -1):
+        if words[:size] == words[size : size * 2]:
+            return " ".join(words[:size] + words[size * 2 :])
+    return text
+
+
 def clean_text(raw: str) -> str:
     t = str(raw or "")
     t = GARBAGE_RE.sub("", t)
     t = t.replace("''", '"').replace("..", ".").replace("--", "-")
+    # OCR punctuation collisions: ",." and ".," are one punctuation, not two,
+    # and a comma hanging before a line boundary belongs to the value ("150 g,").
+    t = re.sub(r"[,.\s]+([,.;:])", r"\1", t)
     t = re.sub(r"\s+", " ", t).strip()
+    t = _dedupe_repeats(t)
     return t
 
 

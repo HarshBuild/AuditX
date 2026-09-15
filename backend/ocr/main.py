@@ -95,6 +95,16 @@ def _decode(data_url: str) -> np.ndarray:
     return img
 
 
+def _parse_category(raw: Any) -> Optional[str]:
+    """Normalize the inspection category to the compliance engine's vocabulary."""
+    v = str(raw or "").strip().lower()
+    if v in ("edible", "food", "edible/non-edible"):
+        return "edible"
+    if v in ("non_edible", "non-edible", "non edible", "nonfood"):
+        return "non_edible"
+    return "general" if v else None
+
+
 def _optimize_image(img: np.ndarray, max_dim: int = 1920) -> np.ndarray:
     """Resize image to max dimension while preserving aspect ratio.
     Reduces OCR processing time significantly without hurting accuracy."""
@@ -107,8 +117,9 @@ def _optimize_image(img: np.ndarray, max_dim: int = 1920) -> np.ndarray:
 
 
 def _fast_ocr_single(img: np.ndarray, lang: str) -> Tuple[List[Dict[str, Any]], float]:
-    """Fast OCR: single pass, no preprocessing. Returns (lines, mean_confidence)."""
-    lines = ocr_mod.read_text(img, lang)
+    """Fast OCR: 2-pass voting (original + contrast). Returns (lines, mean_confidence)."""
+    from multipass import run_multipass
+    lines = run_multipass(img, lang, depth=2)
     if not lines:
         return [], 0.0
     mean_conf = float(np.mean([l["confidence"] for l in lines]))
@@ -116,9 +127,10 @@ def _fast_ocr_single(img: np.ndarray, lang: str) -> Tuple[List[Dict[str, Any]], 
 
 
 def _enhanced_ocr_single(img: np.ndarray, lang: str) -> Tuple[List[Dict[str, Any]], float]:
-    """Enhanced OCR: full preprocessing + OCR. Returns (lines, mean_confidence)."""
-    processed = preprocess.normalize(img)
-    lines = ocr_mod.read_text(processed, lang)
+    """Enhanced OCR: full 4-pass voting (contrast, binary, sharpen, deskew, upscale).
+    Returns (lines, mean_confidence)."""
+    from multipass import run_multipass
+    lines = run_multipass(img, lang, depth=4)
     if not lines:
         return [], 0.0
     mean_conf = float(np.mean([l["confidence"] for l in lines]))
@@ -160,25 +172,36 @@ def _run_enhanced_ocr_parallel(images: List[np.ndarray], lang: str) -> List[Tupl
     return [(lines, conf) for _, lines, conf in results]
 
 
-def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_checked: Optional[List[int]] = None) -> Dict[str, Any]:
-    """Assemble final result from OCR lines. Noise-filtered, deduped, token-cleaned
-    text reaches field extraction + the user; raw OCR is kept for the debug view."""
+def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_checked: Optional[List[int]] = None, category: Optional[str] = None) -> Dict[str, Any]:
+    """Assemble final result from OCR lines (Misa flow).
+
+    Per-image lines are cleaned and de-duplicated, then each photo is extracted
+    INDEPENDENTLY (per-image fields + regions). The per-image results are merged
+    via merge.merge_results — first non-empty value wins, source image recorded,
+    normalized disagreements become conflicts, per-field evidence/confidence is
+    kept. Compliance runs on the merged fields with an optional category.
+    """
     from correction import collapse_whitespace, filter_tokens, join_ocr
     from fields import extract_all
+    from merge import merge_results
+    from multipass import sort_layout
     from rules import evaluate
 
     ocr_blocks = []
     blocks_detail = []
     combined = []
     raw_combined = []
+    uncertain_lines: List[Dict[str, Any]] = []
+    per_images: List[Dict[str, Any]] = []
+
     for i, lines in enumerate(all_lines):
         if not lines:
             continue
+        lines = sort_layout(lines)
         raw_text = join_ocr(lines)
         raw_combined.append(raw_text)
         raw_conf = round(float(np.mean([l["confidence"] for l in lines]) if lines else 0), 3)
         ocr_blocks.append({"position": f"photo_{i+1}", "text": raw_text, "confidence": raw_conf, "lines": len(lines)})
-        # Cleaned, de-duplicated lines feed blocks + field extraction.
         lines = collapse_whitespace(lines)
         text = filter_tokens(join_ocr(lines))
         conf = round(float(np.mean([l["confidence"] for l in lines]) if lines else 0), 3)
@@ -187,24 +210,56 @@ def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_ch
             rect = _rect_from_box(ln.get("box"))
             if not rect:
                 continue
-            per["blocks"].append({
+            block = {
                 "text": str(ln.get("text", "")),
                 "confidence": round(float(ln.get("confidence", 0)), 3),
                 "region": rect,
                 "region_id": f"img{i+1}_r{j+1}",
                 "enhanced": bool(ln.get("enhanced", False)),
-            })
+            }
+            passes = int(ln.get("passes", 1) or 1)
+            uncertain = bool(ln.get("uncertain", False))
+            if uncertain:
+                block["uncertain"] = True
+                uncertain_lines.append({**block, "image_id": f"image_{i+1}"})
+            if ln.get("agreeing_passes", passes) < 2 and not uncertain:
+                block["single_pass"] = True
+            per["blocks"].append(block)
         if per["blocks"]:
             per["text_regions_detected"] = len(per["blocks"])
             per["lines_extracted"] = len(per["blocks"])
             per["missed_regions_checked"] = int(missed_checked[i]) if missed_checked else 0
             blocks_detail.append(per)
         combined.append(text)
+        # Per-image extraction feeds the Misa merge layer — each photo is read
+        # independently, then combined; a value any photo misses is re-read
+        # from the others (merge keeps first non-empty per field).
+        img_fields = extract_all(text, lines)
+        per_images.append({
+            "index": i,
+            "text": text,
+            "language": "und",
+            "confidence": conf,
+            "fields": {k: v.get("value") for k, v in img_fields.items()},
+            "field_confidence": {k: v.get("confidence") for k, v in img_fields.items()},
+            "field_evidence": {
+                k: {"text": v.get("source") or (v.get("value") or ""), "confidence": None, "bbox": None}
+                for k, v in img_fields.items()
+            },
+            "regions": [
+                {"text": b["text"], "bbox": b.get("region"), "conf": b.get("confidence")}
+                for b in per["blocks"]
+            ],
+        })
+
     raw_ocr_text = " ".join(r for r in raw_combined if r).strip()
     ocr_text = filter_tokens(" ".join(c for c in combined if c).strip())
 
-    fields = extract_all(ocr_text)
-    rules, result = evaluate(fields)
+    # Misa merge: first non-empty per field, source image recorded, conflicts.
+    merged = merge_results(per_images)
+    fields = extract_all(ocr_text, [l for group in all_lines if group for l in group])
+
+    rules, result = evaluate(fields, category)
 
     return {
         "ok": True,
@@ -212,7 +267,13 @@ def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_ch
         "raw_ocr_text": raw_ocr_text,
         "ocr_blocks": ocr_blocks,
         "blocks_detail": blocks_detail,
+        "uncertain_blocks": uncertain_lines,
         "fields": {k: {"value": v["value"], "confidence": v["confidence"], "source": v.get("source")} for k, v in fields.items()},
+        "field_sources": merged.get("sources", {}),
+        "field_confidence": merged.get("field_confidence", {}),
+        "field_evidence": merged.get("field_evidence", {}),
+        "conflicts": merged.get("conflicts", []),
+        "regions": merged.get("regions", []),
         "rules": rules,
         "result": result,
     }
@@ -302,6 +363,7 @@ async def ocr_endpoint(request: Request) -> Dict[str, Any]:
     images: List[np.ndarray] = []
     lang = "en"
     fast_mode = True
+    category: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Accept EITHER multipart/form-data (files=…) OR application/json.
@@ -313,6 +375,7 @@ async def ocr_endpoint(request: Request) -> Dict[str, Any]:
         if "multipart/form-data" in content_type:
             form = await request.form()
             lang = str(form.get("lang") or "en")
+            category = _parse_category(form.get("category"))
             for f in form.getlist("files"):
                 raw = await f.read()
                 img = preprocess.decode_bytes(raw)
@@ -323,6 +386,7 @@ async def ocr_endpoint(request: Request) -> Dict[str, Any]:
             data = json.loads(await request.body())
             lang = str((data.get("lang") or "en"))
             fast_mode = bool(data.get("fast", True))
+            category = _parse_category(data.get("category"))
             for d in (data.get("images") or []):
                 if not isinstance(d, str):
                     raise HTTPException(400, "Each image must be a base64 data URL or base64 string.")
@@ -449,7 +513,7 @@ async def ocr_endpoint(request: Request) -> Dict[str, Any]:
             missed_summary["missed_regions"].append({"image_id": f"image_{i+1}", "region": r})
 
     # includes None slots; _assemble_results aligns per-image stats by index
-    result = _assemble_results(all_lines, missed_checked)
+    result = _assemble_results(all_lines, missed_checked, category)
     result["processing_time_ms"] = round((time.time() - start_time) * 1000, 1)
     result["cache_hits"] = len(cached_results)
     result["reocr_count"] = len(reocr_needed)

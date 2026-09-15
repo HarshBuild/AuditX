@@ -6,28 +6,62 @@ Each photo is normalized before PaddleOCR reads it.
 from __future__ import annotations
 
 import math
+from typing import List, Tuple
 
 import cv2
 import numpy as np
 
 
 def deskew(img: np.ndarray) -> np.ndarray:
-    """Correct small rotation skw using min area rect of text contours."""
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
-    inv = cv2.bitwise_not(gray)
-    coords = np.column_stack(np.where(inv > 0))
-    if coords.size == 0:
-        return img
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
-    if abs(angle) < 0.5:
+    """Correct small rotation skew from dominant text-line angles.
+
+    Uses the median angle of near-horizontal Hough line segments. This is far
+    more reliable than the old minAreaRect-over-all-ink approach, which could
+    transpose the image when the label is tall (a 90° flip that collapsed every
+    OCR box onto one row). Returns the image unchanged when the angle is not a
+    small, confident rotation (never guesses).
+    """
+    from typing import Optional
+    angle = _text_line_angle(img)
+    if angle is None or abs(angle) < 0.5 or abs(angle) > 12:
         return img
     (h, w) = img.shape[:2]
-    m = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
+    m = cv2.getRotationMatrix2D((w // 2, h // 2), -angle, 1.0)
     return cv2.warpAffine(img, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+
+
+def _text_line_angle(img: np.ndarray) -> "float | None":
+    """Median angle (degrees) of near-horizontal text lines, or None when weak."""
+    try:
+        g = _gray(img)
+    except Exception:
+        return None
+    if g.size == 0:
+        return None
+    blur = cv2.GaussianBlur(g, (3, 3), 0)
+    edges = cv2.Canny(blur, 50, 150)
+    try:
+        lines = cv2.HoughLinesP(
+            edges, 1, math.pi / 720.0, threshold=60,
+            minLineLength=max(24, g.shape[1] // 9), maxLineGap=12
+        )
+    except Exception:
+        return None
+    if lines is None or len(lines) == 0:
+        return None
+    angles = []
+    for ln in lines:
+        x1, y1, x2, y2 = ln[0]
+        dx, dy = x2 - x1, y2 - y1
+        if abs(dx) < 2:
+            continue
+        ang = math.degrees(math.atan2(dy, dx))
+        if abs(ang) <= 30:
+            # near-horizontal lines only; vertical/side panels are not auto-rotated
+            angles.append(ang)
+    if len(angles) < 3:
+        return None
+    return float(np.median(angles))
 
 
 def perspective_correct(img: np.ndarray) -> np.ndarray:
@@ -237,3 +271,99 @@ def upscale_for_ocr(img: np.ndarray, min_side: int = 420) -> np.ndarray:
         return img
     scale = min_side / float(min(h, w))
     return cv2.resize(img, (max(2, int(w * scale)), max(2, int(h * scale))), interpolation=cv2.INTER_CUBIC)
+
+
+# ---------------------------------------------------------------------------
+# Multi-pass preprocessing variants (spec §2/§3).
+#
+# The same photo is read under several different normalizations because one
+# pass can always miss some text: faint/low-contrast glyphs, small fonts,
+# glare, busy backgrounds. Combined by the multipass module these variants
+# DRAMATICALLY increase coverage without ever inventing text.
+# ---------------------------------------------------------------------------
+
+def _as_bgr(img: np.ndarray) -> np.ndarray:
+    return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR) if img.ndim == 2 else img
+
+
+def variant_contrast(img: np.ndarray, upscale: bool = False) -> np.ndarray:
+    """CLAHE contrast-boosted grayscale (kept as 3-channel for the OCR API)."""
+    gray = _gray(img)
+    out = img.copy()
+    if min(gray.shape[0], gray.shape[1]) < 260 and upscale:
+        gray = cv2.resize(gray, (gray.shape[1] * 2, gray.shape[0] * 2), interpolation=cv2.INTER_CUBIC)
+        out = cv2.resize(out, (out.shape[1] * 2, out.shape[0] * 2), interpolation=cv2.INTER_CUBIC)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    boosted = clahe.apply(gray)
+    return _as_bgr(boosted)
+
+
+def variant_binary(img: np.ndarray) -> np.ndarray:
+    """Otsu binarization — turns faint grey glyphs into solid black-on-white."""
+    gray = _gray(img)
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return _as_bgr(thresh)
+
+
+def variant_sharpen(img: np.ndarray) -> np.ndarray:
+    """Denoise + CLAHE + strong sharpening — for slightly blurry photos."""
+    out = img.copy()
+    if out.ndim == 3:
+        out = cv2.fastNlMeansDenoisingColored(out, None, 5, 5, 5, 15)
+    else:
+        out = cv2.fastNlMeansDenoising(out, None, 5, 5, 15)
+    gray = _gray(out)
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+    out = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR) if out.ndim == 3 else gray
+    blr = cv2.GaussianBlur(out, (0, 0), 1.5)
+    return cv2.addWeighted(out, 1.6, blr, -0.6, 0)
+
+
+def variant_deskew(img: np.ndarray) -> np.ndarray:
+    """Skew-corrected copy (safe: no-op when already straight)."""
+    return deskew(img)
+
+
+def make_variants(img: np.ndarray, depth: int = 3) -> List[Tuple[str, np.ndarray]]:
+    """Build the preprocessing variants OCR should be run over.
+
+    depth 1 = original only (legacy fast path)
+    depth 2 = + contrast          (recommended fast path)
+    depth 3 = + binary + sharpen  (full accuracy path)
+    depth 4 = + deskew + upscale  (maximum recovery for hard photos)
+    """
+    variants: List[Tuple[str, np.ndarray]] = [("original", img)]
+    if depth >= 2:
+        try:
+            variants.append(("contrast", variant_contrast(img)))
+        except Exception:
+            pass
+    if depth >= 3:
+        try:
+            variants.append(("binary", variant_binary(img)))
+        except Exception:
+            pass
+        try:
+            variants.append(("sharpen", variant_sharpen(img)))
+        except Exception:
+            pass
+    if depth >= 4:
+        try:
+            variants.append(("deskew", variant_deskew(img)))
+        except Exception:
+            pass
+        try:
+            variants.append(("upscaled", upscale_for_ocr(img)))
+        except Exception:
+            pass
+    # De-duplicate variants that produced identical arrays (tiny images).
+    seen: List[np.ndarray] = []
+    out: List[Tuple[str, np.ndarray]] = []
+    for name, v in variants:
+        if any(v.shape == s.shape and np.array_equal(v, s) for s in seen):
+            continue
+        seen.append(v)
+        out.append((name, v))
+    return out

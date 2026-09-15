@@ -58,6 +58,24 @@ NONVEG_RE = re.compile(r"\b(?:non\s*-?\s*veg|non-vegetarian)\b", re.IGNORECASE)
 
 _UNITS = re.compile(r"[:.]?\s*(oz|lbs?|lb|kg|g|gm|ml|l|litre|mtr|cm|m|pcs|units?)$", re.IGNORECASE)
 
+# Lines that are structural labels — never the generic/commodity name.
+_NON_COMMODITY_START = re.compile(
+    r"^(?:mrp|max(?:imum)?\s*retail\s*price|net\s*(?:qty|wt|weight|quantity|contents)?|"
+    r"ingredients?|allergen|manufactur(?:ed|ing)?\s*by|pack(?:ed|ing)?\s*(?:by|at)?|market(?:ed)?\s*by|"
+    r"distribut(?:ed)?\s*by|import(?:ed)?\s*by|mfg|best\s*before|use\s*by|exp(?:iry|ires|\.)?|"
+    r"country\s*of\s*origin|made\s*in|product\s*of|consumer\s*care|customer\s*care|helpline|"
+    r"toll[- ]?free|fssai|lic(?:ence|ense)?|regd|address|batch|lot\s*no|b\.?\s*no|"
+    r"unit\s*sale|incl(?:usive)?\.?\s*(?:of)?\s*all\s*taxes|nutrition|serving)[\s:.|]",
+    re.IGNORECASE,
+)
+
+# Recurring "consumer care" style label that signals the END of an address chunk.
+_ADDRESS_END = re.compile(
+    r"(?i)(?:consumer care|customer care|helpline|toll[- ]?free|help ?line|"
+    r"manufactur(?:ed|ing)?\s*by|packed\s*by|fssai|l(?:i|e)c(?:ence|ense)?\s*no|"
+    r"mfg\s*(?:date)?|best\s*before|mrp\b|net\s*(?:qty|wt|weight|quantity))",
+)
+
 
 def extract_mrp(ocr_text: str) -> Dict[str, Any]:
     m = re.search(r"(?i)(?:mrp|max(?:imum)?\s*retail\s*price|m\.?\s*r\.?\s*p\.?)\s*(?:is|:)?\s*"
@@ -143,7 +161,14 @@ def extract_address(ocr_text: str) -> Dict[str, Any]:
         start = boundary[-1].end()
     else:
         start = max(0, anchor.start() - 80)
-    chunk = ocr_text[start:anchor.end() + 40]
+    end = anchor.end() + 40
+    # Stop at the NEXT field label so trailing fields never bleed into the
+    # address ("…560001 Consumer Care: 1800…" must end at the pin/number).
+    rest = ocr_text[anchor.end():]
+    next_field = _ADDRESS_END.search(rest)
+    if next_field and next_field.start() > 0:
+        end = anchor.end() + min(end - anchor.end(), next_field.start())
+    chunk = ocr_text[start:end]
     # drop a leading contact number that precedes the street address.
     chunk = re.sub(r"^\s*\+?[\d()\s-]{7,}\s*(?=[A-Za-z0-9])", "", chunk)
     # drop a dangling tail like "Manufactured by: Healthy Snacks" after the pin.
@@ -153,7 +178,7 @@ def extract_address(ocr_text: str) -> Dict[str, Any]:
         chunk,
         flags=re.IGNORECASE,
     )
-    val = clean_text(chunk).strip()
+    val = clean_text(chunk).strip().strip(",").strip()
     return {"value": val or None, "confidence": "medium", "source": chunk}
 
 
@@ -165,7 +190,35 @@ def extract_veg(ocr_text: str) -> Dict[str, Any]:
     return {"value": None, "confidence": "low", "source": None}
 
 
-def extract_all(ocr_text: str) -> Dict[str, Dict[str, Any]]:
+def extract_commodity(lines: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Best-effort generic/commodity name from READING ORDER.
+
+    The first meaningful line that is not itself a field label (MRP, Net Qty,
+    Ingredients…), has ≥2 words, carries letters, and is not an all-caps brand
+    banner is taken as the commodity name. Never fabricates a value — returns
+    low confidence when the label's first lines are ambiguous.
+    """
+    for ln in lines:
+        text = clean_text(ln.get("text", ""))
+        t = text.split(";")[0].split("|")[0]
+        if len(t) < 3:
+            continue
+        if _NON_COMMODITY_START.match(t):
+            continue
+        words = [w for w in t.split() if any(c.isalnum() for c in w)]
+        if len(words) < 2:
+            continue
+        if not any(c.isalpha() for c in t):
+            continue
+        # Skip pure brand banners (all-caps, short, no punctuation/variety).
+        if t.isupper() and len(words) <= 4 and "," not in t:
+            continue
+        conf = "medium" if text.endswith((".", "!")) or any(c in text for c in "()") else "high"
+        return {"value": text.rstrip(".,;:"), "confidence": conf, "source": text}
+    return {"value": None, "confidence": "low", "source": None}
+
+
+def extract_all(ocr_text: str, lines: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Dict[str, Any]]:
     mfg, bb = extract_dates(ocr_text)
     out = {
         "mrp": extract_mrp(ocr_text),
@@ -181,6 +234,6 @@ def extract_all(ocr_text: str) -> Dict[str, Dict[str, Any]]:
         "address": extract_address(ocr_text),
         "veg_nonveg": extract_veg(ocr_text),
     }
-    # commodity/generic name: first non-label, non-number line — best effort
-    out["commodity_name"] = {"value": None, "confidence": "low", "source": None}
+    # commodity/generic name from reading order (first non-label line)
+    out["commodity_name"] = extract_commodity(lines or [])
     return out
