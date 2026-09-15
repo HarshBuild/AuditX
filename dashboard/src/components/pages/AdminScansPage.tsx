@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, ScanLine, Eye, RefreshCw } from 'lucide-react'
-import { fetchReportsForScan, fetchViolationsForScan, listScans } from '../../lib/db'
+import { listScans } from '../../lib/db'
 import { riskBand, riskTone } from '../../lib/risk'
 import { severityTone } from '../../lib/ui'
-import type { ReportRow, ScanRow, ViolationRow } from '../../lib/types2'
+import type { ScanRow } from '../../lib/types2'
 import { LoadingState, ErrorState, EmptyState } from '../ui/States'
 import { ToneBadge } from '../ui/Badge'
 import Pagination from '../table/Pagination'
 import Button from '../ui/Button'
-import ScanDetailModal from './ScanDetailModal'
 import { formatDateTime } from '../../utils/format'
 import { displayProductName, displayText } from '../../lib/textnorm'
 
@@ -21,6 +20,7 @@ function RiskBadge({ score }: { score: number | null }) {
 
 export default function AdminScansPage() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [rows, setRows] = useState<ScanRow[]>([])
   const [count, setCount] = useState(0)
   const [page, setPage] = useState(1)
@@ -28,8 +28,6 @@ export default function AdminScansPage() {
   const [query, setQuery] = useState(searchParams.get('q') ?? '')
   const [status, setStatus] = useState('')
   const [risk, setRisk] = useState('')
-  const [selected, setSelected] = useState<ScanRow | null>(null)
-  const [detail, setDetail] = useState<{ violations: ViolationRow[]; reports: ReportRow[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
@@ -59,19 +57,6 @@ export default function AdminScansPage() {
     setQuery((prev) => (prev === q ? prev : q))
     setPage(1)
   }, [searchParams])
-
-  const openDetail = async (s: ScanRow) => {
-    setSelected(s)
-    try {
-      const [violations, reports] = await Promise.all([
-        fetchViolationsForScan(s.id),
-        fetchReportsForScan(s.id),
-      ])
-      setDetail({ violations, reports })
-    } catch {
-      setDetail({ violations: [], reports: [] })
-    }
-  }
 
   return (
     <div className="space-y-5">
@@ -162,7 +147,7 @@ export default function AdminScansPage() {
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400">{formatDateTime(s.created_at)}</td>
                       <td className="px-4 py-3 text-right">
-                        <Button size="sm" variant="outline" icon={<Eye className="h-3.5 w-3.5" />} onClick={() => void openDetail(s)}>
+                        <Button size="sm" variant="outline" icon={<Eye className="h-3.5 w-3.5" />} onClick={() => navigate(`/scan-result/${s.id}`)}>
                           View
                         </Button>
                       </td>
@@ -184,14 +169,6 @@ export default function AdminScansPage() {
           />
         </div>
       )}
-
-      <ScanDetailModal
-        scan={selected}
-        violations={detail?.violations ?? []}
-        reports={detail?.reports ?? []}
-        onClose={() => setSelected(null)}
-        onRefresh={() => setRefresh((x) => x + 1)}
-      />
     </div>
   )
 }

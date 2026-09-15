@@ -5,6 +5,7 @@ import { ToneBadge } from '../ui/Badge'
 import { ErrorState } from '../ui/States'
 import { db, auth } from '../../lib/firebase'
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
+import { photoUrl } from '../../lib/inspection'
 import { timeAgo } from '../../utils/format'
 import { displayProductName, displayText } from '../../lib/textnorm'
 
@@ -56,12 +57,14 @@ export default function EvidencePage() {
           const urls = (data.image_urls as string[] | undefined) ?? (data.image_url ? [data.image_url as string] : [])
           if (!urls || urls.length === 0) continue
           for (let i = 0; i < urls.length; i++) {
+            const maybe = photoUrl(urls[i])
+            const resolved = maybe ? await maybe.catch(() => null) : null
             evidence.push({
               id: `${d.id}_${i}`,
               scan_id: d.id,
               user_id: data.user_id ?? '',
               user_name: data.user_name ?? '',
-              image_url: urls[i],
+              image_url: resolved ?? urls[i],
               product_name: data.product_name ?? '',
               manufacturer: data.manufacturer ?? '',
               location_name: data.location_name ?? '',

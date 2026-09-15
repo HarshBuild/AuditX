@@ -10,12 +10,11 @@ import { useToast } from '../ui/Toast'
 import PageHeader from '../ui/PageHeader'
 import Tabs, { type TabItem } from '../ui/Tabs'
 import { useAuth } from '../../lib/auth'
-import { fetchScanById, fetchScansForUserPage, fetchViolationsForScan, fetchReportsForScan } from '../../lib/db'
+import { fetchScansForUserPage } from '../../lib/db'
 import { scanStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
 import { displayProductName, displayText } from '../../lib/textnorm'
-import type { ReportRow, ScanRow, ViolationRow } from '../../lib/types2'
-import ScanDetailModal from './ScanDetailModal'
+import type { ScanRow } from '../../lib/types2'
 
 function verdictTone(s: ScanRow): 'emerald' | 'amber' | 'rose' | 'cyan' {
   if (s.verdict === 'COMPLIANT') return 'emerald'
@@ -28,7 +27,7 @@ function verdictTone(s: ScanRow): 'emerald' | 'amber' | 'rose' | 'cyan' {
 const PAGE_SIZE = 50
 
 export default function RecordsPage() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { toast } = useToast()
@@ -41,9 +40,6 @@ export default function RecordsPage() {
   const seenIds = useRef(new Set<string>())
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [status, setStatus] = useState('all')
-  const [selected, setSelected] = useState<ScanRow | null>(null)
-  const [violations, setViolations] = useState<ViolationRow[]>([])
-  const [reports, setReports] = useState<ReportRow[]>([])
 
   /* The header's global search writes the query into the URL (?q=). Keep this
      page's filter in sync so typing in the header (or navigating with a query
@@ -96,42 +92,6 @@ export default function RecordsPage() {
     await load({ silent: true })
     setRefreshing(false)
   }
-
-  const openDetail = async (scan: ScanRow) => {
-    setSelected(scan)
-    try {
-      const [vs, rs] = await Promise.all([fetchViolationsForScan(scan.id), fetchReportsForScan(scan.id)])
-      setViolations(vs)
-      setReports(rs)
-    } catch {
-      setViolations([])
-      setReports([])
-    }
-  }
-
-  const openDetailById = async (id: string) => {
-    const found = await fetchScanById(id, user?.id ?? null)
-    if (!found) {
-      toast('error', 'Scan not found', 'That inspection is no longer available.')
-      return
-    }
-    await openDetail(found)
-  }
-
-  /* Deep link: /scan-history?open=<id> (used by the dashboard "recent scans"
-     list). Opens the matching detail once, then strips the param so a refresh
-     or back/forward does not reopen it or loop. */
-  const openedRef = useRef<string | null>(null)
-  useEffect(() => {
-    const openId = searchParams.get('open')
-    if (!openId || !user?.id || openedRef.current === openId) return
-    openedRef.current = openId
-    void openDetailById(openId)
-    const next = new URLSearchParams(searchParams)
-    next.delete('open')
-    navigate({ search: next.toString() }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, user?.id, navigate])
 
   const haystack = (s: ScanRow) => [s.product_name, s.brand, s.manufacturer, s.category, s.barcode].join(' | ').toLowerCase()
   const filtered = scans.filter(
@@ -270,7 +230,7 @@ export default function RecordsPage() {
             columns={columns}
             rows={filtered}
             rowKey={(s) => s.id}
-            onRowClick={(s) => void openDetail(s)}
+            onRowClick={(s) => navigate(`/scan-result/${s.id}`)}
             empty={<EmptyState title="Nothing matches" message="Try a different search or status filter." />}
           />
           {hasMore && (
@@ -282,15 +242,6 @@ export default function RecordsPage() {
           )}
         </div>
       )}
-
-      <ScanDetailModal
-        scan={selected}
-        violations={violations}
-        reports={reports}
-        onClose={() => setSelected(null)}
-        onRefresh={() => void load()}
-        canReview={['admin', 'super_admin', 'inspector'].includes(String(profile?.role ?? ''))}
-      />
     </div>
   )
 }

@@ -34,6 +34,7 @@ import barcodeRouter from './routes/barcode.js'
 import claimsRouter from './routes/claims.js'
 import ocrRouter from './routes/ocr.js'
 import productsRouter from './routes/products.js'
+import inspectionsRouter from './routes/inspections.js'
 
 // --- Express app ---
 const app: express.Express = express()
@@ -142,6 +143,7 @@ app.use('/api/barcode', firebaseAuthMiddleware, barcodeRouter)
 app.use('/api/set-claims', firebaseAuthMiddleware, claimsRouter)
 app.use('/api/ocr', firebaseAuthMiddleware, ocrRouter)
 app.use('/api/products', firebaseAuthMiddleware, productsRouter)
+app.use('/api/inspections', firebaseAuthMiddleware, inspectionsRouter)
 
 // --- 404 ---
 app.use((_req: Request, _res: Response): void => {

@@ -21,6 +21,7 @@ import { riskBand, riskTone } from './risk'
 import { formatDateTime } from '../utils/format'
 import { displayProductName, displaySentence, displayText } from './textnorm'
 import type { ScanRow } from './types2'
+import type { Finding, InspectionDoc } from './inspection'
 
 /* ------------------------------------------------------------------ */
 /* Premium palette                                                     */
@@ -464,6 +465,236 @@ export async function downloadInspectionPdf(scan: ScanRow, lang: string): Promis
   }
 
   const filename = `AuditX-Report-${(scan.product_name?.trim() ? displayProductName(scan.product_name) : 'scan').replace(/[^a-zA-Z0-9_-]+/g, '_')}-${lang.toUpperCase()}.pdf`
+  pdf.save(filename)
+  return filename
+}
+
+/* ------------------------------------------------------------------ */
+/* MISA-style inspection report (new pipeline doc)                     */
+/* ------------------------------------------------------------------ */
+
+const statusColor: Record<InspectionDoc['status'], { text: string; bg: string; label: string }> = {
+  compliant: { text: GREEN, bg: GREEN_BG, label: 'Compliant' },
+  needs_review: { text: AMBER, bg: AMBER_BG, label: 'Needs review' },
+  violation: { text: RED, bg: RED_BG, label: 'Violation' },
+  critical: { text: RED, bg: RED_BG, label: 'Critical' },
+}
+
+const findingColor = (s: Finding['status']) =>
+  s === 'compliant' ? { text: GREEN, bg: GREEN_BG } : s === 'na' ? { text: SLATE, bg: SLATE_BG } : s === 'needs_review' ? { text: AMBER, bg: AMBER_BG } : { text: RED, bg: RED_BG }
+
+const DETAIL_ROWS: Array<[string, string]> = [
+  ['commodity_name', 'Product name'],
+  ['brand', 'Brand'],
+  ['manufacturer', 'Manufacturer / packer / importer'],
+  ['net_quantity', 'Net quantity'],
+  ['mrp', 'MRP'],
+  ['batch_no', 'Batch / lot number'],
+  ['mfg_date', 'Manufacturing date'],
+  ['expiry_date', 'Expiry / best-before'],
+  ['ingredients_text', 'Ingredients'],
+  ['allergen_info', 'Allergen information'],
+  ['required_declarations', 'Required declarations'],
+  ['warnings', 'Warnings'],
+  ['certification_details', 'Certification / standards'],
+  ['country_of_origin', 'Country of origin'],
+  ['storage_conditions', 'Storage conditions'],
+  ['customer_care_details', 'Customer care'],
+  ['contact_info', 'Contact'],
+  ['imported_manufacturer_detail', 'Importer detail'],
+]
+
+function buildMisaReportHtml(d: InspectionDoc, generatedAt: string): string {
+  const card = (title: string, body: string) => `
+    <div style="margin-top:18px">
+      <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:${SILVER};font-weight:600">${esc(title)}</div>
+      <div style="font-size:11px;color:${BODY};margin-top:6px;line-height:1.6">${body}</div>
+    </div>`
+
+  const details = DETAIL_ROWS.map(([key, label]) => ({ key: key as keyof InspectionDoc['ocr_fields'], label, value: d.ocr_fields?.[key] ?? '' })).filter((r) => r.value)
+  const fieldsHtml =
+    details.length === 0
+      ? `<div style="margin-top:18px;font-size:11px;color:${SILVER}">No label fields could be read confidently.</div>`
+      : details
+          .map((r) => {
+            const conf = d.field_confidence?.[r.key] || 'low'
+            const col = conf === 'high' ? GREEN : conf === 'medium' ? AMBER : SILVER
+            const ev = d.field_evidence?.[r.key]
+            return `
+          <div style="padding:9px 0;border-bottom:1px solid ${HAIRLINE};display:flex;justify-content:space-between;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${SILVER};font-weight:600">${esc(r.label)}</div>
+              <div style="font-size:12px;color:${CHARCOAL};font-weight:600;margin-top:3px">${esc(r.value)}</div>
+              ${ev?.text && ev.text !== r.value ? `<div style="font-size:9px;color:${SILVER};margin-top:2px">source: photo ${ev.image} — ${esc(ev.text)}</div>` : ''}
+            </div>
+            <div style="align-self:center;font-size:9px;color:${col};font-weight:700;text-transform:capitalize">${esc(conf)}</div>
+          </div>`
+          })
+          .join('')
+
+  const findingsHtml =
+    (d.compliance_findings ?? [])
+      .map((f) => {
+        const c = findingColor(f.status)
+        return `
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid ${HAIRLINE}">
+          <div style="flex:1;font-size:11px;color:${BODY}">
+            <strong style="color:${CHARCOAL}">${esc(f.label)}</strong>
+            ${f.detected_value ? `<div style="font-size:10px;color:${SLATE};margin-top:2px">${esc(f.detected_value)}</div>` : ''}
+            ${f.explanation && f.explanation !== f.detected_value ? `<div style="font-size:10px;color:${SLATE};margin-top:2px">${esc(f.explanation)}</div>` : ''}
+          </div>
+          <span style="align-self:center;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:700;color:${c.text};background:${c.bg};text-transform:capitalize">${esc(f.status === 'critical_failed' ? 'critical' : f.status)}</span>
+        </div>`
+      })
+      .join('')
+
+  const changesHtml = (d.changes ?? [])
+    .map(
+      (c) => `
+      <div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid ${HAIRLINE};font-size:11px">
+        <strong style="color:${CHARCOAL};min-width:140px">${esc(c.label)}</strong>
+        <span style="color:${SLATE}">${esc(c.previous || '—')}</span>
+        <span style="color:${SILVER}">→</span>
+        <span style="color:${BODY}">${esc(c.current || 'removed')}</span>
+      </div>`,
+    )
+    .join('')
+
+  const conflictsHtml = (d.conflicts ?? [])
+    .map(
+      (c) =>
+        `<div style="padding:8px 0;border-bottom:1px solid ${HAIRLINE};font-size:11px;color:${BODY}"><strong style="color:${CHARCOAL}">${esc(c.label)}:</strong> ${c.values.map((v) => `photo ${v.image}: ${esc(v.value)}`).join('  ·  ')}</div>`,
+    )
+    .join('')
+
+  const attentionHtml = (d.compliance_findings ?? [])
+    .filter((f) => f.status !== 'compliant' && f.status !== 'na')
+    .map(
+      (f) =>
+        `<div style="padding:7px 0;font-size:11px;color:${BODY}"><strong style="color:${CHARCOAL}">${esc(f.label)}:</strong> ${esc(f.explanation || f.status)}${f.hint ? `<span style="display:block;font-size:10px;color:${SILVER}">Hint: ${esc(f.hint)}</span>` : ''}</div>`,
+    )
+    .join('')
+
+  const pageBreak = (title: string) => `
+    <div style="page-break-before:always;margin-top:24px;padding-top:14px;border-top:2px solid ${BLUE}">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:${BLUE};font-weight:800">${esc(title)}</div>
+    </div>`
+
+  const score = d.compliance_score ?? d.overall_score ?? 0
+  const st = statusColor[d.status]
+  const bps = (d.briefing?.key_points ?? [])
+    .map((k) => `<li style="margin:5px 0">${esc(k)}</li>`)
+    .join('')
+  const recs = (d.briefing?.recommendations ?? []).map((r) => `<li style="margin:5px 0">${esc(r)}</li>`).join('')
+  const photos = (d.photo_paths ?? [])
+    .map(() => `<span style="display:inline-block;font-size:9px;color:${SLATE};margin-right:10px">Photo</span>`)
+    .join('')
+
+  return `
+  <div style="font-family:${FONT};background:${IVORY};color:${BODY};padding:6px 40px 40px">
+    <!-- Cover -->
+    <div style="background:${NAVY};border-radius:14px;color:#fff;padding:28px 26px;position:relative;overflow:hidden">
+      <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#93A7C7;font-weight:700">Legal Metrology · Label Inspection Report</div>
+      <div style="font-size:20px;font-weight:800;margin-top:12px;line-height:1.25">${esc(d.product_name || 'Product label inspection')}</div>
+      <div style="font-size:11px;color:#C6D3EA;margin-top:8px">
+        ${esc(formatDateTime(d.analyzed_at ?? d.created_at))} · engine ${esc(d.ocr_provider || 'unknown')} · ${esc(d.ocr_language || 'en')}
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:8px;margin-top:18px;padding:8px 14px;border-radius:999px;background:${st.bg};color:${st.text};font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px">
+        ${esc(st.label)}
+      </div>
+      <div style="position:absolute;right:26px;top:26px;text-align:center;background:rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px">
+        <div style="font-size:26px;font-weight:800;color:${st.bg === RED_BG ? '#F5A3A3' : '#fff'}">${esc(score)}</div>
+        <div style="font-size:9px;letter-spacing:1px;color:#93A7C7">/ 100</div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;background:${CARD};border:1px solid ${BORDER};border-radius:12px;padding:20px 22px">
+      <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:${SILVER};font-weight:600">Summary</div>
+      <div style="font-size:11.5px;color:${BODY};margin-top:8px;line-height:1.7">${esc(d.summary || 'The report is ready.')}</div>
+      ${attentionHtml ? card('Attention needed', attentionHtml) : ''}
+      ${d.briefing ? card('Assistant briefing', bps ? `<ul style="margin:0;padding-left:16px">${bps}</ul>` : `<div>${esc(d.briefing.summary || d.summary || '')}</div>`) : ''}
+      ${d.briefing?.recommendations?.length ? card('Recommendations', `<ul style="margin:0;padding-left:16px">${recs}</ul>`) : ''}
+    </div>
+
+    ${pageBreak('Product information')}
+    <div style="background:${CARD};border:1px solid ${BORDER};border-radius:12px;padding:14px 22px">
+      ${fieldsHtml || '<div style="font-size:11px;color:Silver">No fields extracted.</div>'}
+    </div>
+
+    ${pageBreak('Compliance breakdown')}
+    <div style="background:${CARD};border:1px solid ${BORDER};border-radius:12px;padding:14px 22px">
+      ${findingsHtml || '<div style="font-size:11px;color:Silver">No checks recorded.</div>'}
+    </div>
+
+    ${pageBreak('Change detection')}
+    <div style="background:${CARD};border:1px solid ${BORDER};border-radius:12px;padding:14px 22px">
+      <div style="font-size:11px;color:${BODY}">
+        ${d.match_confidence ? `Matched the previous scan (${esc(d.match_confidence.replace('_', ' '))}).` : 'No previous scan of this product found — this is the baseline reading.'}
+        ${d.changes_verified ? ` Review was marked as verified by the inspector.` : ''}
+      </div>
+      ${changesHtml ? `<div style="margin-top:8px">${changesHtml}</div>` : '<div style="margin-top:8px;font-size:11px;color:Sliver">No label declarations changed.</div>'}
+    </div>
+
+    ${(d.conflicts ?? []).length ? pageBreak('Conflicting readings') + `<div style="background:${AMBER_BG};border:1px solid #EAD9B8;border-radius:12px;padding:14px 22px">${conflictsHtml}</div>` : ''}
+
+    ${pageBreak('Evidence')}
+    <div style="background:${CARD};border:1px solid ${BORDER};border-radius:12px;padding:14px 22px">
+      <div style="font-size:11px;color:${SILVER}">${(d.photo_paths ?? []).length ? `Original photos used for this inspection (${(d.photo_paths ?? []).length}). ${photos}` : 'No photos recorded.'}</div>
+      ${d.ocr_text ? `<div style="margin-top:10px;font-size:9px;font-weight:700;letter-spacing:1px;color:${SILVER}">RAW OCR TEXT</div><pre style="white-space:pre-wrap;font-size:10px;font-family:'Noto Sans Mono',monospace;color:${BODY};background:${SLATE_BG};border-radius:8px;padding:12px;margin:6px 0 0">${esc(d.ocr_text)}</pre>` : ''}
+    </div>
+
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid ${BORDER};font-size:9px;color:${SILVER};line-height:1.6">
+      Generated by AuditX · ${esc(formatDateTime(generatedAt))} · Report for scan ${esc(String(d.id).slice(0, 8))}<br/>
+      This report is derived from text visible in the photographs and is not a legal certification.
+      ${d.briefing?.assistant_status === 'demo' ? ' The OCR provider ran in demo mode: values echo the details typed at capture time.' : ''}
+    </div>
+  </div>`
+}
+
+export async function downloadInspectionReport(d: InspectionDoc, lang = 'en'): Promise<string> {
+  void lang
+  const generatedAt = new Date().toISOString()
+  const html = buildMisaReportHtml(d, generatedAt)
+
+  const el = document.createElement('div')
+  el.setAttribute('aria-hidden', 'true')
+  el.style.position = 'fixed'
+  el.style.left = '-10000px'
+  el.style.top = '0'
+  el.style.zIndex = '-1'
+  el.style.width = '794px'
+  el.style.background = IVORY
+  el.innerHTML = html
+  document.body.appendChild(el)
+
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+  const pdfW = pdf.internal.pageSize.getWidth()
+  const pdfH = pdf.internal.pageSize.getHeight()
+
+  const canvas = await html2canvas(el, { scale: 2, backgroundColor: IVORY, logging: false, windowWidth: el.offsetWidth })
+  el.remove()
+
+  const scale = pdfW / canvas.width
+  const step = Math.floor((pdfH - HEADER_PT - FOOTER_PT) / scale)
+  const pages: number[] = []
+  let offset = 0
+  while (offset < canvas.height) {
+    pages.push(offset)
+    offset += step
+  }
+
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0) pdf.addPage()
+    const h = Math.min(step, canvas.height - pages[i])
+    const slice = document.createElement('canvas')
+    slice.width = canvas.width
+    slice.height = h
+    slice.getContext('2d')?.drawImage(canvas, 0, pages[i], canvas.width, h, 0, 0, canvas.width, h)
+    pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, h * scale)
+  }
+
+  const name = (d.product_name?.trim() ? displayProductName(d.product_name) : 'scan').replace(/[^a-zA-Z0-9_-]+/g, '_')
+  const filename = `AuditX-Inspection-${name}.pdf`
   pdf.save(filename)
   return filename
 }
