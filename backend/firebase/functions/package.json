@@ -11,7 +11,7 @@
     "deploy": "echo 'Deploy to Render — run npm start on the Render Web Service'"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "dependencies": {
     "@google-cloud/vision": "^4.3.3",
