@@ -288,7 +288,7 @@ export async function runVerificationReports(input: ProviderInput): Promise<Repo
   }
 
   const okCount = outcomes.filter((o) => o.ok).length
-  console.log(`🔍 verification reports: ${outcomes.map((o) => `${o.name}=${o.provider}:${o.ok ? 'ok' : 'fail'}`).join(', ')}`)
+  console.log(`🔍 verification reports: ${outcomes.map((o) => `${o.name}=${o.provider}:${o.ok ? 'ok' : `fail(${o.latencyMs}ms${o.error ? ` ${o.error.slice(0, 120)}` : ''})`}`).join(', ')}`)
   if (okCount === 0) {
     const reasons = outcomes.map((o) => `${o.provider}: ${o.error ?? 'failed'}`).join('; ')
     throw new Error(

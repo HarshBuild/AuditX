@@ -8,9 +8,11 @@
  *   STORAGE_BUCKET       — photo Storage bucket name (default `scans`)
  *   GEMINI_API_KEY       — Google Gemini API key (Report 2: Gemini Vision)
 *   GEMINI_VISION_MODEL  — Gemini model for label extraction (default gemini-3.6-flash)
+*   GEMINI_VISION_MODELS — comma-separated Gemini failover list (tried in order)
 *   GEMINI_TEXT_MODEL    — Gemini model for assistant answers (default gemini-3.6-flash)
 *   OPENROUTER_API_KEY   — OpenRouter API key (Report 3: OpenRouter Vision; unset = report skipped)
 *   OPENROUTER_VISION_MODEL — OpenRouter vision model (default qwen/qwen2.5-vl-72b-instruct)
+*   OPENROUTER_VISION_MODELS — comma-separated OpenRouter failover list (tried in order)
 *   OCR_PROVIDER         — paddle | gemini | openrouter | all (default all: parallel multi-AI verification)
  *   FRONTEND_URL         — CORS allowed origin(s), comma-separated
  *   CORS_ORIGINS         — optional; overrides FRONTEND_URL for CORS

@@ -7,7 +7,7 @@
  */
 
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectionCategory } from './types.js'
-import { DEFAULT_GEMINI_MODEL, geminiGenerateContent, dataUrlToInline, extractJson, withTransientRetry } from '../gemini.js'
+import { DEFAULT_GEMINI_MODEL, geminiGenerateContent, dataUrlToInline, extractJson, parseModelList, withTransientRetry } from '../gemini.js'
 
 const FIELD_KEYS = [
   'commodity_name',
@@ -87,7 +87,10 @@ export async function geminiVisionOCR(
     .filter((d): d is string => typeof d === 'string' && !!d)
   if (images.length === 0) throw new Error('No image data for Gemini OCR.')
 
-  const model = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_MODEL
+  const models = parseModelList(
+    process.env.GEMINI_VISION_MODELS,
+    process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_MODEL,
+  )
   const parts: Array<{ text: string } | ReturnType<typeof dataUrlToInline>> = [
     { text: 'Read the following product label photo(s) and extract the fields as instructed.' },
   ]
@@ -96,13 +99,25 @@ export async function geminiVisionOCR(
     parts.push({ text: `[Photo ${i + 1}]` })
   }
 
-  const answer = await withTransientRetry(() => geminiGenerateContent({
-    model,
-    system: SYSTEM_PROMPT,
-    parts,
-    temperature: 0.05,
-    maxOutputTokens: 8192,
-  }))
+  // Ordered model failover: an overloaded model falls through to the next.
+  let answer: string | null = null
+  let lastError: string = 'no models configured'
+  for (const model of models) {
+    try {
+      answer = await withTransientRetry(() => geminiGenerateContent({
+        model,
+        system: SYSTEM_PROMPT,
+        parts,
+        temperature: 0.05,
+        maxOutputTokens: 8192,
+      }), [5000, 15000])
+      break
+    } catch (e) {
+      lastError = (e as Error)?.message ?? String(e)
+      console.warn(`⚠️ Gemini model ${model} failed, trying next:`, lastError.slice(0, 150))
+    }
+  }
+  if (!answer) throw new Error(`All Gemini models failed (${models.join(', ')}). Last error: ${lastError.slice(0, 200)}`)
   const parsed = extractJson(answer)
   const rawImages = Array.isArray(parsed?.images) ? parsed.images : []
 

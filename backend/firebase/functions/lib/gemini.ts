@@ -113,16 +113,30 @@ export function isTransientError(e: unknown): boolean {
 }
 
 /**
- * Run fn once; on a transient error wait `delayMs` and retry once more.
+ * Run fn; on transient errors retry with growing backoffs (default 5s, 15s).
  * Config errors (401/403/404/400) fail immediately — retrying is useless.
+ * Returns the first success; throws the LAST error when exhausted.
  */
-export async function withTransientRetry<T>(fn: () => Promise<T>, delayMs = 5000): Promise<T> {
-  try {
-    return await fn()
-  } catch (e) {
-    if (!isTransientError(e)) throw e
-    console.warn(`⚠️ transient AI error (${(e as Error)?.message?.slice(0, 120) ?? e}) — retrying once in ${delayMs}ms.`)
-    await sleep(delayMs)
-    return fn()
+export async function withTransientRetry<T>(fn: () => Promise<T>, delaysMs: number[] = [5000]): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      if (!isTransientError(e)) throw e
+      if (attempt >= delaysMs.length) throw e
+      const delay = delaysMs[Math.min(attempt, delaysMs.length - 1)]
+      console.warn(`⚠️ transient AI error (${String((e as Error)?.message ?? e).slice(0, 120)}) — retry ${attempt + 1}/${delaysMs.length} in ${delay}ms.`)
+      await sleep(delay)
+    }
   }
+}
+
+/** Split a comma-separated model list env var into an ordered, deduped list. */
+export function parseModelList(raw: string | undefined, fallback: string): string[] {
+  const list = String(raw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!list.includes(fallback)) list.push(fallback)
+  return [...new Set(list)]
 }
