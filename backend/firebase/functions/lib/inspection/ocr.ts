@@ -283,7 +283,30 @@ export async function runVerificationReports(input: ProviderInput): Promise<Repo
         }))
       : null,
   ]
-  const outcomes = await Promise.all(jobs.filter((j): j is Promise<ReportOutcome> => j !== null))
+  let outcomes = await Promise.all(jobs.filter((j): j is Promise<ReportOutcome> => j !== null))
+
+  // Fallback: the selected report(s) all failed — auto-try every OTHER
+  // available report before giving up. A set OCR_PROVIDER is a preference,
+  // never a dead end.
+  if (outcomes.every((o) => !o.ok) && selection !== 'all') {
+    const tried = new Set(outcomes.map((o) => o.provider))
+    console.warn(`⚠️ selected provider '${selection}' failed — auto-trying remaining reports.`)
+    const fallbackJobs: Array<Promise<ReportOutcome>> = []
+    if (!tried.has('paddle')) {
+      fallbackJobs.push(runOneReport('report_1', 'paddle', () => paddleProvider(input)))
+    }
+    if (!tried.has('gemini') && process.env.GEMINI_API_KEY) {
+      fallbackJobs.push(runOneReport('report_2', 'gemini', () => geminiVisionOCR(input.photos, input.lang, input.category)))
+    }
+    if (!tried.has('openrouter') && process.env.OPENROUTER_API_KEY) {
+      fallbackJobs.push(runOneReport('report_3', 'openrouter', () => openRouterVisionOCR(input.photos, input.lang, input.category)))
+    }
+    if (fallbackJobs.length > 0) {
+      const fallbackOutcomes = await Promise.all(fallbackJobs)
+      outcomes = [...outcomes, ...fallbackOutcomes]
+    }
+  }
+
   const okCount = outcomes.filter((o) => o.ok).length
   console.log(`🔍 verification reports: ${outcomes.map((o) => `${o.name}=${o.provider}:${o.ok ? 'ok' : 'fail'}`).join(', ')}`)
   if (okCount === 0) {
