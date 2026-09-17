@@ -23,7 +23,7 @@ export interface Finding {
   status: FindingStatus
   detected_value: string | null
   explanation: string | null
-  hint?: string
+  hint: string | null
 }
 
 export interface Change {
@@ -108,7 +108,7 @@ export interface CreateInspectionResponse {
   error?: string | null
 }
 
-async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+async function authedFetch(path: string, init: RequestInit = {}, timeoutMs = 90_000): Promise<Response> {
   const uid = auth.currentUser?.uid
   const idToken = auth.currentUser ? await auth.currentUser.getIdToken(true) : null
   if (!uid || !idToken) throw new Error('Not signed in for inspections')
@@ -121,7 +121,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
       ...(init.headers ?? {}),
     },
     body: init.body,
-  }, 90_000)
+  }, timeoutMs)
 }
 
 async function readError(res: Response): Promise<string> {
@@ -136,14 +136,15 @@ async function readError(res: Response): Promise<string> {
 
 /** Create an inspection with photos and run the inline analysis. */
 export async function createInspection(input: CreateInspectionInput): Promise<CreateInspectionResponse> {
-  const res = await authedFetch('/api/inspections', { method: 'POST', body: JSON.stringify(input) })
+  // Photo upload + multi-engine OCR can take a few minutes on slow networks.
+  const res = await authedFetch('/api/inspections', { method: 'POST', body: JSON.stringify(input) }, 240_000)
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as CreateInspectionResponse
 }
 
 /** Retry the analysis for an existing scan (same stored photos). */
 export async function retryAnalysis(scanId: string): Promise<CreateInspectionResponse> {
-  const res = await authedFetch('/api/inspections/analyze', { method: 'POST', body: JSON.stringify({ scan_id: scanId }) })
+  const res = await authedFetch('/api/inspections/analyze', { method: 'POST', body: JSON.stringify({ scan_id: scanId }) }, 240_000)
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as CreateInspectionResponse
 }

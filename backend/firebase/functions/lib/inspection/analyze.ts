@@ -120,7 +120,10 @@ export async function analyzeInspection(input: AnalysisInput): Promise<AnalyzeOu
   const { paths, dataUrls } = await materializePhotos(input.uid, input.photos)
 
   // Provider OCR → Node merge → guard rails.
-  const providerResult = await runProvider({ photos: input.photos, category, lang, hints })
+  // NOTE: providers read `data` (image bytes). Path-only photos (retry flow)
+  // were just materialized into dataUrls — forward them so Retry gets real OCR.
+  const providerPhotos = input.photos.map((p, i) => ({ ...p, data: dataUrls[i] ?? p.data }))
+  const providerResult = await runProvider({ photos: providerPhotos, category, lang, hints })
   const merged: MergedFields = guardRail(mergeResults(providerResult.perImages))
 
   const productName = merged.fields.commodity_name ?? hints.product_name ?? ''

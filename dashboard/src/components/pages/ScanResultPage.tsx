@@ -309,6 +309,26 @@ export default function ScanResultPage() {
         </div>
       </div>
 
+      {/* Real-vs-demo source banner */}
+      {doc.ocr_provider === 'mock' ? (
+        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            <span className="font-semibold">Demo data</span> — this report echoes the details typed at capture time.
+            It was <span className="font-semibold">not read from the photo</span>. Enable a real OCR provider on the
+            backend and press Retry for a genuine label reading.
+          </p>
+        </div>
+      ) : (
+        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+          <p className="text-sm text-emerald-700 dark:text-emerald-300">
+            <span className="font-semibold">Read from the label photo</span>
+            {doc.ocr_provider ? ` via ${doc.ocr_provider}` : ''}{doc.ocr_engines && doc.ocr_engines.length > 0 ? ` (${doc.ocr_engines.join(' + ')})` : ''} — values below come from the actual image.
+          </p>
+        </div>
+      )}
+
       {/* Hero + score */}
       <section className="grid gap-4 lg:grid-cols-[220px_1fr]">
         <div className="flex flex-col items-center justify-center rounded-2xl border border-line bg-white/60 p-4 dark:border-white/10 dark:bg-navy-900/60">

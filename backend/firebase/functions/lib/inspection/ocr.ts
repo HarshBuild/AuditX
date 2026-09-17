@@ -186,6 +186,20 @@ export function mockProvider(input: ProviderInput): OcrProviderResult {
 }
 
 /* ------------------------------------------------------------------ */
+/* Python sidecar reachability (fast pre-check)                      */
+/* ------------------------------------------------------------------ */
+
+/** Probe the Python OCR sidecar with a short timeout — never block the scan. */
+async function pythonReachable(timeoutMs = 6000): Promise<boolean> {
+  try {
+    const res = await fetch(`${PYTHON_OCR_URL}/health`, { signal: AbortSignal.timeout(timeoutMs) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* paddle provider (real OCR microservice)                             */
 /* ------------------------------------------------------------------ */
 
@@ -210,6 +224,19 @@ async function callPythonService(photos: PhotoInput[], lang: string, category: I
 }
 
 export async function paddleProvider(input: ProviderInput): Promise<OcrProviderResult> {
+  // Fast pre-check: if the Python sidecar is unreachable, skip the two slow
+  // 90s OCR calls entirely and go straight to Gemini (real OCR, no waiting).
+  if (!(await pythonReachable())) {
+    console.warn('⚠️ Python OCR sidecar unreachable (fast check) — using Gemini Vision directly.')
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        return await geminiVisionOCR(input.photos, input.lang, input.category)
+      } catch (e3) {
+        console.warn('⚠️ Gemini OCR failed, falling back to MOCK provider:', (e3 as Error)?.message ?? e3)
+      }
+    }
+    return mockProvider(input)
+  }
   try {
     const outcome: MultipassOutcome = await runMultipass(input.photos, input.lang, input.category)
     return {

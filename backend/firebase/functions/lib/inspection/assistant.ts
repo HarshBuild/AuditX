@@ -48,7 +48,7 @@ export function buildBriefing(
   }
   recommendations.push('This is an automated summary of the visible label text — it is not a legal certification.')
   if (opts.demo) {
-    recommendations.unshift('Demo mode: the analysis runs on the details you typed, not real OCR. Enable the PaddleOCR provider to analyse actual label photos.')
+    recommendations.unshift('Demo mode: the analysis runs on the details you typed, not real OCR. Set OCR_PROVIDER=gemini (or paddle) on the backend and retry for a real label reading.')
   }
 
   const summary = `${compliance.summary} ${
