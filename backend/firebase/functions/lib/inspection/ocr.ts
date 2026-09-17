@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import admin from 'firebase-admin'
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectorHints, InspectionCategory } from './types.js'
 import { runMultipass, type MultipassOutcome } from './multipass.js'
+import { geminiVisionOCR } from './gemini-ocr.js'
 
 export interface ProviderInput {
   photos: PhotoInput[]
@@ -249,7 +250,16 @@ export async function paddleProvider(input: ProviderInput): Promise<OcrProviderR
       }]
       return { provider: 'paddle', demo: false, perImages, engines: ['paddle'], unclear: [] }
     } catch (e2) {
-      console.warn('⚠️ Python OCR service unreachable, falling back to MOCK provider:', (e2 as Error)?.message ?? e2)
+      console.warn('⚠️ Python OCR service unreachable, trying Gemini Vision:', (e2 as Error)?.message ?? e2)
+      // If Gemini key is configured, do REAL OCR via Gemini (no Python needed).
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const geminiRes = await geminiVisionOCR(input.photos, input.lang, input.category)
+          return geminiRes
+        } catch (e3) {
+          console.warn('⚠️ Gemini OCR failed, falling back to MOCK provider:', (e3 as Error)?.message ?? e3)
+        }
+      }
       // Final fallback: mock provider so inspection never hard-fails
       return mockProvider(input)
     }
@@ -267,13 +277,32 @@ function confFromRaw(raw: unknown): OcrConfidence {
 /* Provider resolution                                                 */
 /* ------------------------------------------------------------------ */
 
-export function resolveProvider(name?: string): 'mock' | 'paddle' {
+export function resolveProvider(name?: string): 'gemini' | 'paddle' | 'mock' {
   const n = (name ?? process.env.OCR_PROVIDER ?? 'mock').trim().toLowerCase()
-  return n === 'paddle' ? 'paddle' : 'mock'
+  if (n === 'paddle') return 'paddle'
+  if (n === 'gemini') return 'gemini'
+  // Default when no provider chosen: prefer real OCR via Gemini if a key exists.
+  if ((n === 'mock' || n === '') && process.env.GEMINI_API_KEY && process.env.OCR_PROVIDER === undefined) {
+    return 'gemini'
+  }
+  return 'mock'
 }
 
 export async function runProvider(input: ProviderInput): Promise<OcrProviderResult> {
   const provider = resolveProvider()
+  if (provider === 'gemini') {
+    // Gemini provider: real OCR directly; never falls back to mock when key exists.
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn('⚠️ OCR_PROVIDER=gemini but no GEMINI_API_KEY — falling back to mock.')
+      return mockProvider(input)
+    }
+    try {
+      return await geminiVisionOCR(input.photos, input.lang, input.category)
+    } catch (e) {
+      console.warn('⚠️ Gemini OCR failed, falling back to MOCK provider:', (e as Error)?.message ?? e)
+      return mockProvider(input)
+    }
+  }
   return provider === 'paddle' ? paddleProvider(input) : mockProvider(input)
 }
 
