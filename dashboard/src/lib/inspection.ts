@@ -172,6 +172,7 @@ export interface CreateInspectionInput {
   photos: Array<{ data: string; name?: string }>
   category?: string
   lang?: string
+  state?: string
   product_name?: string
   brand?: string
   manufacturer?: string

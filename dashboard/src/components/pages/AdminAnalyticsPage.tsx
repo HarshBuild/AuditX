@@ -4,6 +4,8 @@ import AnalyticsCard from '../dashboard/AnalyticsCard'
 import { ErrorState } from '../ui/States'
 import { supabase } from '../../lib/supabase'
 import { mergeRow } from '../../lib/db'
+import { useLanguage } from '../../i18n/LanguageContext'
+import { resolveState, stateDisplayName } from '../../lib/geo'
 
 interface ScanDoc {
   created_at: string
@@ -13,6 +15,8 @@ interface ScanDoc {
   manufacturer: string
   status: string
   verdict?: string
+  scan_state?: string
+  location_name?: string
 }
 
 const PIE_COLORS = ['#16A34A', '#D97706', '#EA580C', '#DC2626']
@@ -22,6 +26,7 @@ const SUCCESS = '#22C55E'
 const VIOLET = '#8B5CF6'
 
 export default function AdminAnalyticsPage() {
+  const { t, lang } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -31,6 +36,9 @@ export default function AdminAnalyticsPage() {
   const [categoryData, setCategoryData] = useState<{ name: string; count: number }[]>([])
   const [trendData, setTrendData] = useState<{ date: string; scans: number; avgScore: number }[]>([])
   const [manufacturerData, setManufacturerData] = useState<{ name: string; scans: number; avgScore: number }[]>([])
+  const [stateData, setStateData] = useState<Array<{ state: string; scans: number; avgScore: number; bad: number; ok: number }>>([])
+  const [stateSources, setStateSources] = useState({ explicit: 0, auto: 0, unknown: 0 })
+  const [stateMfr, setStateMfr] = useState<Array<{ name: string; violations: number; state: string }>>([])
 
   useEffect(() => {
     let cancelled = false
@@ -113,6 +121,63 @@ export default function AdminAnalyticsPage() {
             .map(([name, v]) => ({ name, scans: v.count, avgScore: Math.round(v.scoreSum / v.count) }))
             .sort((a, b) => b.scans - a.scans)
             .slice(0, 10),
+        )
+
+        // State-wise violations — REAL scans only. Explicit scan-time state
+        // wins; otherwise auto-detect from the manufacturer address; the
+        // remainder lands honestly in "Unknown".
+        const byState = new Map<string, { count: number; scoreSum: number; bad: number }>()
+        const mfrViol = new Map<string, { violations: number; states: Map<string, number> }>()
+        let explicit = 0
+        let auto = 0
+        let unknown = 0
+        for (const s of scans) {
+          const raw = s as unknown as Record<string, unknown>
+          const explicitState = typeof raw.scan_state === 'string' ? raw.scan_state.trim() : ''
+          const st = resolveState({
+            scan_state: explicitState || undefined,
+            manufacturer: s.manufacturer,
+            location_name: typeof raw.location_name === 'string' ? (raw.location_name as string) : undefined,
+            contact_info: typeof raw.contact_info === 'string' ? (raw.contact_info as string) : undefined,
+          })
+          if (explicitState) explicit++
+          else if (st === 'Unknown') unknown++
+          else auto++
+          const e = byState.get(st) ?? { count: 0, scoreSum: 0, bad: 0 }
+          e.count++
+          e.scoreSum += s.overall_score ?? 0
+          if (s.status === 'violation' || s.status === 'critical') e.bad++
+          byState.set(st, e)
+          if (s.status === 'violation' || s.status === 'critical') {
+            const m = s.manufacturer || 'Unknown'
+            const mv = mfrViol.get(m) ?? { violations: 0, states: new Map<string, number>() }
+            mv.violations++
+            mv.states.set(st, (mv.states.get(st) ?? 0) + 1)
+            mfrViol.set(m, mv)
+          }
+        }
+        setStateSources({ explicit, auto, unknown })
+        setStateData(
+          Array.from(byState.entries())
+            .map(([state, v]) => ({
+              state,
+              scans: v.count,
+              avgScore: Math.round(v.scoreSum / v.count),
+              bad: v.bad,
+              ok: v.count - v.bad,
+            }))
+            .sort((a, b) => b.bad - a.bad || b.scans - a.scans)
+            .slice(0, 12),
+        )
+        setStateMfr(
+          Array.from(mfrViol.entries())
+            .map(([name, v]) => ({
+              name,
+              violations: v.violations,
+              state: [...v.states.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Unknown',
+            }))
+            .sort((a, b) => b.violations - a.violations)
+            .slice(0, 5),
         )
       } catch (e) {
         if (!cancelled) setError((e as Error).message)
@@ -234,6 +299,51 @@ export default function AdminAnalyticsPage() {
           </div>
         </AnalyticsCard>
       </div>
+
+      {/* State-wise violations — where do flagged labels come from? */}
+      <AnalyticsCard
+        title={t('geo.title')}
+        subtitle={t('geo.subtitle')}
+      >
+        {stateData.length === 0 ? (
+          <p className="flex h-32 items-center justify-center text-sm text-slate-400">No data</p>
+        ) : (
+          <>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stateData.map((d) => ({ ...d, name: stateDisplayName(d.state, lang) }))} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 10 }} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="ok" stackId="a" fill={SUCCESS} name="OK" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="bad" stackId="a" fill="#DC2626" name={t('geo.violations')} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-navy-300">
+              <span>{stateSources.explicit} explicit · {stateSources.auto} auto-detected · {stateSources.unknown} {t('geo.unknown')}</span>
+            </div>
+            {stateMfr.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('geo.topMfr')}</p>
+                <ul className="mt-2 space-y-1.5">
+                  {stateMfr.map((m) => (
+                    <li key={m.name} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                      <span className="font-medium text-ink-text dark:text-slate-100">{m.name}</span>
+                      <span className="text-xs text-slate-400">{stateDisplayName(m.state, lang)}</span>
+                      <span className="ml-auto text-xs font-bold text-rose-600 dark:text-rose-400">
+                        {m.violations} {t('geo.violations')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </AnalyticsCard>
     </div>
   )
 }

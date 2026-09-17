@@ -32,6 +32,7 @@ interface CreateBody {
   photos: PhotoPayload[]
   category?: string | null
   lang?: string
+  state?: string
   product_name?: string
   brand?: string
   manufacturer?: string
@@ -92,6 +93,7 @@ function buildDoc(
     manufacturer: analysis?.manufacturer ?? hints.manufacturer ?? body.manufacturer ?? '',
     category: category ?? null,
     barcode: analysis?.barcode ?? hints.barcode ?? body.barcode ?? '',
+    scan_state: body.state ?? '',
     notes: body.notes ?? '',
     remarks: '',
     photo_path: '',
@@ -162,6 +164,7 @@ function toCreateBody(req: Request): CreateBody {
     photos,
     category: typeof b.category === 'string' ? b.category : b.category,
     lang: typeof b.lang === 'string' ? b.lang : 'en',
+    state: typeof b.state === 'string' ? b.state.trim().slice(0, 64) : undefined,
     product_name: typeof b.product_name === 'string' ? b.product_name : undefined,
     brand: typeof b.brand === 'string' ? b.brand : undefined,
     manufacturer: typeof b.manufacturer === 'string' ? b.manufacturer : undefined,

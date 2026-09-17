@@ -27,6 +27,7 @@ import {
 } from '../../lib/scanImage'
 import { createInspection } from '../../lib/inspection'
 import { useLanguage } from '../../i18n/LanguageContext'
+import { STATES } from '../../lib/geo'
 import type { DictKey } from '../../i18n/en'
 
 type CategoryChoice = 'edible' | 'non_edible' | 'unknown'
@@ -42,7 +43,7 @@ const fieldCls =
 
 export default function ScanProductPage() {
   const { toast } = useToast()
-  const { t } = useLanguage()
+  const { t, lang: uiLang } = useLanguage()
   const navigate = useNavigate()
 
   const [category, setCategory] = useState<CategoryChoice>('unknown')
@@ -57,6 +58,7 @@ export default function ScanProductPage() {
   const [barcode, setBarcode] = useState('')
   const [notes, setNotes] = useState('')
   const [lang, setLang] = useState('en')
+  const [scanState, setScanState] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
   // Separate inputs: `capture` forces the camera on Android (no gallery
@@ -126,6 +128,7 @@ export default function ScanProductPage() {
         photos: photos.map((p, i) => ({ data: p.dataUrl, name: p.file.name || `photo-${i + 1}.jpg` })),
         category: category === 'unknown' ? undefined : category,
         lang,
+        state: scanState.trim() || undefined,
         product_name: productName.trim() || undefined,
         brand: brand.trim() || undefined,
         manufacturer: manufacturer.trim() || undefined,
@@ -354,6 +357,17 @@ export default function ScanProductPage() {
               <option value="ml">Malayalam</option>
               <option value="mr">Marathi</option>
               <option value="gu">Gujarati</option>
+            </select>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">{t('scan.state')}</span>
+            <select className={fieldCls} value={scanState} onChange={(e) => setScanState(e.target.value)}>
+              <option value="">{t('scan.stateAuto')}</option>
+              {STATES.map((s) => (
+                <option key={s.en} value={s.en}>
+                  {uiLang === 'hi' ? s.hi : s.en}
+                </option>
+              ))}
             </select>
           </label>
         </div>
