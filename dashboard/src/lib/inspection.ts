@@ -171,18 +171,33 @@ export interface CreateInspectionResponse {
 
 async function authedFetch(path: string, init: RequestInit = {}, timeoutMs = 90_000): Promise<Response> {
   const uid = await currentUid()
-  const token = await accessToken(true)
+  let token = await accessToken(true)
   if (!uid || !token) throw new Error('Not signed in for inspections')
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
-  return fetchWithTimeout(`${base}${path}`, {
+  const send = (t: string) => fetchWithTimeout(`${base}${path}`, {
     method: init.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${t}`,
       ...(init.headers ?? {}),
     },
     body: init.body,
   }, timeoutMs)
+  let res = await send(token)
+  if (res.status === 401) {
+    // Token rejected — force one session refresh and retry once. If the
+    // backend still rejects, the session belongs to another project or is
+    // dead: sign out so the user gets a clean login screen, not a loop.
+    token = await accessToken(true)
+    if (token) {
+      res = await send(token)
+    }
+    if (res.status === 401) {
+      await supabase.auth.signOut().catch(() => {})
+      throw new Error('Session expired — you have been signed out. Please sign in again.')
+    }
+  }
+  return res
 }
 
 async function readError(res: Response): Promise<string> {

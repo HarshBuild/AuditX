@@ -112,6 +112,8 @@ function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction)
       next()
     } catch (e: any) {
       const msg = String(e?.message ?? '')
+      // Always log the underlying cause server-side (never the token itself).
+      console.warn('⚠️ session verify failed:', msg.slice(0, 300))
       if (/invalid or expired session|invalid session|expired/i.test(msg)) {
         res.status(401).json({ ok: false, error: 'Unauthorized — session has expired. Please sign in again.' })
         return
