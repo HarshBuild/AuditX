@@ -28,10 +28,11 @@ if (!privateKey.includes('-----END PRIVATE KEY-----')) {
   throw new Error('❌ PRIVATE_KEY format invalid: missing END header')
 }
 
-// Storage bucket — from STORAGE_BUCKET env or default <projectId>.appspot.com
-const storageBucket = process.env.STORAGE_BUCKET || `${process.env.PROJECT_ID}.appspot.com`
+// Storage bucket — from STORAGE_BUCKET env or default <projectId>.firebasestorage.app
+// (new Firebase Storage format since ~2024; .appspot.com buckets are legacy-only).
+const storageBucket = process.env.STORAGE_BUCKET || `${process.env.PROJECT_ID}.firebasestorage.app`
 if (process.env.STORAGE_BUCKET) {
-  console.log(`   Storage bucket: ${process.env.STORAGE_BUCKET}`)
+  console.log(`   Storage bucket: ${process.env.STORAGE_BUCKET} (from env)`)
 } else {
   console.log(`   Storage bucket: ${storageBucket} (auto from PROJECT_ID)`)
 }

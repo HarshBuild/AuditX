@@ -6,6 +6,7 @@
  *   PROJECT_ID           — Firebase project ID
  *   CLIENT_EMAIL         — Firebase client email
  *   PRIVATE_KEY          — Firebase private key (PEM; literal \\n supported)
+ *   STORAGE_BUCKET       — Firebase Storage bucket name (default <PROJECT_ID>.firebasestorage.app)
  *   GEMINI_API_KEY       — Google Gemini API key
  *   GEMINI_VISION_MODEL  — Gemini model for label extraction (default gemini-3.6-flash)
  *   GEMINI_TEXT_MODEL    — Gemini model for assistant answers (default gemini-3.6-flash)
