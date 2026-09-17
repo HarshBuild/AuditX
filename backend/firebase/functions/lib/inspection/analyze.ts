@@ -23,7 +23,8 @@ import type {
 import { cleanClaim, mergeResults, truncateValue } from './merge.js'
 import { runCompliance } from './compliance.js'
 import { buildBriefing } from './assistant.js'
-import { decodeDataUrl, runProvider, savePhoto } from './ocr.js'
+import { decodeDataUrl, runVerificationReports, savePhoto } from './ocr.js'
+import { adjudicateReports } from './adjudicate.js'
 import { compareScans, findPreviousScan } from './change.js'
 
 export interface AnalyzeOutcome {
@@ -119,11 +120,12 @@ export async function analyzeInspection(input: AnalysisInput): Promise<AnalyzeOu
 
   const { paths, dataUrls } = await materializePhotos(input.uid, input.photos)
 
-  // Provider OCR → Node merge → guard rails.
-  // NOTE: providers read `data` (image bytes). Path-only photos (retry flow)
-  // were just materialized into dataUrls — forward them so Retry gets real OCR.
+  // Multi-AI verification: up to 3 independent reports (PaddleOCR, Gemini
+  // Vision, OpenRouter Vision) run in parallel, then ONE adjudicated result.
+  // Throws honestly when no report can read the label — never dummy data.
   const providerPhotos = input.photos.map((p, i) => ({ ...p, data: dataUrls[i] ?? p.data }))
-  const providerResult = await runProvider({ photos: providerPhotos, category, lang, hints })
+  const reportOutcomes = await runVerificationReports({ photos: providerPhotos, category, lang, hints })
+  const { consensus: providerResult, verification } = adjudicateReports(reportOutcomes)
   const merged: MergedFields = guardRail(mergeResults(providerResult.perImages))
 
   const productName = merged.fields.commodity_name ?? hints.product_name ?? ''
@@ -178,6 +180,7 @@ export async function analyzeInspection(input: AnalysisInput): Promise<AnalyzeOu
     ocr_fields,
     ocr_engines: providerResult.engines,
     unclear_text: providerResult.unclear,
+    verification,
     field_sources,
     field_confidence,
     field_evidence: merged.field_evidence,

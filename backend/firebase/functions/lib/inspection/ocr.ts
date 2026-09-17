@@ -19,6 +19,7 @@ import admin from 'firebase-admin'
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectorHints, InspectionCategory } from './types.js'
 import { runMultipass, type MultipassOutcome } from './multipass.js'
 import { geminiVisionOCR } from './gemini-ocr.js'
+import { openRouterVisionOCR } from './openrouter-ocr.js'
 
 export interface ProviderInput {
   photos: PhotoInput[]
@@ -102,90 +103,6 @@ export async function savePhoto(uid: string, index: number, dataUrl: string): Pr
 }
 
 /* ------------------------------------------------------------------ */
-/* mock provider                                                       */
-/* ------------------------------------------------------------------ */
-
-function hintField(hints: InspectorHints, key: keyof InspectorHints): { value: string | null; confidence: OcrConfidence } {
-  const v = hints?.[key]
-  if (v && String(v).trim()) return { value: String(v).trim(), confidence: 'high' }
-  return { value: null, confidence: 'low' }
-}
-
-function mockPerImage(idx: number, hints: InspectorHints, category: InspectionCategory, lang: string): PerImageExtract {
-  const name = hintField(hints, 'product_name')
-  const brand = hintField(hints, 'brand')
-  const manufacturer = hintField(hints, 'manufacturer')
-
-  const fields: Record<string, string | null> = {
-    commodity_name: name.value ?? 'Essential Nut Mix (demo label)',
-    brand: brand.value ?? 'Demo Brand',
-    manufacturer: manufacturer.value ?? 'Demo Foods Pvt. Ltd., Bengaluru, Karnataka',
-    net_quantity: '200 g',
-    mrp: '₹120',
-    batch_no: 'B4281',
-    mfg_date: dateOffset(-120),
-    expiry_date: dateOffset(180),
-    best_before_date: null,
-    ingredients_text: 'Peanuts, cashew, almonds, edible vegetable oil, salt, sugar, milk solids.',
-    allergen_info: 'Contains: peanuts and other nuts, milk solids. May contain traces of soy.',
-    required_declarations: 'FSSAI Lic. No. 10012023001234',
-    warnings: null,
-    certification_details: null,
-    contact_info: 'Demo Foods Pvt. Ltd., 43 MG Road, Bengaluru, Karnataka 560001',
-    imported_manufacturer_detail: null,
-    country_of_origin: 'Made in India',
-    storage_conditions: 'Store in a cool, dry place. Keep away from direct sunlight.',
-    customer_care_details: 'Customer care: 1800-123-4567',
-  }
-
-  // Deterministic demo divergences so the result page has something to show
-  // for each status band without real OCR.
-  const demo = idx + 1
-  if (demo >= 2 && !name.value) fields.commodity_name = 'Almond & Raisin Mix (demo label)'
-  if (demo >= 3) fields.expiry_date = null // forces an expiry needs_review
-  if (demo >= 4) fields.mrp = null // forces an MRP failure
-  if (demo >= 5) fields.batch_no = null
-
-  const confidenceFor = (k: string): OcrConfidence =>
-    k === 'commodity_name' && fields.commodity_name !== null ? 'high' : 'medium'
-
-  const regions = Object.entries(fields)
-    .filter(([, v]) => v)
-    .map(([k, v], i) => ({ text: `${k}: ${v}`, bbox: [10, 40 + i * 18, 400, 16] as number[] | null, conf: 0.9 }))
-
-  return {
-    index: idx,
-    text:
-      `Demo label (photo ${idx + 1}) — provider echoes typed details.\n` +
-      Object.entries(fields)
-        .filter(([, v]) => v)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join('\n'),
-    language: lang,
-    confidence: 0.9,
-    fields,
-    field_confidence: Object.fromEntries(Object.keys(fields).map((k) => [k, confidenceFor(k)])),
-    field_evidence: Object.fromEntries(
-      Object.entries(fields)
-        .filter(([, v]) => v)
-        .map(([k, v]) => [k, { text: `${k}: ${v}`, confidence: 0.9, bbox: [10, 40, 400, 16] }]),
-    ),
-    regions,
-  }
-}
-
-export function mockProvider(input: ProviderInput): OcrProviderResult {
-  const count = input.photos.length || 1
-  const base = mockPerImage(0, input.hints ?? {}, input.category, input.lang)
-  const perImages: PerImageExtract[] = [base]
-  for (let i = 1; i < count; i++) {
-    const pi = mockPerImage(i, input.hints ?? {}, input.category, input.lang)
-    perImages.push(pi)
-  }
-  return { provider: 'mock', demo: true, perImages, engines: ['mock'], unclear: [] }
-}
-
-/* ------------------------------------------------------------------ */
 /* Python sidecar reachability (fast pre-check)                      */
 /* ------------------------------------------------------------------ */
 
@@ -224,18 +141,9 @@ async function callPythonService(photos: PhotoInput[], lang: string, category: I
 }
 
 export async function paddleProvider(input: ProviderInput): Promise<OcrProviderResult> {
-  // Fast pre-check: if the Python sidecar is unreachable, skip the two slow
-  // 90s OCR calls entirely and go straight to Gemini (real OCR, no waiting).
+  // Real OCR only — no fabricated fallback. Throws honestly when unreadable.
   if (!(await pythonReachable())) {
-    console.warn('⚠️ Python OCR sidecar unreachable (fast check) — using Gemini Vision directly.')
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        return await geminiVisionOCR(input.photos, input.lang, input.category)
-      } catch (e3) {
-        console.warn('⚠️ Gemini OCR failed, falling back to MOCK provider:', (e3 as Error)?.message ?? e3)
-      }
-    }
-    return mockProvider(input)
+    throw new Error('Python OCR sidecar unreachable.')
   }
   try {
     const outcome: MultipassOutcome = await runMultipass(input.photos, input.lang, input.category)
@@ -277,18 +185,7 @@ export async function paddleProvider(input: ProviderInput): Promise<OcrProviderR
       }]
       return { provider: 'paddle', demo: false, perImages, engines: ['paddle'], unclear: [] }
     } catch (e2) {
-      console.warn('⚠️ Python OCR service unreachable, trying Gemini Vision:', (e2 as Error)?.message ?? e2)
-      // If Gemini key is configured, do REAL OCR via Gemini (no Python needed).
-      if (process.env.GEMINI_API_KEY) {
-        try {
-          const geminiRes = await geminiVisionOCR(input.photos, input.lang, input.category)
-          return geminiRes
-        } catch (e3) {
-          console.warn('⚠️ Gemini OCR failed, falling back to MOCK provider:', (e3 as Error)?.message ?? e3)
-        }
-      }
-      // Final fallback: mock provider so inspection never hard-fails
-      return mockProvider(input)
+      throw new Error(`Python OCR failed: ${(e2 as Error)?.message ?? e2}`)
     }
   }
 }
@@ -306,40 +203,95 @@ function confFromRaw(raw: unknown): OcrConfidence {
 }
 
 /* ------------------------------------------------------------------ */
-/* Provider resolution                                                 */
+/* Multi-report runner (Report 1/2/3 in parallel)                     */
 /* ------------------------------------------------------------------ */
 
-export function resolveProvider(name?: string): 'gemini' | 'paddle' | 'mock' {
-  const n = (name ?? process.env.OCR_PROVIDER ?? 'mock').trim().toLowerCase()
+export type ReportName = 'report_1' | 'report_2' | 'report_3'
+
+export interface ReportOutcome {
+  name: ReportName
+  provider: 'paddle' | 'gemini' | 'openrouter'
+  ok: boolean
+  result: OcrProviderResult | null
+  error: string | null
+  latencyMs: number
+}
+
+export type ProviderSelection = 'paddle' | 'gemini' | 'openrouter' | 'all'
+
+/**
+ * Which reports to run. 'all' (default) runs every available report in
+ * parallel for adjudication. An explicit provider runs only that report
+ * (single-source). NOTE: 'mock'/demo mode was removed — fabricated label
+ * data is never returned; failures are honest errors.
+ */
+export function resolveProvider(name?: string): ProviderSelection {
+  const n = (name ?? process.env.OCR_PROVIDER ?? 'all').trim().toLowerCase()
   if (n === 'paddle') return 'paddle'
   if (n === 'gemini') return 'gemini'
-  // Default when no provider chosen: prefer real OCR via Gemini if a key exists.
-  if ((n === 'mock' || n === '') && process.env.GEMINI_API_KEY && process.env.OCR_PROVIDER === undefined) {
-    return 'gemini'
+  if (n === 'openrouter') return 'openrouter'
+  if (n === 'mock') {
+    console.warn('⚠️ OCR_PROVIDER=mock is retired (no fabricated data) — running all available real reports.')
   }
-  return 'mock'
+  return 'all'
 }
 
-export async function runProvider(input: ProviderInput): Promise<OcrProviderResult> {
-  const provider = resolveProvider()
-  if (provider === 'gemini') {
-    // Gemini provider: real OCR directly; never falls back to mock when key exists.
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn('⚠️ OCR_PROVIDER=gemini but no GEMINI_API_KEY — falling back to mock.')
-      return mockProvider(input)
-    }
-    try {
-      return await geminiVisionOCR(input.photos, input.lang, input.category)
-    } catch (e) {
-      console.warn('⚠️ Gemini OCR failed, falling back to MOCK provider:', (e as Error)?.message ?? e)
-      return mockProvider(input)
-    }
+async function runOneReport(
+  name: ReportName,
+  provider: ReportOutcome['provider'],
+  fn: () => Promise<OcrProviderResult>,
+): Promise<ReportOutcome> {
+  const t0 = Date.now()
+  try {
+    const result = await fn()
+    return { name, provider, ok: true, result, error: null, latencyMs: Date.now() - t0 }
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e)
+    console.warn(`⚠️ ${name} (${provider}) failed:`, msg)
+    return { name, provider, ok: false, result: null, error: msg, latencyMs: Date.now() - t0 }
   }
-  return provider === 'paddle' ? paddleProvider(input) : mockProvider(input)
 }
 
-function dateOffset(days: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+/**
+ * Run up to 3 independent OCR reports concurrently:
+ *   Report 1 = PaddleOCR Python sidecar (multipass + Vision + Gemini verify)
+ *   Report 2 = Gemini Vision direct
+ *   Report 3 = OpenRouter Vision direct
+ * Reports whose backend is not configured are skipped (not faked).
+ * NEVER throws for missing reports; callers adjudicate what succeeded.
+ */
+export async function runVerificationReports(input: ProviderInput): Promise<ReportOutcome[]> {
+  const selection = resolveProvider()
+  const jobs: Array<Promise<ReportOutcome> | null> = [
+    selection === 'all' || selection === 'paddle'
+      ? runOneReport('report_1', 'paddle', () => paddleProvider(input))
+      : null,
+    selection === 'all' || selection === 'gemini'
+      ? (process.env.GEMINI_API_KEY
+        ? runOneReport('report_2', 'gemini', () => geminiVisionOCR(input.photos, input.lang, input.category))
+        : Promise.resolve<ReportOutcome>({
+          name: 'report_2', provider: 'gemini', ok: false, result: null,
+          error: 'GEMINI_API_KEY is not set.', latencyMs: 0,
+        }))
+      : null,
+    selection === 'all' || selection === 'openrouter'
+      ? (process.env.OPENROUTER_API_KEY
+        ? runOneReport('report_3', 'openrouter', () => openRouterVisionOCR(input.photos, input.lang, input.category))
+        : Promise.resolve<ReportOutcome>({
+          name: 'report_3', provider: 'openrouter', ok: false, result: null,
+          error: 'OPENROUTER_API_KEY is not set.', latencyMs: 0,
+        }))
+      : null,
+  ]
+  const outcomes = await Promise.all(jobs.filter((j): j is Promise<ReportOutcome> => j !== null))
+  const okCount = outcomes.filter((o) => o.ok).length
+  console.log(`🔍 verification reports: ${outcomes.map((o) => `${o.name}=${o.provider}:${o.ok ? 'ok' : 'fail'}`).join(', ')}`)
+  if (okCount === 0) {
+    const reasons = outcomes.map((o) => `${o.provider}: ${o.error ?? 'failed'}`).join('; ')
+    throw new Error(
+      `The label could not be read (${reasons}). ` +
+      'Retake the photo with better lighting and retry — no fabricated data is ever returned.',
+    )
+  }
+  return outcomes
 }

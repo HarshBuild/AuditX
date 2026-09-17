@@ -7,9 +7,12 @@
  *   CLIENT_EMAIL         — Firebase client email
  *   PRIVATE_KEY          — Firebase private key (PEM; literal \\n supported)
  *   STORAGE_BUCKET       — Firebase Storage bucket name (default <PROJECT_ID>.firebasestorage.app)
- *   GEMINI_API_KEY       — Google Gemini API key
- *   GEMINI_VISION_MODEL  — Gemini model for label extraction (default gemini-3.6-flash)
- *   GEMINI_TEXT_MODEL    — Gemini model for assistant answers (default gemini-3.6-flash)
+*   GEMINI_API_KEY       — Google Gemini API key (Report 2: Gemini Vision)
+*   GEMINI_VISION_MODEL  — Gemini model for label extraction (default gemini-3.6-flash)
+*   GEMINI_TEXT_MODEL    — Gemini model for assistant answers (default gemini-3.6-flash)
+*   OPENROUTER_API_KEY   — OpenRouter API key (Report 3: OpenRouter Vision; unset = report skipped)
+*   OPENROUTER_VISION_MODEL — OpenRouter vision model (default qwen/qwen2.5-vl-72b-instruct)
+*   OCR_PROVIDER         — paddle | gemini | openrouter | all (default all: parallel multi-AI verification)
  *   FRONTEND_URL         — CORS allowed origin(s), comma-separated
  *   CORS_ORIGINS         — optional; overrides FRONTEND_URL for CORS
  *   GOOGLE_VISION_CREDENTIALS_JSON — full Google Cloud service-account JSON

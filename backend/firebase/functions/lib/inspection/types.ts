@@ -160,6 +160,89 @@ export interface OcrProviderResult {
   unclear?: string[]
 }
 
+/* ------------------------------------------------------------------ */
+/* Multi-AI Evidence Verification & Adjudication                        */
+/*                                                                     */
+/* Up to 3 independent reports (Report 1 = Paddle/fast OCR, Report 2 = */
+/* Gemini Vision, Report 3 = OpenRouter Vision) are compared           */
+/* field-by-field into ONE adjudicated result. All types are explicit  */
+/* so every decision is typed, stored and reproducible.                */
+/* ------------------------------------------------------------------ */
+
+export type AdjudicationStatus =
+  | 'VERIFIED'
+  | 'NEEDS_REVIEW'
+  | 'CONFLICT'
+  | 'NOT_DETECTED'
+  | 'LOW_CONFIDENCE'
+
+/** One report's vote for one field. */
+export interface ReportFieldVote {
+  /** 'report_1' | 'report_2' | 'report_3' */
+  report: string
+  /** 'paddle' | 'gemini' | 'openrouter' | 'mock' */
+  provider: string
+  value: string | null
+  normalized: string | null
+  /** 0..1 confidence as reported by the model (null when unknown). */
+  confidence: number | null
+}
+
+/** Final adjudicated outcome for one label field. */
+export interface AdjudicatedField {
+  key: string
+  label: string
+  final_value: string | null
+  status: AdjudicationStatus
+  /** 0..1 evidence-based confidence (never just the model's number). */
+  confidence: number
+  supporting_reports: string[]
+  conflicting_reports: string[]
+  votes: ReportFieldVote[]
+  /** Max pairwise similarity 0..1 when 2+ reports voted, else null. */
+  similarity: number | null
+  evidence_text: string | null
+  evidence_bbox: number[] | null
+  evidence_image: number | null
+  verification_method: string
+  reasoning: string
+  /** True when canonical numbers differ by an exact factor of 10. */
+  decimal_conflict: boolean
+}
+
+/** One verification report's health. */
+export interface VerificationReportInfo {
+  /** 'report_1' | 'report_2' | 'report_3' */
+  name: string
+  provider: string
+  ok: boolean
+  engines: string[]
+  confidence: number | null
+  error?: string | null
+}
+
+export interface VerificationCounts {
+  verified: number
+  needs_review: number
+  conflict: number
+  low_confidence: number
+  not_detected: number
+  resolved: number
+  disagreements: number
+  total: number
+}
+
+export interface VerificationSummary {
+  single_source: boolean
+  single_source_note: string | null
+  /** 0..100 evidence-based trust score for the whole verification. */
+  trust_score: number
+  reports: VerificationReportInfo[]
+  fields: AdjudicatedField[]
+  counts: VerificationCounts
+  adjudicated_at: string
+}
+
 /** Photo input accepted by the pipeline (data URL or storage path). */
 export interface PhotoInput {
   data?: string
@@ -200,6 +283,8 @@ export interface AnalysisResult {
   ocr_fields: Record<string, string | null>
   ocr_engines?: string[]
   unclear_text?: string[]
+  /** Multi-AI verification & adjudication (null only for legacy docs). */
+  verification: VerificationSummary | null
   field_sources: Record<string, FieldSource[]>
   field_confidence: Record<string, OcrConfidence>
   field_evidence: Record<string, FieldSource>

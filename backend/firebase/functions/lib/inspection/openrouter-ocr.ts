@@ -1,13 +1,17 @@
 /**
- * Gemini Vision OCR provider — reads Indian product labels directly with
- * Gemini (multimodal), replacing the deployment dependency on the Python
- * PaddleOCR microservice. Returns real extracted fields from the photo.
+ * OpenRouter Vision OCR provider — Report 3 of the multi-AI verification
+ * pipeline. Sends label photos to an OpenRouter vision model and extracts
+ * the MISA label fields as JSON. Fully server-side (key never leaves the
+ * backend). Gracefully unavailable when OPENROUTER_API_KEY is unset.
  *
- * Env: GEMINI_API_KEY required, GEMINI_VISION_MODEL optional.
+ * Env: OPENROUTER_API_KEY (required), OPENROUTER_VISION_MODEL (optional),
+ *      OPENROUTER_SITE_URL / OPENROUTER_APP_NAME (optional attribution).
  */
 
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectionCategory } from './types.js'
-import { DEFAULT_GEMINI_MODEL, geminiGenerateContent, dataUrlToInline, extractJson } from '../gemini.js'
+import { extractJson } from '../gemini.js'
+
+const BASE = 'https://openrouter.ai/api/v1'
 
 const FIELD_KEYS = [
   'commodity_name',
@@ -77,36 +81,67 @@ Return ONLY valid JSON with this exact shape:
 
 Every field must be either a string exactly as printed or null. NEVER fabricate values. If a field is not readable from the image, use null.`
 
-export async function geminiVisionOCR(
+export function openRouterApiKey(): string {
+  return process.env.OPENROUTER_API_KEY ?? ''
+}
+
+export function openRouterModel(): string {
+  return process.env.OPENROUTER_VISION_MODEL || 'qwen/qwen2.5-vl-72b-instruct'
+}
+
+export async function openRouterVisionOCR(
   photos: PhotoInput[],
   lang: string,
   _category: InspectionCategory,
 ): Promise<OcrProviderResult> {
+  const key = openRouterApiKey()
+  if (!key) throw new Error('OPENROUTER_API_KEY is not set.')
+
   const images = photos
     .map((p) => p.data)
     .filter((d): d is string => typeof d === 'string' && !!d)
-  if (images.length === 0) throw new Error('No image data for Gemini OCR.')
+  if (images.length === 0) throw new Error('No image data for OpenRouter OCR.')
 
-  const model = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_MODEL
-  const parts: Array<{ text: string } | ReturnType<typeof dataUrlToInline>> = [
-    { text: 'Read the following product label photo(s) and extract the fields as instructed.' },
+  const content: Array<Record<string, unknown>> = [
+    { type: 'text', text: 'Read the following product label photo(s) and extract the fields as instructed.' },
   ]
   for (let i = 0; i < images.length; i++) {
-    parts.push(dataUrlToInline(images[i]))
-    parts.push({ text: `[Photo ${i + 1}]` })
+    content.push({ type: 'image_url', image_url: { url: images[i] } })
+    content.push({ type: 'text', text: `[Photo ${i + 1}]` })
   }
 
-  const answer = await geminiGenerateContent({
-    model,
-    system: SYSTEM_PROMPT,
-    parts,
-    temperature: 0.05,
-    maxOutputTokens: 8192,
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${key}`,
+  }
+  if (process.env.OPENROUTER_SITE_URL) headers['HTTP-Referer'] = process.env.OPENROUTER_SITE_URL
+  if (process.env.OPENROUTER_APP_NAME) headers['X-Title'] = process.env.OPENROUTER_APP_NAME
+
+  const res = await fetch(`${BASE}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: openRouterModel(),
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content },
+      ],
+      temperature: 0.05,
+      max_tokens: 8192,
+    }),
+    signal: AbortSignal.timeout(90_000),
   })
+  if (!res.ok) {
+    const err = await res.text().catch(() => '')
+    throw new Error(`OpenRouter ${res.status}: ${err.slice(0, 300)}`)
+  }
+  const data: any = await res.json()
+  const answer = String(data?.choices?.[0]?.message?.content ?? '').trim()
+  if (!answer) throw new Error('Empty OpenRouter response.')
+
   const parsed = extractJson(answer)
   const rawImages = Array.isArray(parsed?.images) ? parsed.images : []
-
-  if (rawImages.length === 0) throw new Error('Gemini returned no readable label data.')
+  if (rawImages.length === 0) throw new Error('OpenRouter returned no readable label data.')
 
   const perImages: PerImageExtract[] = images.map((_, idx) => {
     const raw = rawImages[idx] ?? {}
@@ -120,7 +155,7 @@ export async function geminiVisionOCR(
       if (s) {
         fields[key] = s
         fieldConfidence[key] = 'high'
-        fieldEvidence[key] = { text: s, confidence: 0.95 }
+        fieldEvidence[key] = { text: s, confidence: 0.9 }
       } else {
         fields[key] = null
       }
@@ -131,7 +166,7 @@ export async function geminiVisionOCR(
 
     return {
       index: idx,
-      text: rawText || `Label photo ${idx + 1} (Gemini Vision)`,
+      text: rawText || `Label photo ${idx + 1} (OpenRouter Vision)`,
       language: lang || 'en',
       confidence,
       fields,
@@ -142,10 +177,10 @@ export async function geminiVisionOCR(
   })
 
   return {
-    provider: 'gemini',
+    provider: 'openrouter',
     demo: false,
     perImages,
-    engines: ['gemini'],
+    engines: ['openrouter'],
     unclear: [],
   }
 }

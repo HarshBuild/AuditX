@@ -43,6 +43,68 @@ export interface Briefing {
   provider: string
 }
 
+/* ------------------------------------------------------------------ */
+/* Multi-AI verification & adjudication (mirrors backend types)        */
+/* ------------------------------------------------------------------ */
+
+export type AdjudicationStatus = 'VERIFIED' | 'NEEDS_REVIEW' | 'CONFLICT' | 'NOT_DETECTED' | 'LOW_CONFIDENCE'
+
+export interface ReportFieldVote {
+  report: string
+  provider: string
+  value: string | null
+  normalized: string | null
+  confidence: number | null
+}
+
+export interface AdjudicatedField {
+  key: string
+  label: string
+  final_value: string | null
+  status: AdjudicationStatus
+  confidence: number
+  supporting_reports: string[]
+  conflicting_reports: string[]
+  votes: ReportFieldVote[]
+  similarity: number | null
+  evidence_text: string | null
+  evidence_bbox: number[] | null
+  evidence_image: number | null
+  verification_method: string
+  reasoning: string
+  decimal_conflict: boolean
+}
+
+export interface VerificationReportInfo {
+  name: string
+  provider: string
+  ok: boolean
+  engines: string[]
+  confidence: number | null
+  error?: string | null
+}
+
+export interface VerificationCounts {
+  verified: number
+  needs_review: number
+  conflict: number
+  low_confidence: number
+  not_detected: number
+  resolved: number
+  disagreements: number
+  total: number
+}
+
+export interface VerificationSummary {
+  single_source: boolean
+  single_source_note: string | null
+  trust_score: number
+  reports: VerificationReportInfo[]
+  fields: AdjudicatedField[]
+  counts: VerificationCounts
+  adjudicated_at: string
+}
+
 /** The inspection document as returned by the backend / Firestore. */
 export interface InspectionDoc {
   id: string
@@ -67,6 +129,7 @@ export interface InspectionDoc {
   ocr_fields?: Record<string, string | null>
   ocr_engines?: string[]
   unclear_text?: string[]
+  verification?: VerificationSummary | null
   field_sources?: Record<string, Array<{ image: number; text: string; confidence?: number | null; bbox?: number[] | null }>>
   field_confidence?: Record<string, OcrConfidence>
   field_evidence?: Record<string, { image: number; text: string; confidence?: number | null; bbox?: number[] | null }>

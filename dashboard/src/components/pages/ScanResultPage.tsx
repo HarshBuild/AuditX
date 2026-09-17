@@ -4,7 +4,9 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
+  Eye,
   FileText,
   GitCompareArrows,
   Info,
@@ -16,6 +18,7 @@ import {
   ShieldCheck,
   Sparkles,
   TriangleAlert,
+  X,
 } from 'lucide-react'
 import Button from '../ui/Button'
 import { ToneBadge } from '../ui/Badge'
@@ -26,8 +29,10 @@ import {
   retryAnalysis,
   saveRemarks,
   verifyChanges,
+  type AdjudicatedField,
   type Finding,
   type InspectionDoc,
+  type VerificationSummary,
 } from '../../lib/inspection'
 import { downloadInspectionReport } from '../../lib/pdf'
 import { formatDateTime, cn } from '../../utils/format'
@@ -61,6 +66,416 @@ interface DetailRow {
   key: string
   label: string
   value: string
+}
+
+interface DetailRow {
+  key: string
+  label: string
+  value: string
+}
+
+/* ================================================================ */
+/* Multi-AI Evidence Verification & Adjudication                      */
+/* ================================================================ */
+
+const ADJ_TONE: Record<AdjudicatedField['status'], 'emerald' | 'amber' | 'rose' | 'slate'> = {
+  VERIFIED: 'emerald',
+  NEEDS_REVIEW: 'amber',
+  CONFLICT: 'rose',
+  NOT_DETECTED: 'slate',
+  LOW_CONFIDENCE: 'amber',
+}
+
+const ADJ_LABEL: Record<AdjudicatedField['status'], string> = {
+  VERIFIED: 'Verified',
+  NEEDS_REVIEW: 'Needs review',
+  CONFLICT: 'Conflict',
+  NOT_DETECTED: 'Not detected',
+  LOW_CONFIDENCE: 'Low confidence',
+}
+
+const PROVIDER_LABEL: Record<string, string> = {
+  paddle: 'OCR',
+  gemini: 'GEMINI',
+  openrouter: 'OPENROUTER',
+  mock: 'MOCK',
+}
+
+function reportTitle(name: string, provider: string): string {
+  const n = name === 'report_1' ? 'REPORT 1' : name === 'report_2' ? 'REPORT 2' : name === 'report_3' ? 'REPORT 3' : name.toUpperCase()
+  return `${n} (${PROVIDER_LABEL[provider] ?? provider.toUpperCase()})`
+}
+
+type VerFilter = 'all' | 'conflicts' | 'verified' | 'review' | 'notdetected'
+
+function VerificationSection({
+  doc,
+  photos,
+  onRetry,
+  retryBusy,
+}: {
+  doc: InspectionDoc
+  photos: Array<string | null>
+  onRetry: () => void
+  retryBusy: boolean
+}) {
+  const v: VerificationSummary | null | undefined = doc.verification
+  const [filter, setFilter] = useState<VerFilter>('all')
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const [evidenceField, setEvidenceField] = useState<AdjudicatedField | null>(null)
+  const [rawOpen, setRawOpen] = useState(false)
+  const [imgDims, setImgDims] = useState<{ w: number; h: number } | null>(null)
+  const tableRef = useRef<HTMLDivElement | null>(null)
+
+  const fields = useMemo(() => v?.fields ?? [], [v])
+  const counts = v?.counts
+
+  const filtered = useMemo(() => {
+    if (filter === 'verified') return fields.filter((f) => f.status === 'VERIFIED')
+    if (filter === 'review') return fields.filter((f) => f.status === 'NEEDS_REVIEW' || f.status === 'LOW_CONFIDENCE')
+    if (filter === 'notdetected') return fields.filter((f) => f.status === 'NOT_DETECTED')
+    if (filter === 'conflicts') return fields.filter((f) => f.status === 'CONFLICT' || f.conflicting_reports.length > 0)
+    return fields
+  }, [fields, filter])
+
+  const decimalConflicts = useMemo(() => fields.filter((f) => f.decimal_conflict), [fields])
+
+  if (!v) return null
+
+  const gotoConflicts = () => {
+    setFilter('conflicts')
+    window.setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  const voteFor = (f: AdjudicatedField, reportName: string) => f.votes.find((x) => x.report === reportName) ?? null
+
+  const evPhotoUrl = evidenceField?.evidence_image != null ? (photos[(evidenceField.evidence_image ?? 1) - 1] ?? null) : null
+
+  const filterBtn = (key: VerFilter, label: string, count: number) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => setFilter(key)}
+      className={cn(
+        'rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+        filter === key
+          ? 'border-brand-500 bg-brand-500/10 text-brand-600 dark:text-brand-400'
+          : 'border-line bg-white text-ink-text-soft hover:border-line-strong dark:border-white/10 dark:bg-navy-950 dark:text-navy-300',
+      )}
+    >
+      {label} ({count})
+    </button>
+  )
+
+  return (
+    <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-bold text-ink-text dark:text-white">Multi-AI Evidence Verification &amp; Adjudication</h2>
+          <p className="mt-1 text-xs text-ink-text-soft dark:text-navy-300">
+            Field-by-field triangulation across {v.reports.map((r) => reportTitle(r.name, r.provider)).join(', ')}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-lg bg-white px-2.5 py-1 shadow-sm dark:bg-navy-950">
+              Trust score <span className="font-bold text-ink-text dark:text-white">{v.trust_score}/100</span>
+            </span>
+            {v.reports.map((r) => (
+              <span key={r.name} className="rounded-lg bg-white px-2.5 py-1 shadow-sm dark:bg-navy-950" title={r.ok ? `${r.engines.join('+') || r.provider}` : (r.error ?? 'unavailable')}>
+                <span className={cn('mr-1 inline-block h-1.5 w-1.5 rounded-full', r.ok ? 'bg-emerald-500' : 'bg-slate-300')} />
+                {reportTitle(r.name, r.provider)}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" icon={<Eye className="h-4 w-4" />} onClick={() => setRawOpen(true)}>
+            Inspect Raw Evidence
+          </Button>
+          <Button variant="outline" size="sm" loading={retryBusy} icon={<RefreshCw className="h-4 w-4" />} onClick={onRetry}>
+            Re-run Verification
+          </Button>
+          <Button variant="outline" size="sm" icon={<GitCompareArrows className="h-4 w-4" />} onClick={gotoConflicts}>
+            View Conflicts
+          </Button>
+        </div>
+      </div>
+
+      {v.single_source && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <p className="text-xs text-amber-700 dark:text-amber-300">{v.single_source_note ?? 'Single-source result.'}</p>
+        </div>
+      )}
+
+      {/* Summary cards */}
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {[
+          { label: 'Verified fields', value: counts?.verified ?? 0, cls: 'text-emerald-600 dark:text-emerald-400' },
+          { label: 'Uncertain / low conf', value: (counts?.needs_review ?? 0) + (counts?.low_confidence ?? 0), cls: 'text-amber-600 dark:text-amber-400' },
+          { label: 'Conflicts resolved', value: counts?.resolved ?? 0, cls: 'text-sky-600 dark:text-sky-400' },
+          { label: 'AI disagreements', value: counts?.disagreements ?? 0, cls: 'text-rose-600 dark:text-rose-400' },
+          { label: 'Not detected', value: counts?.not_detected ?? 0, cls: 'text-slate-500 dark:text-slate-300' },
+        ].map((c) => (
+          <div key={c.label} className="rounded-xl bg-white p-3 text-center shadow-sm dark:bg-navy-950">
+            <div className={cn('text-2xl font-extrabold', c.cls)}>{c.value}</div>
+            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Disagreement insights */}
+      {decimalConflicts.length > 0 && (
+        <button
+          type="button"
+          onClick={gotoConflicts}
+          className="mt-3 flex w-full items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/5 px-3 py-2.5 text-left"
+        >
+          <TriangleAlert className="h-4 w-4 shrink-0 text-rose-500" />
+          <span className="text-xs text-ink-text dark:text-slate-200">
+            <span className="font-bold text-rose-600 dark:text-rose-400">⚠ {decimalConflicts.length} Decimal Conflict(s)</span>
+            {' — '}
+            {decimalConflicts.map((f) => f.label).join(', ')}. Values differ by a factor of 10 — possible decimal error. Tap to inspect.
+          </span>
+        </button>
+      )}
+
+      {/* Filters */}
+      <div ref={tableRef} className="mt-4 flex flex-wrap items-center gap-2 scroll-mt-24">
+        {filterBtn('all', 'All Fields', counts?.total ?? fields.length)}
+        {filterBtn('conflicts', 'Discrepancies & Conflicts', fields.filter((f) => f.status === 'CONFLICT' || f.conflicting_reports.length > 0).length)}
+        {filterBtn('verified', 'Verified Only', counts?.verified ?? 0)}
+        {filterBtn('review', 'Needs Review', (counts?.needs_review ?? 0) + (counts?.low_confidence ?? 0) + (counts?.conflict ?? 0))}
+        {filterBtn('notdetected', 'Not Detected', counts?.not_detected ?? 0)}
+        <span className="ml-auto text-xs text-slate-400">Showing {filtered.length} fields</span>
+      </div>
+
+      {/* Comparison table */}
+      <div className="mt-3 overflow-hidden rounded-xl border border-line dark:border-white/10">
+        <div className="hidden grid-cols-[150px_1.2fr_1fr_1fr_1fr_44px] gap-2 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 md:grid dark:bg-navy-950 dark:text-navy-400">
+          <span>Field</span>
+          <span>Final adjudicated</span>
+          {v.reports.map((r) => (
+            <span key={r.name}>{reportTitle(r.name, r.provider)}</span>
+          ))}
+          <span>Details</span>
+        </div>
+        {filtered.length === 0 && (
+          <p className="px-3 py-6 text-center text-sm text-slate-400">No fields match this filter.</p>
+        )}
+        {filtered.map((f) => {
+          const open = openKey === f.key
+          return (
+            <div key={f.key} className="border-t border-line first:border-t-0 dark:border-white/5">
+              <div className="grid gap-2 px-3 py-3 md:grid-cols-[150px_1.2fr_1fr_1fr_1fr_44px] md:items-start">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Field</div>
+                  <div className="text-sm font-semibold text-ink-text dark:text-slate-100">{f.label}</div>
+                  <div className="font-mono text-[10px] text-slate-400">{f.key}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Final adjudicated</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <ToneBadge tone={ADJ_TONE[f.status]}>{ADJ_LABEL[f.status]}</ToneBadge>
+                    <span className="text-xs font-bold text-ink-text dark:text-white">{Math.round(f.confidence * 100)}%</span>
+                  </div>
+                  <div className="mt-1 break-words text-sm font-medium text-ink-text dark:text-slate-200">{f.final_value ?? '—'}</div>
+                  {f.supporting_reports.length > 0 && (
+                    <div className="mt-0.5 text-[11px] text-slate-400">Source: {f.supporting_reports.join(' + ')}</div>
+                  )}
+                </div>
+                {v.reports.map((r) => {
+                  const vote = voteFor(f, r.name)
+                  return (
+                    <div key={r.name}>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">{reportTitle(r.name, r.provider)}</div>
+                      {!r.ok ? (
+                        <span className="text-xs italic text-slate-400" title={r.error ?? 'unavailable'}>unavailable</span>
+                      ) : vote?.value ? (
+                        <>
+                          <div className="break-words text-sm text-ink-text dark:text-slate-200">{vote.value}</div>
+                          <div className="text-[11px] text-slate-400">{vote.confidence != null ? `${Math.round(vote.confidence * 100)}%` : '—'}</div>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </div>
+                  )
+                })}
+                <div className="flex md:justify-end">
+                  <button
+                    type="button"
+                    aria-label={open ? 'Collapse details' : 'Expand details'}
+                    onClick={() => setOpenKey(open ? null : f.key)}
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-text-soft hover:border-line-strong dark:border-white/10 dark:text-navy-300"
+                  >
+                    <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
+                  </button>
+                </div>
+              </div>
+
+              {open && (
+                <div className="border-t border-dashed border-line bg-slate-50/60 px-3 py-3 dark:border-white/10 dark:bg-navy-950/60">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">All model outputs</p>
+                      <ul className="mt-1.5 space-y-1.5">
+                        {f.votes.map((vt, i) => (
+                          <li key={i} className="text-xs text-ink-text dark:text-slate-200">
+                            <span className="font-semibold">{vt.report} ({PROVIDER_LABEL[vt.provider] ?? vt.provider})</span>
+                            {' — '}
+                            <span className="break-words">{vt.value ?? '—'}</span>
+                            <span className="text-slate-400"> · {vt.confidence != null ? `${Math.round(vt.confidence * 100)}%` : 'n/a'}</span>
+                            {vt.normalized && vt.normalized !== (vt.value ?? '').toLowerCase() && (
+                              <span className="block font-mono text-[11px] text-slate-400">normalized: {vt.normalized}</span>
+                            )}
+                          </li>
+                        ))}
+                        {f.votes.length === 0 && <li className="text-xs text-slate-400">No report read this field.</li>}
+                      </ul>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-navy-300">
+                        {f.similarity != null && <span className="rounded bg-white px-2 py-0.5 shadow-sm dark:bg-navy-900">similarity {Math.round(f.similarity * 100)}%</span>}
+                        <span className="rounded bg-white px-2 py-0.5 shadow-sm dark:bg-navy-900">method: {f.verification_method}</span>
+                        {f.decimal_conflict && <span className="rounded bg-rose-500/10 px-2 py-0.5 font-semibold text-rose-600 dark:text-rose-400">decimal conflict ×10</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Adjudication decision</p>
+                      <p className="mt-1.5 text-xs leading-relaxed text-ink-text dark:text-slate-200">{f.reasoning}</p>
+                      {f.evidence_text && (
+                        <p className="mt-1.5 text-[11px] text-slate-500 dark:text-navy-300">
+                          Evidence{f.evidence_image ? ` · photo ${f.evidence_image}` : ''}{f.evidence_bbox ? ` · box [${f.evidence_bbox.join(', ')}]` : ''}:{' '}
+                          <span className="font-mono">{f.evidence_text}</span>
+                        </p>
+                      )}
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" icon={<Eye className="h-3.5 w-3.5" />} onClick={() => { setImgDims(null); setEvidenceField(f) }}>
+                          View Evidence
+                        </Button>
+                        <Button variant="outline" size="sm" loading={retryBusy} icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={onRetry}>
+                          Re-scan field
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <p className="mt-2 text-[11px] text-slate-400">
+        Adjudicated {v.adjudicated_at ? new Date(v.adjudicated_at).toLocaleString() : ''} · Trust score is evidence-based (model agreement, OCR confidence, evidence availability) — never a single model's number alone.
+      </p>
+
+      {/* Evidence modal */}
+      {evidenceField && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4" onClick={() => setEvidenceField(null)}>
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl bg-white p-5 dark:bg-navy-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink-text dark:text-white">Evidence — {evidenceField.label}</h3>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-navy-300">
+                  {evidenceField.final_value ?? '—'} · {Math.round(evidenceField.confidence * 100)}% · {ADJ_LABEL[evidenceField.status]}
+                </p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setEvidenceField(null)} className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/10">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {evPhotoUrl ? (
+              <div className="relative mt-3 overflow-hidden rounded-xl border border-line dark:border-white/10">
+                <img
+                  src={evPhotoUrl}
+                  alt={`Evidence for ${evidenceField.label}`}
+                  className="max-h-[55vh] w-full touch-pinch-zoom object-contain"
+                  onLoad={(e) => setImgDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                />
+                {evidenceField.evidence_bbox && imgDims && (
+                  <div
+                    className="pointer-events-none absolute rounded border-2 border-emerald-400 bg-emerald-400/15"
+                    style={{
+                      left: `${(evidenceField.evidence_bbox[0] / imgDims.w) * 100}%`,
+                      top: `${(evidenceField.evidence_bbox[1] / imgDims.h) * 100}%`,
+                      width: `${(evidenceField.evidence_bbox[2] / imgDims.w) * 100}%`,
+                      height: `${(evidenceField.evidence_bbox[3] / imgDims.h) * 100}%`,
+                    }}
+                  />
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-navy-950 dark:text-navy-300">
+                The source photo is not stored for this scan (photo persistence unavailable) — the extracted text and per-report readings below are the evidence record.
+              </p>
+            )}
+            <p className="mt-2 text-[11px] text-slate-400">Region highlight is approximate (scaled from the OCR working resolution).</p>
+            <ul className="mt-3 space-y-1.5">
+              {evidenceField.votes.map((vt, i) => (
+                <li key={i} className="text-xs text-ink-text dark:text-slate-200">
+                  <span className="font-semibold">{vt.report} ({PROVIDER_LABEL[vt.provider] ?? vt.provider})</span>
+                  {' — '}{vt.value ?? '—'}
+                  <span className="text-slate-400"> · {vt.confidence != null ? `${Math.round(vt.confidence * 100)}%` : 'n/a'}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs italic text-slate-500 dark:text-navy-300">{evidenceField.reasoning}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Raw evidence modal */}
+      {rawOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4" onClick={() => setRawOpen(false)}>
+          <div
+            className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-5 dark:bg-navy-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink-text dark:text-white">Raw Evidence</h3>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-navy-300">Original photos, detected regions and the extracted transcript.</p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setRawOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/10">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {photos.some(Boolean) ? (
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {photos.map((u, i) => u ? (
+                  <a key={i} href={u} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-line dark:border-white/10">
+                    <img src={u} alt={`Raw evidence ${i + 1}`} className="h-36 w-full object-cover" loading="lazy" />
+                  </a>
+                ) : null)}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-navy-950">No stored photos for this scan.</p>
+            )}
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Detected regions ({(doc.ocr_regions ?? []).length})</p>
+            <ul className="mt-1.5 max-h-48 space-y-1 overflow-auto">
+              {(doc.ocr_regions ?? []).map((r, i) => {
+                const reg = r as { text?: unknown; conf?: unknown } | null
+                return (
+                  <li key={i} className="flex items-start gap-2 text-xs text-ink-text dark:text-slate-200">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+                    <span className="font-mono text-[11px]">{String(reg?.text ?? '')}</span>
+                    {typeof reg?.conf === 'number' && <span className="text-slate-400">{Math.round(reg.conf * 100)}%</span>}
+                  </li>
+                )
+              })}
+              {(doc.ocr_regions ?? []).length === 0 && <li className="text-xs text-slate-400">No region data.</li>}
+            </ul>
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Raw transcript</p>
+            <pre className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-navy-950 dark:text-slate-400">
+              {doc.ocr_text ?? '—'}
+            </pre>
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }
 
 export default function ScanResultPage() {
@@ -368,6 +783,9 @@ export default function ScanResultPage() {
           </div>
         </div>
       </section>
+
+      {/* Multi-AI verification & adjudication */}
+      <VerificationSection doc={doc} photos={photos} onRetry={() => void onRetry()} retryBusy={busy} />
 
       {/* Compliance breakdown */}
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
