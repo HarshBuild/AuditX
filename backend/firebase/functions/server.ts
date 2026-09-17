@@ -20,7 +20,7 @@
 // --- Load local .env first (no-op in production; Render injects environment) ---
 import './env.js'
 
-import * as admin from 'firebase-admin'
+import admin from 'firebase-admin'
 import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 
@@ -143,7 +143,7 @@ function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction)
         stack: e?.stack,
         projectId: process.env.PROJECT_ID,
       })
-      res.status(500).json({ ok: false, error: `Authentication service error: ${e?.message ?? 'unknown'}` })
+      res.status(500).json({ ok: false, error: `Authentication service error: ${e?.message || e?.code || 'unexpected failure'}` })
     }
   })().catch((e) => {
     console.error('⚠️ Auth middleware unexpected error:', e)
