@@ -11,6 +11,7 @@ import NotificationsPage from '../components/pages/NotificationsPage'
 import UserDashboardPage from '../components/pages/UserDashboardPage'
 import ScanProductPage from '../components/pages/ScanProductPage'
 import ScanResultPage from '../components/pages/ScanResultPage'
+import AccuracyPage from '../components/pages/AccuracyPage'
 import RecordsPage from '../components/pages/RecordsPage'
 import ReportsPage from '../components/pages/ReportsPage'
 import {
@@ -280,6 +281,7 @@ export default function AppRoutes() {
           <Route path="/help" element={<HelpView />} />
           <Route path="/scan-product" element={<ScanProductPage />} />
           <Route path="/scan-result/:id" element={<ScanResultPage />} />
+          <Route path="/accuracy" element={<AccuracyPage />} />
           <Route path="/profile" element={<ProfileView />} />
           <Route path="/settings" element={<SettingsView />} />
         </Route>

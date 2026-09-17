@@ -44,6 +44,28 @@ export const hi: Record<DictKey, string> = {
   'title.complianceRules': 'अनुपालन नियम',
   'title.activityLogs': 'गतिविधि लॉग',
   'title.systemSettings': 'सिस्टम सेटिंग्स',
+  'title.accuracy': 'सटीकता',
+
+  // Accuracy page
+  'acc.title': 'सटीकता मूल्यांकन',
+  'acc.subtitle': 'वास्तविक अनुपालन और अधिनिर्णय इंजनों पर नियत टेस्ट बैटरियां लाइव चलती हैं। कोई डेटाबेस नहीं, कोई AI API नहीं — शुद्ध इंजन सत्यापन।',
+  'acc.run': 'मूल्यांकन चलाएं',
+  'acc.running': 'चल रहा है…',
+  'acc.runFirst': 'लाइव बैकएंड इंजनों पर सभी 16 टेस्ट केस चलाने के लिए Run दबाएं।',
+  'acc.total': 'कुल केस',
+  'acc.passed': 'उत्तीर्ण',
+  'acc.failed': 'अनुत्तीर्ण',
+  'acc.took': 'इंजन समय',
+  'acc.suiteCompliance': 'अनुपालन इंजन (10 केस)',
+  'acc.suiteAdjudication': 'अधिनिर्णय इंजन (6 केस)',
+  'acc.colCase': 'टेस्ट केस',
+  'acc.colExpected': 'अपेक्षित',
+  'acc.colActual': 'वास्तविक',
+  'acc.colDetail': 'इंजन आउटपुट',
+  'acc.colTime': 'समय',
+  'acc.pass': 'उत्तीर्ण',
+  'acc.fail': 'अनुत्तीर्ण',
+  'acc.loadFail': 'मूल्यांकन नहीं चल सका',
 
   // Login
   'login.title': 'वापसी पर स्वागत है',
@@ -338,6 +360,7 @@ export const hi: Record<DictKey, string> = {
   'nav.scanProductAction': 'उत्पाद स्कैन करें',
   'nav.collapse': 'समेटें',
   'nav.expand': 'साइडबार खोलें',
+  'nav.accuracy': 'सटीकता',
   // Roles
   'role.consumer': 'उपभोक्ता',
   'role.superAdmin': 'सुपर एडमिन',

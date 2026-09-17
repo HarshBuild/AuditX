@@ -42,6 +42,28 @@ export const en = {
   'title.complianceRules': 'Compliance Rules',
   'title.activityLogs': 'Activity Logs',
   'title.systemSettings': 'System Settings',
+  'title.accuracy': 'Accuracy',
+
+  // Accuracy page (live test batteries)
+  'acc.title': 'Accuracy Evaluation',
+  'acc.subtitle': 'Deterministic test batteries run live against the real compliance and adjudication engines. No database, no AI APIs — pure engine verification.',
+  'acc.run': 'Run evaluation',
+  'acc.running': 'Running…',
+  'acc.runFirst': 'Press Run to execute all 16 test cases against the live backend engines.',
+  'acc.total': 'Total cases',
+  'acc.passed': 'Passed',
+  'acc.failed': 'Failed',
+  'acc.took': 'Engine time',
+  'acc.suiteCompliance': 'Compliance engine (10 cases)',
+  'acc.suiteAdjudication': 'Adjudication engine (6 cases)',
+  'acc.colCase': 'Test case',
+  'acc.colExpected': 'Expected',
+  'acc.colActual': 'Actual',
+  'acc.colDetail': 'Engine output',
+  'acc.colTime': 'Time',
+  'acc.pass': 'Pass',
+  'acc.fail': 'Fail',
+  'acc.loadFail': 'Could not run evaluation',
 
   // Login
   'login.title': 'Welcome back',
@@ -336,6 +358,7 @@ export const en = {
   'nav.scanProductAction': 'Scan product',
   'nav.collapse': 'Collapse',
   'nav.expand': 'Expand sidebar',
+  'nav.accuracy': 'Accuracy',
   // Roles
   'role.consumer': 'Consumer',
   'role.superAdmin': 'Super Admin',

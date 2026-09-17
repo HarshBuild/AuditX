@@ -68,6 +68,7 @@ const PAGE_TITLE_KEYS: Record<string, DictKey> = {
   '/compliance-rules': 'title.complianceRules',
   '/activity-logs': 'title.activityLogs',
   '/system-settings': 'title.systemSettings',
+  '/accuracy': 'title.accuracy',
 }
 
 export function recordsPath(role: Role): string | null {
