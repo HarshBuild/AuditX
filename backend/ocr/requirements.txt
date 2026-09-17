@@ -14,7 +14,9 @@ paddlepaddle==2.6.2
 paddleocr==2.7.0.3
 PyMuPDF==1.24.10
 numpy==1.26.4
-opencv-contrib-python>=4.9.0.80
+# NOTE: do NOT pin opencv here — paddleocr==2.7.0.3 pulls its own
+# opencv-python / opencv-contrib-python (<=4.6.0.66) and any explicit
+# opencv pin conflicts with it. Our code uses main-module APIs only.
 Pillow>=10.0.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
