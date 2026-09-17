@@ -134,9 +134,10 @@ function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction)
   })
 }
 
-// --- Health check ---
+// --- Health check (includes deployed commit so dashboards can verify live code) ---
 app.get('/health', (_req: Request, res: Response): void => {
-  res.json({ ok: true, service: 'AuditX backend' })
+  const full = process.env.RENDER_GIT_COMMIT ?? ''
+  res.json({ ok: true, service: 'AuditX backend', commit: full ? full.slice(0, 8) : 'local', time: new Date().toISOString() })
 })
 
 // --- API route mounts (all require Supabase session auth) ---
