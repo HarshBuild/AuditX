@@ -166,35 +166,8 @@ export function looseSimilarity(a: string, b: string): number {
   const nb = normalizeLoose(b)
   if (!na || !nb) return 0
   if (na === nb) return 1
-  return Math.max(jaccard(na, nb), diceBigrams(na, nb))
+  return jaccard(na, nb)
 }
-
-/** Dice coefficient over character bigrams — catches OCR substitutions
- *  ("FSSAl" vs "FSSAI") that token comparison scores as 0. */
-function diceBigrams(a: string, b: string): number {
-  const sa = a.replace(/ /g, '')
-  const sb = b.replace(/ /g, '')
-  if (!sa || !sb) return 0
-  if (sa === sb) return 1
-  const grams = (s: string): Map<string, number> => {
-    const m = new Map<string, number>()
-    for (let i = 0; i < s.length - 1; i++) {
-      const g = s.slice(i, i + 2)
-      m.set(g, (m.get(g) ?? 0) + 1)
-    }
-    return m
-  }
-  const A = grams(sa)
-  const B = grams(sb)
-  let inter = 0
-  for (const [g, n] of A) inter += Math.min(n, B.get(g) ?? 0)
-  return (2 * inter) / (sa.length - 1 + (sb.length - 1))
-}
-
-/** Group key for non-strict fields: exact normalized match, else fuzzy join
- *  at ≥0.85 similarity (OCR-substitution tolerance). Returns the key of the
- *  first matching group, or null when this vote starts a new group. */
-const FUZZY_GROUP_THRESHOLD = 0.85
 
 /* ------------------------------------------------------------------ */
 /* Vote collection                                                      */
@@ -345,28 +318,16 @@ function adjudicateField(
   // (YYYYMM): day-level OCR wobble must not fake a conflict, and critical
   // prediction (expired or not) is decided month-wise with the
   // end-of-month rule in the compliance engine.
-  // Non-strict text fields additionally fuzzy-join at ≥0.85 similarity so a
-  // single OCR substitution ("FSSAl" vs "FSSAI") does not fake a conflict.
   const groups = new Map<string, FieldVote[]>()
   for (const v of votes) {
     let canon: string
     if (def.strict && DATE_KEYS.has(def.key)) {
       const c = canonicalStrict(def.key, v.value ?? '')
       canon = c && c.length === 8 ? c.slice(0, 6) : (c ?? `loose:${v.normalized}`)
-    } else if (def.strict) {
-      canon = canonicalStrict(def.key, v.value ?? '') ?? `loose:${v.normalized}`
     } else {
-      canon = v.normalized ?? ''
-      if (!groups.has(canon)) {
-        for (const [key, members] of groups) {
-          if (key.startsWith('loose:')) continue
-          const rep = members[0]?.value ?? ''
-          if (rep && looseSimilarity(v.value ?? '', rep) >= FUZZY_GROUP_THRESHOLD) {
-            canon = key
-            break
-          }
-        }
-      }
+      canon = def.strict
+        ? (canonicalStrict(def.key, v.value ?? '') ?? `loose:${v.normalized}`)
+        : (v.normalized ?? '')
     }
     const list = groups.get(canon) ?? []
     list.push(v)

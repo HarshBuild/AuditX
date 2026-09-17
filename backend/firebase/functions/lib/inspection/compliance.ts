@@ -404,23 +404,12 @@ export function runCompliance(
   if (status === 'critical') overall_score = Math.min(overall_score, 49)
   else if (status === 'violation') overall_score = Math.min(overall_score, 74)
 
-  // Nothing readable at all (blank photo): never call it a violation or
-  // critical finding — the honest outcome is "retake the photo".
-  const hasText = merged.text.trim().length > 0
-  const hasAnyField = Object.values(merged.fields).some((fv) => fv && String(fv).trim())
-  if (!hasText && !hasAnyField) {
-    status = 'needs_review'
-    overall_score = 0
-  }
-
   const verdict = status === 'compliant' ? 'COMPLIANT' : status === 'critical' ? 'NON_COMPLIANT' : 'PARTIALLY_COMPLIANT'
   const risk = status === 'compliant' ? 'Low' : status === 'needs_review' ? 'Medium' : status === 'violation' ? 'High' : 'Critical'
 
   const missing = findings.filter((f) => f.status === 'needs_review' || f.status === 'failed' || f.status === 'critical_failed')
   const summaryParts = [`${overall_score}/100 — ${status} (risk ${risk}).`, `${counts.passed} passed, ${hardFails} failed, ${counts.review} need review.`]
-  if (!hasText && !hasAnyField) {
-    summaryParts.push('No label text could be read from the photos — retake with better lighting and retry.')
-  } else if (missing.length > 0) {
+  if (missing.length > 0) {
     const names = [...new Set(missing.map((m) => m.label))].slice(0, 4).join(', ')
     summaryParts.push(`Needs attention: ${names}${missing.length > 4 ? ' and more.' : '.'}`)
   }
