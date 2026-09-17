@@ -536,13 +536,18 @@ export function adjudicateReports(reports: ReportOutcome[]): AdjudicationOutcome
   }
 
   // ---- Evidence-based trust score (0..100) ----
+  // Genuine means coverage counts too: a report that read half the label
+  // must not score 95. Missing fields weigh half in the denominator —
+  // absence of evidence is not evidence of compliance.
   const WEIGHT: Record<AdjudicationStatus, number> = {
     VERIFIED: 1, NEEDS_REVIEW: 0.45, CONFLICT: 0.2, LOW_CONFIDENCE: 0.35, NOT_DETECTED: 0,
   }
   const assessable = fields.filter((f) => f.status !== 'NOT_DETECTED')
-  let trust = assessable.length === 0
+  const missing = fields.length - assessable.length
+  const denom = assessable.length + 0.5 * missing
+  let trust = denom === 0
     ? 0
-    : Math.round((100 * assessable.reduce((s, f) => s + WEIGHT[f.status] * (0.5 + 0.5 * f.confidence), 0)) / assessable.length)
+    : Math.round((100 * assessable.reduce((s, f) => s + WEIGHT[f.status] * (0.5 + 0.5 * f.confidence), 0)) / denom)
   if (singleSource && okReports.length === 1) trust = Math.min(trust, 60)
   if (okReports.length === 0) trust = 0
 

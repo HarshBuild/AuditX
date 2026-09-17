@@ -381,18 +381,28 @@ export function runCompliance(
     na: findings.filter((f) => f.status === 'na').length,
   }
 
-  const total = Math.max(1, findings.length)
+  // Genuine scoring: N/A checks (e.g. allergen rule on allergen-free food)
+  // are NOT applicable — they must not dilute the score of a good label.
+  const applicable = counts.passed + counts.review + counts.failed + counts.criticalFailed
   const hardFails = counts.failed + counts.criticalFailed
-  const rawScore = (100 * (counts.passed + 0.7 * counts.review)) / total - 15 * hardFails
-  const overall_score = Math.max(0, Math.round(rawScore))
+  const rawScore = applicable === 0
+    ? 50 // no applicable checks at all — neutral, human must decide
+    : (100 * (counts.passed + 0.7 * counts.review)) / applicable - 15 * hardFails
+  let overall_score = Math.max(0, Math.round(rawScore))
 
   let status: InspectionStatus
   if (counts.criticalFailed > 0) status = 'critical'
   else if (counts.failed > 0) status = overall_score >= 50 ? 'violation' : 'critical'
+  else if (applicable === 0) status = 'needs_review'
   else if (overall_score >= 90) status = 'compliant'
   else if (overall_score >= 75) status = 'needs_review'
   else if (overall_score >= 50) status = 'violation'
   else status = 'critical'
+
+  // The number must never contradict the verdict: a CRITICAL report must
+  // score below 50, a VIOLATION below 75. Clamp into the status band.
+  if (status === 'critical') overall_score = Math.min(overall_score, 49)
+  else if (status === 'violation') overall_score = Math.min(overall_score, 74)
 
   const verdict = status === 'compliant' ? 'COMPLIANT' : status === 'critical' ? 'NON_COMPLIANT' : 'PARTIALLY_COMPLIANT'
   const risk = status === 'compliant' ? 'Low' : status === 'needs_review' ? 'Medium' : status === 'violation' ? 'High' : 'Critical'
