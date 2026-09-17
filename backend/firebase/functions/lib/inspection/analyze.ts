@@ -42,18 +42,32 @@ function averageConfidence(perImages: PerImageExtract[]): number {
 async function materializePhotos(uid: string, photos: AnalysisInput['photos']): Promise<{ paths: string[]; dataUrls: string[] }> {
   const paths: string[] = []
   const dataUrls: string[] = []
-  const bucket = admin.storage().bucket()
+  let bucket: ReturnType<ReturnType<typeof admin.storage>['bucket']> | null = null
+  try {
+    bucket = admin.storage().bucket()
+  } catch {
+    bucket = null
+    console.warn('⚠️ storage bucket not configured; photos kept in-memory only.')
+  }
 
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i]
     if (photo.data) {
-      const ext = /^data:image\/(png|webp)/.test(photo.data) ? (photo.data.includes('png') ? 'png' : 'webp') : 'jpg'
-      paths.push(await savePhoto(uid, i, photo.data))
       dataUrls.push(photo.data)
+      if (bucket) {
+        try {
+          paths.push(await savePhoto(uid, i, photo.data))
+          continue
+        } catch (e) {
+          console.warn('⚠️ photo save failed (analysis continues in-memory):', (e as Error)?.message ?? e)
+          continue
+        }
+      }
       continue
     }
     if (photo.path) {
-      const file = bucket.file(photo.path)
+      const file = bucket?.file(photo.path)
+      if (!file) throw new Error('Storage is unavailable to read the photo. Add the photo again as a fresh capture.')
       const [bufFile] = await file.download()
       const metaArr = await file.getMetadata().catch(() => undefined)
       const mime = metaArr?.[0]?.contentType ?? 'image/jpeg'

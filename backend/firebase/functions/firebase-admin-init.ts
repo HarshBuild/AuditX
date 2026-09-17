@@ -28,6 +28,14 @@ if (!privateKey.includes('-----END PRIVATE KEY-----')) {
   throw new Error('❌ PRIVATE_KEY format invalid: missing END header')
 }
 
+// Storage bucket — from STORAGE_BUCKET env or default <projectId>.appspot.com
+const storageBucket = process.env.STORAGE_BUCKET || `${process.env.PROJECT_ID}.appspot.com`
+if (process.env.STORAGE_BUCKET) {
+  console.log(`   Storage bucket: ${process.env.STORAGE_BUCKET}`)
+} else {
+  console.log(`   Storage bucket: ${storageBucket} (auto from PROJECT_ID)`)
+}
+
 try {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -35,6 +43,7 @@ try {
       clientEmail: process.env.CLIENT_EMAIL,
       privateKey,
     }),
+    storageBucket,
   })
   // Verify initialization worked
   if (typeof admin.auth !== 'function') {
@@ -43,6 +52,7 @@ try {
   console.log('✅ Firebase Admin initialized successfully')
   console.log('   Project:', process.env.PROJECT_ID)
   console.log('   Client:', process.env.CLIENT_EMAIL)
+  console.log('   Storage:', storageBucket)
 } catch (err) {
   console.error('❌ Failed to initialize Firebase Admin:', err)
   throw err
