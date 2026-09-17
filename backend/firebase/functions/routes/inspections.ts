@@ -56,6 +56,21 @@ function safe(v: unknown): unknown {
   return v === undefined ? null : v
 }
 
+/** Recursively make any value Firestore-writable (undefined/NaN/±Infinity → null). */
+function sanitizeForFirestore(value: unknown): unknown {
+  if (value === undefined || (typeof value === 'number' && !Number.isFinite(value))) return null
+  if (Array.isArray(value)) return value.map(sanitizeForFirestore)
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const s = sanitizeForFirestore(v)
+      if (s !== undefined) out[k] = s
+    }
+    return out
+  }
+  return value
+}
+
 function buildDoc(
   uid: string,
   body: CreateBody,
@@ -196,7 +211,7 @@ async function finalizeScan(scanRef: FirebaseFirestore.DocumentReference, result
     image_url: Array.isArray(paths) && paths.length > 0 ? paths[0] : '',
     updated_at: now,
   }
-  await scanRef.update(patch)
+  await scanRef.update(sanitizeForFirestore(patch) as Record<string, unknown>)
 }
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -215,7 +230,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
   // Create the scan document FIRST (status needs_review / ocr pending).
   const scanRef = admin.firestore().collection('scans').doc()
-  const initial = buildDoc(uid, body, { scanId: scanRef.id, now })
+  const initial = sanitizeForFirestore(buildDoc(uid, body, { scanId: scanRef.id, now })) as Record<string, unknown>
   let analysis: AnalysisResult | null = null
   let savedPaths: string[] = []
   let ocrError: string | null = null

@@ -89,7 +89,7 @@ export interface Finding {
   status: FindingStatus
   detected_value: string | null
   explanation: string | null
-  hint?: string
+  hint: string | null
 }
 
 export interface ComplianceCounts {

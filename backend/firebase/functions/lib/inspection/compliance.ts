@@ -303,7 +303,7 @@ export function runCompliance(
       status: outcome.status,
       detected_value: outcome.detected,
       explanation: outcome.note ?? null,
-      hint: rule.hint,
+      hint: rule.hint ?? null,
     })
   }
 
