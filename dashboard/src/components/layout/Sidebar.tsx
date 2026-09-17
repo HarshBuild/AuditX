@@ -9,7 +9,6 @@ import {
   Factory,
   FileCheck2,
   FileText,
-  FlaskConical,
   LayoutDashboard,
   LogOut,
   Package,
@@ -39,7 +38,6 @@ export const USER_NAV: NavItem[] = [
   { path: '/scan-product', labelKey: 'nav.scanProduct', icon: ScanLine },
   { path: '/scan-history', labelKey: 'nav.scanHistory', icon: ClipboardList },
   { path: '/my-reports', labelKey: 'nav.myReports', icon: FileText },
-  { path: '/accuracy', labelKey: 'nav.accuracy', icon: FlaskConical },
   { path: '/profile', labelKey: 'nav.profile', icon: UserCircle2 },
   { path: '/settings', labelKey: 'nav.settings', icon: Settings },
 ]
@@ -59,7 +57,6 @@ export const SUPER_ADMIN_NAV: NavItem[] = [
   { path: '/admin-management', labelKey: 'nav.adminMgmt', icon: ShieldCheck },
   { path: '/users', labelKey: 'nav.users', icon: Users },
   { path: '/compliance-rules', labelKey: 'nav.complianceRules', icon: FileCheck2 },
-  { path: '/accuracy', labelKey: 'nav.accuracy', icon: FlaskConical },
   { path: '/activity-logs', labelKey: 'nav.activityLogs', icon: Activity },
   { path: '/system-settings', labelKey: 'nav.systemSettings', icon: Settings },
   { path: '/profile', labelKey: 'nav.profile', icon: UserCircle2 },
