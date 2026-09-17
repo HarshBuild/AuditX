@@ -15,6 +15,7 @@ import {
   TriangleAlert,
   UploadCloud,
   X,
+  Zap,
 } from 'lucide-react'
 import Button from '../ui/Button'
 import CameraCapture from '../ui/CameraCapture'
@@ -28,6 +29,10 @@ import {
 import { createInspection } from '../../lib/inspection'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { STATES } from '../../lib/geo'
+import sampleLabelUrl from '../../assets/sample-label.png'
+
+/** Bundled demo label (verified: PaddleOCR 12/12 lines, Gemini 13/13 fields). */
+const SAMPLE_NAME = 'sample-label.png'
 import type { DictKey } from '../../i18n/en'
 
 type CategoryChoice = 'edible' | 'non_edible' | 'unknown'
@@ -61,6 +66,7 @@ export default function ScanProductPage() {
   const [scanState, setScanState] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
+  const [sampleLoading, setSampleLoading] = useState(false)
   // Separate inputs: `capture` forces the camera on Android (no gallery
   // chooser), so Gallery must use an input WITHOUT capture, while the
   // device-camera fallback needs one WITH capture="environment".
@@ -101,6 +107,29 @@ export default function ScanProductPage() {
     void addFiles([r.file])
     setCameraOpen(false)
   }
+
+  /** One-click demo: load the bundled sample label through the SAME pipeline
+   *  (preparePhoto + quality grading) as camera/gallery photos. No shortcuts,
+   *  no fake data — the analysis output is 100% real system output. */
+  const loadSample = useCallback(async () => {
+    if (photos.some((p) => (p.file.name || '') === SAMPLE_NAME)) {
+      toast('info', t('scan.trySample'), t('scan.sampleLoaded'))
+      return
+    }
+    setSampleLoading(true)
+    try {
+      const res = await fetch(sampleLabelUrl)
+      if (!res.ok) throw new Error(`Sample asset HTTP ${res.status}`)
+      const blob = await res.blob()
+      const file = new File([blob], SAMPLE_NAME, { type: blob.type || 'image/png' })
+      await addFiles([file])
+      toast('info', t('scan.trySample'), t('scan.sampleLoaded'))
+    } catch (e) {
+      toast('error', t('scan.sampleFailed'), (e as Error).message)
+    } finally {
+      setSampleLoading(false)
+    }
+  }, [photos, addFiles, toast, t])
 
   const onGalleryFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     void addFiles(Array.from(e.target.files ?? []))
@@ -194,9 +223,20 @@ export default function ScanProductPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
             {t('scan.photos')} <span className="text-brand-500">{photos.length}/{MAX_PHOTOS}</span>
           </h2>
-          {photos.length > 0 && category === 'unknown' && (
-            <span className="text-xs text-slate-400">{t('scan.photoHint')}</span>
-          )}
+          <div className="flex items-center gap-2">
+            {photos.length > 0 && category === 'unknown' && (
+              <span className="hidden text-xs text-slate-400 sm:block">{t('scan.photoHint')}</span>
+            )}
+            <button
+              type="button"
+              onClick={() => void loadSample()}
+              disabled={sampleLoading || preparing}
+              className="flex items-center gap-1 rounded-lg border border-brand-500/40 bg-brand-500/10 px-2.5 py-1 text-xs font-semibold text-brand-600 transition-colors hover:bg-brand-500/20 disabled:opacity-50 dark:text-brand-400"
+            >
+              {sampleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              {t('scan.trySample')}
+            </button>
+          </div>
         </div>
 
         <div
@@ -222,12 +262,20 @@ export default function ScanProductPage() {
               <p className="mt-3 text-sm text-ink-text-soft dark:text-navy-300">
                 {t('scan.dropzone')}
               </p>
-              <div className="mt-4 flex items-center justify-center gap-3">
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
                 <Button icon={<Camera className="h-4 w-4" />} onClick={() => setCameraOpen(true)}>
                   {t('scan.camera')}
                 </Button>
                 <Button variant="outline" icon={<ImagePlus className="h-4 w-4" />} onClick={() => galleryInputRef.current?.click()}>
                   {t('scan.gallery')}
+                </Button>
+                <Button
+                  variant="outline"
+                  icon={sampleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                  onClick={() => void loadSample()}
+                  disabled={sampleLoading}
+                >
+                  {t('scan.trySample')}
                 </Button>
               </div>
             </div>
