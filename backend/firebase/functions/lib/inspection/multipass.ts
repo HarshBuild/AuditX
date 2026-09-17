@@ -219,7 +219,7 @@ async function geminiVerifyCrops(
     const model = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_MODEL
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(45_000),
     })
@@ -456,6 +456,12 @@ export async function runMultipass(
 }
 
 function confFromRaw(raw: unknown): OcrConfidence {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    // Python Paddle stack sends 0..1 confidences — map by threshold.
+    if (raw >= 0.85) return 'high'
+    if (raw >= 0.6) return 'medium'
+    return 'low'
+  }
   const v = String(raw ?? '').toLowerCase().trim()
   if (v === 'high' || v === 'high.0' || v === '1') return 'high'
   if (v === 'low' || v === 'low.0' || v === '0') return 'low'

@@ -294,6 +294,11 @@ export async function paddleProvider(input: ProviderInput): Promise<OcrProviderR
 }
 
 function confFromRaw(raw: unknown): OcrConfidence {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    if (raw >= 0.85) return 'high'
+    if (raw >= 0.6) return 'medium'
+    return 'low'
+  }
   const v = String(raw ?? '').toLowerCase().trim()
   if (v === 'high' || v === 'high.0' || v === '1') return 'high'
   if (v === 'low' || v === 'low.0' || v === '0') return 'low'

@@ -196,6 +196,8 @@ def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_ch
 
     for i, lines in enumerate(all_lines):
         if not lines:
+            # Keep index alignment: empty placeholder for photos with no text.
+            blocks_detail.append({"image_id": f"image_{i+1}", "blocks": []})
             continue
         lines = sort_layout(lines)
         raw_text = join_ocr(lines)
@@ -229,7 +231,9 @@ def _assemble_results(all_lines: List[Optional[List[Dict[str, Any]]]], missed_ch
             per["text_regions_detected"] = len(per["blocks"])
             per["lines_extracted"] = len(per["blocks"])
             per["missed_regions_checked"] = int(missed_checked[i]) if missed_checked else 0
-            blocks_detail.append(per)
+        # Always append (even when empty) so blocks_detail[i] aligns with
+        # photo i — the Node multipass layer indexes per-image by position.
+        blocks_detail.append(per)
         combined.append(text)
         # Per-image extraction feeds the Misa merge layer — each photo is read
         # independently, then combined; a value any photo misses is re-read
