@@ -10,6 +10,7 @@ import PageHeader from '../ui/PageHeader'
 import Tabs, { type TabItem } from '../ui/Tabs'
 import { useAuth } from '../../lib/auth'
 import { fetchScansForUserPage, type PageCursor } from '../../lib/db'
+import { useLanguage } from '../../i18n/LanguageContext'
 import { photoUrl } from '../../lib/inspection'
 import { scanStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
@@ -70,6 +71,7 @@ const PAGE_SIZE = 50
 
 export default function RecordsPage() {
   const { user } = useAuth()
+  const { t } = useLanguage()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { toast } = useToast()
@@ -102,11 +104,11 @@ export default function RecordsPage() {
       setLastDoc(page.lastDoc)
       setHasMore(page.hasMore)
     } catch (e) {
-      toast('error', 'Could not load scans', (e as Error).message)
+      toast('error', t('history.loadFail'), (e as Error).message)
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [user?.id, toast])
+  }, [user?.id, toast, t])
 
   const loadMore = useCallback(async () => {
     if (!user?.id || !lastDoc) return
@@ -119,11 +121,11 @@ export default function RecordsPage() {
       setLastDoc(page.lastDoc)
       setHasMore(page.hasMore)
     } catch (e) {
-      toast('error', 'Could not load more scans', (e as Error).message)
+      toast('error', t('history.loadMoreFail'), (e as Error).message)
     } finally {
       setLoadingMore(false)
     }
-  }, [user?.id, lastDoc, toast])
+  }, [user?.id, lastDoc, toast, t])
 
   useEffect(() => {
     void load()
@@ -143,22 +145,30 @@ export default function RecordsPage() {
   )
 
   const statusTabs: TabItem[] = [
-    { key: 'all', label: 'All', count: scans.length },
-    { key: 'compliant', label: 'Compliant', count: scans.filter((s) => s.status === 'compliant').length },
-    { key: 'needs_review', label: 'Needs review', count: scans.filter((s) => s.status === 'needs_review').length },
-    { key: 'violation', label: 'Violation', count: scans.filter((s) => s.status === 'violation').length },
-    { key: 'critical', label: 'Critical', count: scans.filter((s) => s.status === 'critical').length },
+    { key: 'all', label: t('history.tabAll'), count: scans.length },
+    { key: 'compliant', label: t('history.tabCompliant'), count: scans.filter((s) => s.status === 'compliant').length },
+    { key: 'needs_review', label: t('history.tabReview'), count: scans.filter((s) => s.status === 'needs_review').length },
+    { key: 'violation', label: t('history.tabViolation'), count: scans.filter((s) => s.status === 'violation').length },
+    { key: 'critical', label: t('history.tabCritical'), count: scans.filter((s) => s.status === 'critical').length },
   ]
+
+  const statusLabel = (s: string): string => {
+    if (s === 'compliant') return t('history.tabCompliant')
+    if (s === 'needs_review') return t('history.tabReview')
+    if (s === 'violation') return t('history.tabViolation')
+    if (s === 'critical') return t('history.tabCritical')
+    return s.replace('_', ' ')
+  }
 
   const columns: Array<DataColumn<ScanRow>> = [
     {
       key: 'product',
-      label: 'Product',
+      label: t('history.colProduct'),
       render: (s) => (
         <div className="flex min-w-[220px] items-center gap-3">
           <ScanThumb path={s.image_url} name={s.product_name} />
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled'}</p>
+            <p className="truncate font-semibold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : t('history.untitled')}</p>
             <p className="truncate text-xs text-slate-400">{displayText(s.brand || s.manufacturer) || '—'}</p>
           </div>
         </div>
@@ -166,30 +176,30 @@ export default function RecordsPage() {
     },
     {
       key: 'category',
-      label: 'Category',
+      label: t('history.colCategory'),
       className: 'hidden lg:table-cell',
       render: (s) => <span className="text-slate-500 dark:text-slate-400">{s.category || '—'}</span>,
     },
     {
       key: 'score',
-      label: 'Score',
+      label: t('history.colScore'),
       className: 'text-right',
       render: (s) => <span className="font-bold text-slate-700 dark:text-slate-200">{s.overall_score ?? '—'}</span>,
     },
     {
       key: 'verdict',
-      label: 'Verdict',
+      label: t('history.colVerdict'),
       render: (s) => <ToneBadge tone={verdictTone(s)}>{s.verdict || 'Pending'}</ToneBadge>,
     },
     {
       key: 'status',
-      label: 'Status',
+      label: t('history.colStatus'),
       className: 'hidden sm:table-cell',
-      render: (s) => <ToneBadge tone={scanStatusTone(s.status)}>{s.status.replace('_', ' ')}</ToneBadge>,
+      render: (s) => <ToneBadge tone={scanStatusTone(s.status)}>{statusLabel(s.status)}</ToneBadge>,
     },
     {
       key: 'created_at',
-      label: 'Scanned',
+      label: t('history.colScanned'),
       className: 'hidden md:table-cell',
       render: (s) => <span className="whitespace-nowrap text-slate-500 dark:text-slate-400">{formatDateTime(s.created_at)}</span>,
     },
@@ -204,8 +214,8 @@ export default function RecordsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Scan History"
-        subtitle={`${scans.length} inspections · ${filtered.length} matching filters`}
+        title={t('history.title')}
+        subtitle={t('history.subtitle', { n: scans.length, m: filtered.length })}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -215,10 +225,10 @@ export default function RecordsPage() {
               onClick={() => void refresh()}
               disabled={refreshing}
             >
-              Refresh
+              {t('history.refresh')}
             </Button>
             <Button icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
-              New scan
+              {t('history.newScan')}
             </Button>
           </div>
         }
@@ -226,16 +236,16 @@ export default function RecordsPage() {
 
       {loading ? (
         <div className="panel p-6">
-          <LoadingState label="Loading your scans…" />
+          <LoadingState label={t('history.loading')} />
         </div>
       ) : scans.length === 0 ? (
         <div className="panel p-6">
           <EmptyState
-            title="No scans yet"
-            message="Scan your first product label — the AI inspection takes under a minute."
+            title={t('history.empty')}
+            message={t('history.emptyMsg')}
             action={
               <Button icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
-                Scan a product
+                {t('history.scanProduct')}
               </Button>
             }
           />
@@ -248,7 +258,7 @@ export default function RecordsPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search product, brand, barcode…"
+                placeholder={t('history.searchPh')}
                 className="h-10 w-full rounded-field border border-line bg-surface-secondary pl-9 pr-3 text-sm text-ink-text placeholder:text-ink-text-faint shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-white/15 dark:bg-navy-950 dark:text-navy-100 dark:placeholder:text-navy-400"
               />
             </div>
@@ -266,12 +276,12 @@ export default function RecordsPage() {
             rows={filtered}
             rowKey={(s) => s.id}
             onRowClick={(s) => navigate(`/scan-result/${s.id}`)}
-            empty={<EmptyState title="Nothing matches" message="Try a different search or status filter." />}
+            empty={<EmptyState title={t('history.noMatch')} message={t('history.noMatchMsg')} />}
           />
           {hasMore && (
             <div className="flex justify-center border-t border-line p-3 dark:border-navy-700/60">
               <Button variant="outline" icon={loadingMore ? undefined : <ChevronDown className="h-4 w-4" />} onClick={() => void loadMore()} loading={loadingMore} disabled={loadingMore}>
-                {loadingMore ? 'Loading more…' : 'Load more'}
+                {loadingMore ? t('history.loadingMore') : t('history.loadMore')}
               </Button>
             </div>
           )}

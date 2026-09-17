@@ -8,6 +8,7 @@ import { FormAlert } from '../auth/FormAlert'
 import { useAuth } from '../../lib/auth'
 import { homePath } from '../../lib/rbac'
 import { supabase } from '../../lib/supabase'
+import { useLanguage } from '../../i18n/LanguageContext'
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/
 
@@ -37,6 +38,7 @@ function GoogleG() {
 
 export default function LoginPage() {
   const { signIn, signInWithGoogle } = useAuth()
+  const { t } = useLanguage()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -51,11 +53,11 @@ export default function LoginPage() {
     if (busy || googleBusy) return
     setError('')
     if (!EMAIL_RE.test(email)) {
-      setError('Please enter a valid email address.')
+      setError(t('login.badEmail'))
       return
     }
     if (!password) {
-      setError('Please enter your password.')
+      setError(t('login.noPassword'))
       return
     }
     setBusy(true)
@@ -86,7 +88,7 @@ export default function LoginPage() {
   const handleForgot = async () => {
     setError('')
     if (!EMAIL_RE.test(email)) {
-      setError('Enter your email address above, then click "Forgot password?".')
+      setError(t('login.resetHint'))
       return
     }
     setResetBusy(true)
@@ -104,44 +106,44 @@ export default function LoginPage() {
   return (
     <AuthShell>
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Welcome back</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Sign in to AuditX — Legal Metrology compliance scanning.</p>
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">{t('login.title')}</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('login.subtitle')}</p>
       </div>
 
       {error && <div className="mb-4"><FormAlert tone="error" message={error} /></div>}
       {resetSent && (
-        <div className="mb-4"><FormAlert tone="success" message="Reset link sent! Please check your inbox (and spam folder)." /></div>
+        <div className="mb-4"><FormAlert tone="success" message={t('login.resetSent')} /></div>
       )}
 
       <button
         type="button"
         onClick={() => void handleGoogle()}
         disabled={busy || googleBusy}
-        aria-label="Continue with Google"
+        aria-label={t('login.google')}
         className="flex h-11 w-full items-center justify-center gap-2.5 rounded-lg border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50 hover:shadow-md active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-700/60 dark:focus-visible:ring-offset-slate-900"
       >
         {googleBusy ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin text-slate-400" aria-hidden="true" />
-            <span>Signing in…</span>
+            <span>{t('login.signingIn')}</span>
           </>
         ) : (
           <>
             <GoogleG />
-            <span>Continue with Google</span>
+            <span>{t('login.google')}</span>
           </>
         )}
       </button>
 
       <div className="my-5 flex items-center gap-3" aria-hidden="true">
         <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
-        <span className="text-xs font-medium text-slate-400 dark:text-slate-500">or continue with email</span>
+        <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{t('login.orEmail')}</span>
         <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label="Email address"
+          label={t('login.email')}
           name="email"
           type="email"
           autoComplete="email"
@@ -153,7 +155,7 @@ export default function LoginPage() {
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <label htmlFor="login-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-              Password
+              {t('login.password')}
             </label>
             <button
               type="button"
@@ -161,7 +163,7 @@ export default function LoginPage() {
               disabled={resetBusy || googleBusy}
               className="text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-60 dark:text-brand-400"
             >
-              {resetBusy ? 'Sending…' : 'Forgot password?'}
+              {resetBusy ? t('login.sending') : t('login.forgot')}
             </button>
           </div>
           <Input
@@ -177,14 +179,14 @@ export default function LoginPage() {
         </div>
 
         <Button type="submit" size="lg" className="w-full" loading={busy} disabled={googleBusy} icon={<LogIn className="h-4 w-4" />}>
-          Sign in
+          {t('login.signIn')}
         </Button>
       </form>
 
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
-        Don't have an account?{' '}
+        {t('login.noAccount')}{' '}
         <Link to="/signup" className="font-semibold text-brand-600 hover:underline dark:text-brand-400">
-          Create one
+          {t('login.createOne')}
         </Link>
       </p>
     </AuthShell>

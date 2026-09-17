@@ -22,17 +22,27 @@ import { useToast } from '../ui/Toast'
 import {
   MAX_PHOTOS,
   preparePhoto,
+  type PhotoWarning,
   type PreparedPhoto,
 } from '../../lib/scanImage'
 import { createInspection } from '../../lib/inspection'
+import { useLanguage } from '../../i18n/LanguageContext'
+import type { DictKey } from '../../i18n/en'
 
 type CategoryChoice = 'edible' | 'non_edible' | 'unknown'
+
+const WARN_KEYS: Record<PhotoWarning, DictKey> = {
+  dark: 'scan.warnDark',
+  blurry: 'scan.warnBlurry',
+  lowres: 'scan.warnLowres',
+}
 
 const fieldCls =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-shadow focus:outline-none focus:ring-2 focus:ring-accent-500 dark:border-white/15 dark:bg-navy-950 dark:text-slate-100 dark:placeholder:text-slate-500'
 
 export default function ScanProductPage() {
   const { toast } = useToast()
+  const { t } = useLanguage()
   const navigate = useNavigate()
 
   const [category, setCategory] = useState<CategoryChoice>('unknown')
@@ -59,12 +69,12 @@ export default function ScanProductPage() {
     async (files: File[]) => {
       const imageFiles = (files ?? []).filter((f) => f.type.startsWith('image/'))
       if (imageFiles.length === 0) {
-        toast('error', 'Invalid file', 'Please choose JPG, PNG or WEBP images.')
+        toast('error', t('scan.invalidFile'), t('scan.invalidFileMsg'))
         return
       }
       const space = MAX_PHOTOS - photos.length
       if (space <= 0) {
-        toast('error', 'Limit reached', `At most ${MAX_PHOTOS} photos per inspection.`)
+        toast('error', t('scan.limitReached'), t('scan.limitMsg', { count: MAX_PHOTOS }))
         return
       }
       const slots = imageFiles.slice(0, space)
@@ -73,16 +83,16 @@ export default function ScanProductPage() {
         const prepared = await Promise.all(slots.map((file) => preparePhoto(file)))
         const warnings = prepared.flatMap((p) => p.quality.warnings)
         if (warnings.length > 0) {
-          toast('info', 'Photo quality', warnings[0])
+          toast('info', t('scan.photoQuality'), t(WARN_KEYS[warnings[0]]))
         }
         setPhotos((prev) => [...prev, ...prepared])
       } catch (e) {
-        toast('error', 'Could not read photo', (e as Error).message)
+        toast('error', t('scan.unreadable'), (e as Error).message)
       } finally {
         setPreparing(false)
       }
     },
-    [photos.length, toast],
+    [photos.length, toast, t],
   )
 
   const onCapture = (r: { file: File; dataUrl: string }) => {
@@ -100,14 +110,14 @@ export default function ScanProductPage() {
   }
 
   const categoryCards: Array<{ value: CategoryChoice; title: string; desc: string; icon: typeof Package }> = [
-    { value: 'edible', title: 'Edible / food', desc: 'Packed food, snacks, beverages', icon: Apple },
-    { value: 'non_edible', title: 'Non-edible', desc: 'Electronics, cleaning, toiletries', icon: Package },
-    { value: 'unknown', title: 'Not sure', desc: 'Run the full check set', icon: TriangleAlert },
+    { value: 'edible', title: t('scan.catEdible'), desc: t('scan.catEdibleDesc'), icon: Apple },
+    { value: 'non_edible', title: t('scan.catNonEdible'), desc: t('scan.catNonEdibleDesc'), icon: Package },
+    { value: 'unknown', title: t('scan.catUnknown'), desc: t('scan.catUnknownDesc'), icon: TriangleAlert },
   ]
 
   const submit = async () => {
     if (photos.length === 0) {
-      toast('error', 'No photos', 'Add at least one label photo first.')
+      toast('error', t('scan.noPhotos'), t('scan.noPhotosMsg'))
       return
     }
     setSubmitting(true)
@@ -128,10 +138,10 @@ export default function ScanProductPage() {
           ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
         },
       })
-      if (!res.ok) throw new Error(res.error ?? 'Could not create the inspection.')
+      if (!res.ok) throw new Error(res.error ?? t('scan.failed'))
       navigate(`/scan-result/${res.scan_id}`)
     } catch (e) {
-      toast('error', 'Inspection failed', (e as Error).message)
+      toast('error', t('scan.failed'), (e as Error).message)
       setSubmitting(false)
     }
   }
@@ -143,9 +153,9 @@ export default function ScanProductPage() {
           <ScanLine className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-ink-text dark:text-white">Scan a product label</h1>
+          <h1 className="text-xl font-bold text-ink-text dark:text-white">{t('scan.title')}</h1>
           <p className="text-sm text-ink-text-soft dark:text-navy-300">
-            Photograph the label up to {MAX_PHOTOS} times, then review the compliance report.
+            {t('scan.subtitle', { count: MAX_PHOTOS })}
           </p>
         </div>
       </div>
@@ -153,7 +163,7 @@ export default function ScanProductPage() {
       {/* 1 — Category */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-          What kind of product is this?
+          {t('scan.categoryQ')}
         </h2>
         <div className="grid grid-cols-3 gap-3">
           {categoryCards.map((c) => (
@@ -179,10 +189,10 @@ export default function ScanProductPage() {
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-            Label photos <span className="text-brand-500">{photos.length}/{MAX_PHOTOS}</span>
+            {t('scan.photos')} <span className="text-brand-500">{photos.length}/{MAX_PHOTOS}</span>
           </h2>
           {photos.length > 0 && category === 'unknown' && (
-            <span className="text-xs text-slate-400">Front + back + sides recommended</span>
+            <span className="text-xs text-slate-400">{t('scan.photoHint')}</span>
           )}
         </div>
 
@@ -207,14 +217,14 @@ export default function ScanProductPage() {
             <div className="py-6">
               <UploadCloud className="mx-auto h-10 w-10 text-ink-text-soft dark:text-navy-400" />
               <p className="mt-3 text-sm text-ink-text-soft dark:text-navy-300">
-                Drag &amp; drop label photos here, or
+                {t('scan.dropzone')}
               </p>
               <div className="mt-4 flex items-center justify-center gap-3">
                 <Button icon={<Camera className="h-4 w-4" />} onClick={() => setCameraOpen(true)}>
-                  Camera
+                  {t('scan.camera')}
                 </Button>
                 <Button variant="outline" icon={<ImagePlus className="h-4 w-4" />} onClick={() => galleryInputRef.current?.click()}>
-                  Gallery
+                  {t('scan.gallery')}
                 </Button>
               </div>
             </div>
@@ -222,10 +232,10 @@ export default function ScanProductPage() {
             <div className="grid grid-cols-3 gap-3">
               {photos.map((p, i) => (
                 <div key={`${p.dataUrl.slice(0, 24)}-${i}`} className="relative overflow-hidden rounded-xl border border-line dark:border-white/10">
-                  <img src={p.dataUrl} alt={`Label ${i + 1}`} className="h-24 w-full object-cover" />
+                  <img src={p.dataUrl} alt={`${t('scan.photoN', { n: i + 1 })}`} className="h-24 w-full object-cover" />
                   <div className="flex items-center justify-between px-2 py-1.5">
                     <span className="text-[10px] font-medium uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-                      {i === 0 ? 'Front' : i === 1 ? 'Back' : `Photo ${i + 1}`}
+                      {i === 0 ? t('scan.photoFront') : i === 1 ? t('scan.photoBack') : t('scan.photoN', { n: i + 1 })}
                     </span>
                     {p.quality.warnings.length > 0 ? (
                       <TriangleAlert className="h-3.5 w-3.5 text-amber-500" />
@@ -237,7 +247,7 @@ export default function ScanProductPage() {
                     type="button"
                     onClick={() => removePhoto(i)}
                     className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"
-                    aria-label="Remove photo"
+                    aria-label={t('scan.removePhoto')}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -281,8 +291,7 @@ export default function ScanProductPage() {
           <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              Some photos may be dark, blurry or low-resolution. The analysis still runs, but retaking them gives a more
-              accurate report.
+              {t('scan.qualityNote')}
             </span>
           </div>
         )}
@@ -293,14 +302,14 @@ export default function ScanProductPage() {
             icon={<Camera className="h-4 w-4" />}
             onClick={() => setCameraOpen(true)}
           >
-            Open camera
+            {t('scan.openCamera')}
           </Button>
           <Button
             variant="outline"
             icon={<Aperture className="h-4 w-4" />}
             onClick={() => deviceCameraInputRef.current?.click()}
           >
-            Device camera
+            {t('scan.deviceCamera')}
           </Button>
         </div>
       </section>
@@ -308,34 +317,34 @@ export default function ScanProductPage() {
       {/* 3 — Product details */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-          Product details <span className="font-normal text-slate-400">(optional — helps the analysis)</span>
+          {t('scan.details')} <span className="font-normal text-slate-400">{t('scan.detailsOptional')}</span>
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">Product name</span>
-            <input className={fieldCls} value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="e.g. Cashew Mix" />
+            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">{t('scan.productName')}</span>
+            <input className={fieldCls} value={productName} onChange={(e) => setProductName(e.target.value)} placeholder={t('scan.productNamePh')} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">Brand</span>
-            <input className={fieldCls} value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="e.g. ACME" />
+            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">{t('scan.brand')}</span>
+            <input className={fieldCls} value={brand} onChange={(e) => setBrand(e.target.value)} placeholder={t('scan.brandPh')} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">Manufacturer</span>
-            <input className={fieldCls} value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="e.g. ACME Foods Pvt. Ltd." />
+            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">{t('scan.manufacturer')}</span>
+            <input className={fieldCls} value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder={t('scan.manufacturerPh')} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">Barcode (if visible)</span>
+            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">{t('scan.barcode')}</span>
             <div className="relative">
               <Barcode className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-ink-text-soft dark:text-navy-400" />
               <input className={`${fieldCls} pl-9`} value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="e.g. 8901…" />
             </div>
           </label>
           <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">Notes (optional)</span>
-            <textarea className={fieldCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the inspector should know about this product…" />
+            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">{t('scan.notes')}</span>
+            <textarea className={fieldCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('scan.notesPh')} />
           </label>
           <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">Label language</span>
+            <span className="mb-1 block text-xs font-medium text-ink-text-soft dark:text-navy-300">{t('scan.language')}</span>
             <select className={fieldCls} value={lang} onChange={(e) => setLang(e.target.value)}>
               <option value="en">English</option>
               <option value="hi">Hindi</option>
@@ -354,15 +363,15 @@ export default function ScanProductPage() {
       <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t border-line bg-white/90 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-navy-950/90 sm:mx-0 sm:rounded-xl sm:border sm:px-5">
         <div className="text-xs text-ink-text-soft dark:text-navy-300">
           {photos.length === 0
-            ? 'Add a photo to get started'
-            : `${photos.length} photo${photos.length > 1 ? 's' : ''} ready${category !== 'unknown' ? ` · ${category === 'edible' ? 'edible' : 'non-edible'}` : ''}`}
+            ? t('scan.addPhotoFirst')
+            : `${t('scan.photosReady', { count: photos.length })}${category !== 'unknown' ? ` · ${category === 'edible' ? t('scan.catEdible') : t('scan.catNonEdible')}` : ''}`}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" icon={<ChevronLeft className="h-4 w-4" />} onClick={() => navigate(-1)}>
-            Back
+            {t('scan.back')}
           </Button>
           <Button loading={submitting} onClick={() => void submit()} icon={<Sparkles className="h-4 w-4" />}>
-            {submitting ? 'Analyzing…' : 'Start analysis'}
+            {submitting ? t('scan.analyzing') : t('scan.start')}
           </Button>
         </div>
       </div>

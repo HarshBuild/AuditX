@@ -10,11 +10,14 @@ export const MAX_PHOTO_DIM = 1600
 export const JPEG_QUALITY = 0.82
 export const MAX_PHOTOS = 5
 
+export type PhotoWarning = 'dark' | 'blurry' | 'lowres'
+
 export interface PhotoQuality {
   dark: boolean
   blurry: boolean
   lowRes: boolean
-  warnings: string[]
+  /** Machine-readable warning codes — the UI maps them to translated text. */
+  warnings: PhotoWarning[]
   averageLuma: number
   variance: number
   minDim: number
@@ -28,7 +31,7 @@ export interface PreparedPhoto {
 
 /** Grayscale luma-weighted Laplacian-ish variance on a small downscaled canvas. */
 function gradeImage(bitmap: ImageBitmap): PhotoQuality {
-  const warnings: string[] = []
+  const warnings: PhotoWarning[] = []
   const sampleW = Math.min(128, bitmap.width)
   const sampleH = Math.min(128, bitmap.height)
   const canvas = document.createElement('canvas')
@@ -58,7 +61,7 @@ function gradeImage(bitmap: ImageBitmap): PhotoQuality {
   const averageLuma = sum / lum.length
 
   if (averageLuma < 35) {
-    warnings.push('The photo is too dark — move to stronger lighting and retake.')
+    warnings.push('dark')
   }
 
   // Top-5% brightest pixels' variance around their own mean ≈ sharp edge energy.
@@ -68,12 +71,12 @@ function gradeImage(bitmap: ImageBitmap): PhotoQuality {
   const variance = top.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (top.length || 1)
 
   if (variance < 20) {
-    warnings.push('The photo looks blurry — hold the camera steady and retake.')
+    warnings.push('blurry')
   }
 
   const minDim = Math.min(bitmap.width, bitmap.height)
   if (minDim < 400) {
-    warnings.push('The photo is low resolution — move closer to the label and retake.')
+    warnings.push('lowres')
   }
 
   return {

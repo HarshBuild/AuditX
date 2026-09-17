@@ -36,6 +36,8 @@ import {
 } from '../../lib/inspection'
 import { downloadInspectionReport } from '../../lib/pdf'
 import { formatDateTime, cn } from '../../utils/format'
+import { useLanguage } from '../../i18n/LanguageContext'
+import type { DictKey } from '../../i18n/en'
 
 const statusTone = (s: InspectionDoc['status']) =>
   s === 'compliant' ? 'emerald' : s === 'needs_review' ? 'amber' : s === 'violation' ? 'rose' : 'rose'
@@ -43,7 +45,7 @@ const statusTone = (s: InspectionDoc['status']) =>
 const findingTone = (f: Finding) =>
   f.status === 'compliant' ? 'emerald' : f.status === 'na' ? 'slate' : f.status === 'needs_review' ? 'amber' : 'rose'
 
-function ScoreRing({ score, status }: { score: number; status: InspectionDoc['status'] }) {
+function ScoreRing({ score, status, statusLabel }: { score: number; status: InspectionDoc['status']; statusLabel?: string }) {
   const color = status === 'compliant' ? '#10b981' : status === 'needs_review' ? '#f59e0b' : '#ef4444'
   const r = 54
   const c = 2 * Math.PI * r
@@ -56,16 +58,10 @@ function ScoreRing({ score, status }: { score: number; status: InspectionDoc['st
       </svg>
       <div className="absolute text-center">
         <div className="text-3xl font-extrabold text-ink-text dark:text-white">{score}<span className="text-base font-semibold text-slate-400">/100</span></div>
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{status}</div>
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{statusLabel ?? status}</div>
       </div>
     </div>
   )
-}
-
-interface DetailRow {
-  key: string
-  label: string
-  value: string
 }
 
 interface DetailRow {
@@ -84,14 +80,6 @@ const ADJ_TONE: Record<AdjudicatedField['status'], 'emerald' | 'amber' | 'rose' 
   CONFLICT: 'rose',
   NOT_DETECTED: 'slate',
   LOW_CONFIDENCE: 'amber',
-}
-
-const ADJ_LABEL: Record<AdjudicatedField['status'], string> = {
-  VERIFIED: 'Verified',
-  NEEDS_REVIEW: 'Needs review',
-  CONFLICT: 'Conflict',
-  NOT_DETECTED: 'Not detected',
-  LOW_CONFIDENCE: 'Low confidence',
 }
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -120,6 +108,14 @@ function VerificationSection({
   retryBusy: boolean
 }) {
   const v: VerificationSummary | null | undefined = doc.verification
+  const { t: vt } = useLanguage()
+  const ADJ_LABEL: Record<AdjudicatedField['status'], string> = {
+    VERIFIED: vt('result.stVerified'),
+    NEEDS_REVIEW: vt('result.stReview'),
+    CONFLICT: vt('result.stConflict'),
+    NOT_DETECTED: vt('result.stMissing'),
+    LOW_CONFIDENCE: vt('result.stLow'),
+  }
   const [filter, setFilter] = useState<VerFilter>('all')
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [evidenceField, setEvidenceField] = useState<AdjudicatedField | null>(null)
@@ -172,13 +168,13 @@ function VerificationSection({
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-ink-text dark:text-white">Multi-AI Evidence Verification &amp; Adjudication</h2>
+          <h2 className="text-base font-bold text-ink-text dark:text-white">{vt('result.verTitle')}</h2>
           <p className="mt-1 text-xs text-ink-text-soft dark:text-navy-300">
             Field-by-field triangulation across {v.reports.map((r) => reportTitle(r.name, r.provider)).join(', ')}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-lg bg-white px-2.5 py-1 shadow-sm dark:bg-navy-950">
-              Trust score <span className="font-bold text-ink-text dark:text-white">{v.trust_score}/100</span>
+              {vt('result.verTrust')} <span className="font-bold text-ink-text dark:text-white">{v.trust_score}/100</span>
             </span>
             {v.reports.map((r) => (
               <span key={r.name} className="rounded-lg bg-white px-2.5 py-1 shadow-sm dark:bg-navy-950" title={r.ok ? `${r.engines.join('+') || r.provider}` : (r.error ?? 'unavailable')}>
@@ -190,13 +186,13 @@ function VerificationSection({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" icon={<Eye className="h-4 w-4" />} onClick={() => setRawOpen(true)}>
-            Inspect Raw Evidence
+            {vt('result.verRawBtn')}
           </Button>
           <Button variant="outline" size="sm" loading={retryBusy} icon={<RefreshCw className="h-4 w-4" />} onClick={onRetry}>
-            Re-run Verification
+            {vt('result.verRerunBtn')}
           </Button>
           <Button variant="outline" size="sm" icon={<GitCompareArrows className="h-4 w-4" />} onClick={gotoConflicts}>
-            View Conflicts
+            {vt('result.verConflictsBtn')}
           </Button>
         </div>
       </div>
@@ -211,11 +207,11 @@ function VerificationSection({
       {/* Summary cards */}
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
-          { label: 'Verified fields', value: counts?.verified ?? 0, cls: 'text-emerald-600 dark:text-emerald-400' },
-          { label: 'Uncertain / low conf', value: (counts?.needs_review ?? 0) + (counts?.low_confidence ?? 0), cls: 'text-amber-600 dark:text-amber-400' },
-          { label: 'Conflicts resolved', value: counts?.resolved ?? 0, cls: 'text-sky-600 dark:text-sky-400' },
-          { label: 'AI disagreements', value: counts?.disagreements ?? 0, cls: 'text-rose-600 dark:text-rose-400' },
-          { label: 'Not detected', value: counts?.not_detected ?? 0, cls: 'text-slate-500 dark:text-slate-300' },
+          { label: vt('result.verCardVerified'), value: counts?.verified ?? 0, cls: 'text-emerald-600 dark:text-emerald-400' },
+          { label: vt('result.verCardUncertain'), value: (counts?.needs_review ?? 0) + (counts?.low_confidence ?? 0), cls: 'text-amber-600 dark:text-amber-400' },
+          { label: vt('result.verCardResolved'), value: counts?.resolved ?? 0, cls: 'text-sky-600 dark:text-sky-400' },
+          { label: vt('result.verCardDisagree'), value: counts?.disagreements ?? 0, cls: 'text-rose-600 dark:text-rose-400' },
+          { label: vt('result.verCardMissing'), value: counts?.not_detected ?? 0, cls: 'text-slate-500 dark:text-slate-300' },
         ].map((c) => (
           <div key={c.label} className="rounded-xl bg-white p-3 text-center shadow-sm dark:bg-navy-950">
             <div className={cn('text-2xl font-extrabold', c.cls)}>{c.value}</div>
@@ -233,35 +229,35 @@ function VerificationSection({
         >
           <TriangleAlert className="h-4 w-4 shrink-0 text-rose-500" />
           <span className="text-xs text-ink-text dark:text-slate-200">
-            <span className="font-bold text-rose-600 dark:text-rose-400">⚠ {decimalConflicts.length} Decimal Conflict(s)</span>
+            <span className="font-bold text-rose-600 dark:text-rose-400">⚠ {decimalConflicts.length} {vt('result.verDecimal')}</span>
             {' — '}
-            {decimalConflicts.map((f) => f.label).join(', ')}. Values differ by a factor of 10 — possible decimal error. Tap to inspect.
+            {decimalConflicts.map((f) => f.label).join(', ')}. {vt('result.verDecimalMsg')}
           </span>
         </button>
       )}
 
       {/* Filters */}
       <div ref={tableRef} className="mt-4 flex flex-wrap items-center gap-2 scroll-mt-24">
-        {filterBtn('all', 'All Fields', counts?.total ?? fields.length)}
-        {filterBtn('conflicts', 'Discrepancies & Conflicts', fields.filter((f) => f.status === 'CONFLICT' || f.conflicting_reports.length > 0).length)}
-        {filterBtn('verified', 'Verified Only', counts?.verified ?? 0)}
-        {filterBtn('review', 'Needs Review', (counts?.needs_review ?? 0) + (counts?.low_confidence ?? 0) + (counts?.conflict ?? 0))}
-        {filterBtn('notdetected', 'Not Detected', counts?.not_detected ?? 0)}
-        <span className="ml-auto text-xs text-slate-400">Showing {filtered.length} fields</span>
+        {filterBtn('all', vt('result.filterAll'), counts?.total ?? fields.length)}
+        {filterBtn('conflicts', vt('result.filterConflicts'), fields.filter((f) => f.status === 'CONFLICT' || f.conflicting_reports.length > 0).length)}
+        {filterBtn('verified', vt('result.filterVerified'), counts?.verified ?? 0)}
+        {filterBtn('review', vt('result.filterReview'), (counts?.needs_review ?? 0) + (counts?.low_confidence ?? 0) + (counts?.conflict ?? 0))}
+        {filterBtn('notdetected', vt('result.filterMissing'), counts?.not_detected ?? 0)}
+        <span className="ml-auto text-xs text-slate-400">{vt('result.showing', { n: filtered.length })}</span>
       </div>
 
       {/* Comparison table */}
       <div className="mt-3 overflow-hidden rounded-xl border border-line dark:border-white/10">
         <div className="hidden grid-cols-[150px_1.2fr_1fr_1fr_1fr_44px] gap-2 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 md:grid dark:bg-navy-950 dark:text-navy-400">
-          <span>Field</span>
-          <span>Final adjudicated</span>
+          <span>{vt('result.colField')}</span>
+          <span>{vt('result.colFinal')}</span>
           {v.reports.map((r) => (
             <span key={r.name}>{reportTitle(r.name, r.provider)}</span>
           ))}
-          <span>Details</span>
+          <span>{vt('result.colDetails')}</span>
         </div>
         {filtered.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-slate-400">No fields match this filter.</p>
+          <p className="px-3 py-6 text-center text-sm text-slate-400">{vt('result.noFilterMatch')}</p>
         )}
         {filtered.map((f) => {
           const open = openKey === f.key
@@ -269,19 +265,19 @@ function VerificationSection({
             <div key={f.key} className="border-t border-line first:border-t-0 dark:border-white/5">
               <div className="grid gap-2 px-3 py-3 md:grid-cols-[150px_1.2fr_1fr_1fr_1fr_44px] md:items-start">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Field</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">{vt('result.colField')}</div>
                   <div className="text-sm font-semibold text-ink-text dark:text-slate-100">{f.label}</div>
                   <div className="font-mono text-[10px] text-slate-400">{f.key}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Final adjudicated</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">{vt('result.colFinal')}</div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <ToneBadge tone={ADJ_TONE[f.status]}>{ADJ_LABEL[f.status]}</ToneBadge>
                     <span className="text-xs font-bold text-ink-text dark:text-white">{Math.round(f.confidence * 100)}%</span>
                   </div>
                   <div className="mt-1 break-words text-sm font-medium text-ink-text dark:text-slate-200">{f.final_value ?? '—'}</div>
                   {f.supporting_reports.length > 0 && (
-                    <div className="mt-0.5 text-[11px] text-slate-400">Source: {f.supporting_reports.join(' + ')}</div>
+                    <div className="mt-0.5 text-[11px] text-slate-400">{vt('result.source')} {f.supporting_reports.join(' + ')}</div>
                   )}
                 </div>
                 {v.reports.map((r) => {
@@ -305,7 +301,7 @@ function VerificationSection({
                 <div className="flex md:justify-end">
                   <button
                     type="button"
-                    aria-label={open ? 'Collapse details' : 'Expand details'}
+                    aria-label={open ? vt('result.collapse') : vt('result.expand')}
                     onClick={() => setOpenKey(open ? null : f.key)}
                     className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-text-soft hover:border-line-strong dark:border-white/10 dark:text-navy-300"
                   >
@@ -318,7 +314,7 @@ function VerificationSection({
                 <div className="border-t border-dashed border-line bg-slate-50/60 px-3 py-3 dark:border-white/10 dark:bg-navy-950/60">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">All model outputs</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{vt('result.allOutputs')}</p>
                       <ul className="mt-1.5 space-y-1.5">
                         {f.votes.map((vt, i) => (
                           <li key={i} className="text-xs text-ink-text dark:text-slate-200">
@@ -331,16 +327,16 @@ function VerificationSection({
                             )}
                           </li>
                         ))}
-                        {f.votes.length === 0 && <li className="text-xs text-slate-400">No report read this field.</li>}
+                        {f.votes.length === 0 && <li className="text-xs text-slate-400">{vt('result.noVotes')}</li>}
                       </ul>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-navy-300">
-                        {f.similarity != null && <span className="rounded bg-white px-2 py-0.5 shadow-sm dark:bg-navy-900">similarity {Math.round(f.similarity * 100)}%</span>}
-                        <span className="rounded bg-white px-2 py-0.5 shadow-sm dark:bg-navy-900">method: {f.verification_method}</span>
-                        {f.decimal_conflict && <span className="rounded bg-rose-500/10 px-2 py-0.5 font-semibold text-rose-600 dark:text-rose-400">decimal conflict ×10</span>}
+                        {f.similarity != null && <span className="rounded bg-white px-2 py-0.5 shadow-sm dark:bg-navy-900">{vt('result.similarity')} {Math.round(f.similarity * 100)}%</span>}
+                        <span className="rounded bg-white px-2 py-0.5 shadow-sm dark:bg-navy-900">{vt('result.method')} {f.verification_method}</span>
+                        {f.decimal_conflict && <span className="rounded bg-rose-500/10 px-2 py-0.5 font-semibold text-rose-600 dark:text-rose-400">{vt('result.decimalTag')}</span>}
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Adjudication decision</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{vt('result.decision')}</p>
                       <p className="mt-1.5 text-xs leading-relaxed text-ink-text dark:text-slate-200">{f.reasoning}</p>
                       {f.evidence_text && (
                         <p className="mt-1.5 text-[11px] text-slate-500 dark:text-navy-300">
@@ -350,10 +346,10 @@ function VerificationSection({
                       )}
                       <div className="mt-2.5 flex flex-wrap gap-2">
                         <Button variant="outline" size="sm" icon={<Eye className="h-3.5 w-3.5" />} onClick={() => { setImgDims(null); setEvidenceField(f) }}>
-                          View Evidence
+                          {vt('result.viewEvidence')}
                         </Button>
                         <Button variant="outline" size="sm" loading={retryBusy} icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={onRetry}>
-                          Re-scan field
+                          {vt('result.rescan')}
                         </Button>
                       </div>
                     </div>
@@ -365,7 +361,7 @@ function VerificationSection({
         })}
       </div>
       <p className="mt-2 text-[11px] text-slate-400">
-        Adjudicated {v.adjudicated_at ? new Date(v.adjudicated_at).toLocaleString() : ''} · Trust score is evidence-based (model agreement, OCR confidence, evidence availability) — never a single model's number alone.
+        {vt('result.adjudicatedOn')} {v.adjudicated_at ? new Date(v.adjudicated_at).toLocaleString() : ''} · {vt('result.trustNote')}
       </p>
 
       {/* Evidence modal */}
@@ -377,12 +373,12 @@ function VerificationSection({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-ink-text dark:text-white">Evidence — {evidenceField.label}</h3>
+                <h3 className="text-sm font-bold text-ink-text dark:text-white">{vt('result.evidenceFor')} {evidenceField.label}</h3>
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-navy-300">
                   {evidenceField.final_value ?? '—'} · {Math.round(evidenceField.confidence * 100)}% · {ADJ_LABEL[evidenceField.status]}
                 </p>
               </div>
-              <button type="button" aria-label="Close" onClick={() => setEvidenceField(null)} className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/10">
+              <button type="button" aria-label={vt('result.close')} onClick={() => setEvidenceField(null)} className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/10">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -408,10 +404,10 @@ function VerificationSection({
               </div>
             ) : (
               <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-navy-950 dark:text-navy-300">
-                The source photo is not stored for this scan (photo persistence unavailable) — the extracted text and per-report readings below are the evidence record.
+                {vt('result.noPhoto')}
               </p>
             )}
-            <p className="mt-2 text-[11px] text-slate-400">Region highlight is approximate (scaled from the OCR working resolution).</p>
+            <p className="mt-2 text-[11px] text-slate-400">{vt('result.regionApprox')}</p>
             <ul className="mt-3 space-y-1.5">
               {evidenceField.votes.map((vt, i) => (
                 <li key={i} className="text-xs text-ink-text dark:text-slate-200">
@@ -435,10 +431,10 @@ function VerificationSection({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-ink-text dark:text-white">Raw Evidence</h3>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-navy-300">Original photos, detected regions and the extracted transcript.</p>
+                <h3 className="text-sm font-bold text-ink-text dark:text-white">{vt('result.rawEvTitle')}</h3>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-navy-300">{vt('result.rawEvSub')}</p>
               </div>
-              <button type="button" aria-label="Close" onClick={() => setRawOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/10">
+              <button type="button" aria-label={vt('result.close')} onClick={() => setRawOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/10">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -451,9 +447,9 @@ function VerificationSection({
                 ) : null)}
               </div>
             ) : (
-              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-navy-950">No stored photos for this scan.</p>
+              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-navy-950">{vt('result.noStoredPhotos')}</p>
             )}
-            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Detected regions ({(doc.ocr_regions ?? []).length})</p>
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">{vt('result.regions')} ({(doc.ocr_regions ?? []).length})</p>
             <ul className="mt-1.5 max-h-48 space-y-1 overflow-auto">
               {(doc.ocr_regions ?? []).map((r, i) => {
                 const reg = r as { text?: unknown; conf?: unknown } | null
@@ -465,9 +461,9 @@ function VerificationSection({
                   </li>
                 )
               })}
-              {(doc.ocr_regions ?? []).length === 0 && <li className="text-xs text-slate-400">No region data.</li>}
+              {(doc.ocr_regions ?? []).length === 0 && <li className="text-xs text-slate-400">{vt('result.noRegions')}</li>}
             </ul>
-            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Raw transcript</p>
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">{vt('result.rawTranscript')}</p>
             <pre className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-navy-950 dark:text-slate-400">
               {doc.ocr_text ?? '—'}
             </pre>
@@ -482,6 +478,7 @@ export default function ScanResultPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { t } = useLanguage()
 
   const [doc, setDoc] = useState<InspectionDoc | null>(null)
   const [loading, setLoading] = useState(true)
@@ -546,41 +543,41 @@ export default function ScanResultPage() {
 
   const details: DetailRow[] = useMemo(() => {
     const f = doc?.ocr_fields ?? {}
-    const rows: Array<[string, string]> = [
-      ['commodity_name', 'Product name'],
-      ['brand', 'Brand'],
-      ['manufacturer', 'Manufacturer / packer / importer'],
-      ['net_quantity', 'Net quantity'],
-      ['mrp', 'MRP'],
-      ['batch_no', 'Batch / lot number'],
-      ['mfg_date', 'Manufacturing date'],
-      ['expiry_date', 'Expiry / best-before date'],
-      ['ingredients_text', 'Ingredients'],
-      ['allergen_info', 'Allergen information'],
-      ['required_declarations', 'Required declarations'],
-      ['warnings', 'Warnings'],
-      ['certification_details', 'Certification / standard marking'],
-      ['country_of_origin', 'Country of origin'],
-      ['storage_conditions', 'Storage conditions'],
-      ['customer_care_details', 'Customer care'],
-      ['contact_info', 'Contact information'],
-      ['imported_manufacturer_detail', 'Importer detail'],
+    const rows: Array<[string, DictKey]> = [
+      ['commodity_name', 'field.commodity_name'],
+      ['brand', 'field.brand'],
+      ['manufacturer', 'field.manufacturer'],
+      ['net_quantity', 'field.net_quantity'],
+      ['mrp', 'field.mrp'],
+      ['batch_no', 'field.batch_no'],
+      ['mfg_date', 'field.mfg_date'],
+      ['expiry_date', 'field.expiry_date'],
+      ['ingredients_text', 'field.ingredients_text'],
+      ['allergen_info', 'field.allergen_info'],
+      ['required_declarations', 'field.required_declarations'],
+      ['warnings', 'field.warnings'],
+      ['certification_details', 'field.certification_details'],
+      ['country_of_origin', 'field.country_of_origin'],
+      ['storage_conditions', 'field.storage_conditions'],
+      ['customer_care_details', 'field.customer_care_details'],
+      ['contact_info', 'field.contact_info'],
+      ['imported_manufacturer_detail', 'field.imported_manufacturer_detail'],
     ]
     return rows
-      .map(([key, label]) => ({ key, label, value: f[key] ?? '' }))
+      .map(([key, labelKey]) => ({ key, label: t(labelKey), value: f[key] ?? '' }))
       .filter((r) => r.value)
-  }, [doc])
+  }, [doc, t])
 
   const onRetry = async () => {
     if (!id) return
     setBusy(true)
     try {
       const res = await retryAnalysis(id)
-      if (!res.ok) throw new Error(res.error ?? 'Retry failed.')
-      toast('info', 'Analysis running', 'Refreshing the report in a moment…')
+      if (!res.ok) throw new Error(res.error ?? t('result.retryFail'))
+      toast('info', t('result.retryRunning'), t('result.retryMsg'))
       await load()
     } catch (e) {
-      toast('error', 'Retry failed', (e as Error).message)
+      toast('error', t('result.retryFail'), (e as Error).message)
     } finally {
       setBusy(false)
     }
@@ -592,9 +589,9 @@ export default function ScanResultPage() {
     try {
       await verifyChanges(id, true)
       await load()
-      toast('success', 'Changes verified', 'The label-change review has been marked as verified.')
+      toast('success', t('result.verifyOk'), t('result.verifyOkMsg'))
     } catch (e) {
-      toast('error', 'Could not verify', (e as Error).message)
+      toast('error', t('result.verifyFail'), (e as Error).message)
     } finally {
       setVerifying(false)
     }
@@ -605,9 +602,9 @@ export default function ScanResultPage() {
     setSavingRemarks(true)
     try {
       await saveRemarks(id, remarks)
-      toast('success', 'Remarks saved', '')
+      toast('success', t('result.remarksOk'), '')
     } catch (e) {
-      toast('error', 'Could not save remarks', (e as Error).message)
+      toast('error', t('result.remarksFail'), (e as Error).message)
     } finally {
       setSavingRemarks(false)
     }
@@ -617,9 +614,9 @@ export default function ScanResultPage() {
     if (!doc) return
     try {
       await downloadInspectionReport(doc)
-      toast('success', 'Report downloaded', '')
+      toast('success', t('result.pdfOk'), '')
     } catch (e) {
-      toast('error', 'Could not generate PDF', (e as Error).message)
+      toast('error', t('result.pdfFail'), (e as Error).message)
     }
   }
 
@@ -629,7 +626,7 @@ export default function ScanResultPage() {
       <div className="grid min-h-[60vh] place-items-center">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-brand-500" />
-          <p className="mt-3 text-sm text-ink-text-soft dark:text-navy-300">Loading the inspection…</p>
+          <p className="mt-3 text-sm text-ink-text-soft dark:text-navy-300">{t('result.loading')}</p>
         </div>
       </div>
     )
@@ -640,12 +637,12 @@ export default function ScanResultPage() {
       <div className="grid min-h-[60vh] place-items-center px-4">
         <div className="max-w-sm text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-rose-500" />
-          <h1 className="mt-4 text-lg font-bold text-ink-text dark:text-white">Inspection not found</h1>
+          <h1 className="mt-4 text-lg font-bold text-ink-text dark:text-white">{t('result.notFound')}</h1>
           <p className="mt-1 text-sm text-ink-text-soft dark:text-navy-300">
-            This inspection may no longer exist or you do not have access to it.
+            {t('result.notFoundMsg')}
           </p>
           <Button className="mt-5" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/scan-history')}>
-            Back to history
+            {t('result.backToHistory')}
           </Button>
         </div>
       </div>
@@ -663,24 +660,24 @@ export default function ScanResultPage() {
           <Loader2 className="mx-auto h-10 w-10 animate-spin text-brand-500" />
         )}
         <h1 className="mt-4 text-xl font-bold text-ink-text dark:text-white">
-          {failed ? 'The analysis could not read this label' : 'Analyzing the label…'}
+          {failed ? t('result.readFailTitle') : t('result.analyzingTitle')}
         </h1>
         <p className="mx-auto mt-2 max-w-md text-sm text-ink-text-soft dark:text-navy-300">
           {failed
-            ? (doc.ocr_error ?? 'An unexpected error stopped the analysis.')
-            : 'Reading the photos and checking the label against the applicable declarations. This usually takes a few seconds.'}
+            ? (doc.ocr_error ?? t('result.readFailDefault'))
+            : t('result.analyzingMsg')}
         </p>
         <p className="mt-3 text-xs text-slate-400">
-          Scanned <span className="font-medium text-slate-500 dark:text-navy-300">{formatDateTime(doc.created_at)}</span>
+          {t('result.scanned')} <span className="font-medium text-slate-500 dark:text-navy-300">{formatDateTime(doc.created_at)}</span>
         </p>
         <div className="mt-6 flex items-center justify-center gap-3">
           {failed && (
             <Button loading={busy} icon={<RefreshCw className="h-4 w-4" />} onClick={() => void onRetry()}>
-              Retry analysis
+              {t('result.retry')}
             </Button>
           )}
           <Button variant="outline" icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
-            New scan
+            {t('result.newScan')}
           </Button>
         </div>
       </div>
@@ -691,6 +688,17 @@ export default function ScanResultPage() {
   const score = doc.compliance_score ?? doc.overall_score ?? 0
   const status = doc.status
   const verified = doc.changes_verified ?? false
+  const statusText =
+    status === 'compliant' ? t('history.tabCompliant')
+    : status === 'needs_review' ? t('history.tabReview')
+    : status === 'violation' ? t('history.tabViolation')
+    : t('history.tabCritical')
+  const findingText = (s: Finding['status']): string =>
+    s === 'compliant' ? t('result.passed')
+    : s === 'needs_review' ? t('result.review')
+    : s === 'failed' ? t('result.failed')
+    : s === 'critical_failed' ? t('result.critical')
+    : t('result.na')
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:py-8">
@@ -698,14 +706,14 @@ export default function ScanResultPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate(-1)}>
-            Back
+            {t('result.back')}
           </Button>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold text-ink-text dark:text-white">
-                {doc.product_name || 'Product label inspection'}
+                {doc.product_name || t('result.fallbackTitle')}
               </h1>
-              <ToneBadge tone={statusTone(status)}>{status}</ToneBadge>
+              <ToneBadge tone={statusTone(status)}>{statusText}</ToneBadge>
             </div>
             <p className="text-xs text-ink-text-soft dark:text-navy-300">
               {formatDateTime(doc.analyzed_at ?? doc.created_at)} · {doc.ocr_language ?? 'en'} · engine {doc.ocr_provider ?? 'unknown'}
@@ -715,11 +723,11 @@ export default function ScanResultPage() {
         <div className="flex items-center gap-2">
           {doc.photo_paths && doc.photo_paths.length > 0 && (
             <Button variant="outline" size="sm" icon={<FileText className="h-4 w-4" />} onClick={() => void onDownloadPdf()}>
-              PDF
+              {t('result.pdf')}
             </Button>
           )}
           <Button variant="outline" size="sm" icon={<ScanLine className="h-4 w-4" />} onClick={() => navigate('/scan-product')}>
-            New scan
+            {t('result.newScan')}
           </Button>
         </div>
       </div>
@@ -727,38 +735,38 @@ export default function ScanResultPage() {
       {/* Hero + score */}
       <section className="grid gap-4 lg:grid-cols-[220px_1fr]">
         <div className="flex flex-col items-center justify-center rounded-2xl border border-line bg-white/60 p-4 dark:border-white/10 dark:bg-navy-900/60">
-          <ScoreRing score={score} status={status} />
+          <ScoreRing score={score} status={status} statusLabel={statusText} />
           <p className="mt-3 text-center text-xs text-ink-text-soft dark:text-navy-300">
             {doc.product_name
-              ? `${findings.length ? `${findings.length} checks · ` : ''}${doc.category === 'non_edible' ? 'non-edible' : 'edible'}`
-              : 'Label inspection'}
+              ? `${findings.length ? `${findings.length} ${t('result.checks')} · ` : ''}${doc.category === 'non_edible' ? t('result.nonEdible') : t('result.edible')}`
+              : t('result.labelInspection')}
           </p>
         </div>
         <div className="rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Summary</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.summary')}</h2>
           <p className="mt-2 text-sm leading-relaxed text-ink-text dark:text-slate-100">
-            {doc.summary ?? 'The report is ready.'}
+            {doc.summary ?? t('result.readyFallback')}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <div className="rounded-xl bg-emerald-500/10 p-3 text-center">
               <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{counts.passed}</div>
-              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Passed</div>
+              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.passed')}</div>
             </div>
             <div className="rounded-xl bg-amber-500/10 p-3 text-center">
               <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{counts.review}</div>
-              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Review</div>
+              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.review')}</div>
             </div>
             <div className="rounded-xl bg-rose-500/10 p-3 text-center">
               <div className="text-lg font-bold text-rose-600 dark:text-rose-400">{counts.failed}</div>
-              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Failed</div>
+              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.failed')}</div>
             </div>
             <div className="rounded-xl bg-rose-500/10 p-3 text-center">
               <div className="text-lg font-bold text-rose-700 dark:text-rose-500">{counts.criticalFailed}</div>
-              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Critical</div>
+              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.critical')}</div>
             </div>
             <div className="rounded-xl bg-slate-500/10 p-3 text-center">
               <div className="text-lg font-bold text-slate-500 dark:text-slate-300">{counts.na}</div>
-              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">N/A</div>
+              <div className="text-[10px] uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.na')}</div>
             </div>
           </div>
         </div>
@@ -770,7 +778,7 @@ export default function ScanResultPage() {
       {/* How the score is calculated — rule-by-rule, real numbers */}
       <details className="mt-4 rounded-2xl border border-line bg-white/60 px-5 py-4 dark:border-white/10 dark:bg-navy-900/60">
         <summary className="cursor-pointer text-sm font-semibold text-ink-text dark:text-slate-100">
-          How is {score}/100 calculated? <span className="font-normal text-slate-400">— rule-by-rule breakdown</span>
+          {t('result.scoreHow', { score })} <span className="font-normal text-slate-400">{t('result.scoreHowSub')}</span>
         </summary>
         {doc.compliance_breakdown ? (
           <div className="mt-3">
@@ -780,39 +788,36 @@ export default function ScanResultPage() {
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
               <div className="rounded-lg bg-emerald-500/10 px-3 py-2">
                 <div className="font-bold text-emerald-600 dark:text-emerald-400">+{doc.compliance_breakdown.passed_points}</div>
-                <div className="text-slate-500 dark:text-navy-300">{doc.compliance_breakdown.passed} passed × 100</div>
+                <div className="text-slate-500 dark:text-navy-300">{t('result.calcPassed', { n: doc.compliance_breakdown.passed })}</div>
               </div>
               <div className="rounded-lg bg-amber-500/10 px-3 py-2">
                 <div className="font-bold text-amber-600 dark:text-amber-400">+{doc.compliance_breakdown.review_points}</div>
-                <div className="text-slate-500 dark:text-navy-300">{doc.compliance_breakdown.review} review × 70</div>
+                <div className="text-slate-500 dark:text-navy-300">{t('result.calcReview', { n: doc.compliance_breakdown.review })}</div>
               </div>
               <div className="rounded-lg bg-rose-500/10 px-3 py-2">
                 <div className="font-bold text-rose-600 dark:text-rose-400">−{doc.compliance_breakdown.fail_penalty}</div>
-                <div className="text-slate-500 dark:text-navy-300">{doc.compliance_breakdown.failed + doc.compliance_breakdown.critical_failed} failed × 15</div>
+                <div className="text-slate-500 dark:text-navy-300">{t('result.calcFailed', { n: doc.compliance_breakdown.failed + doc.compliance_breakdown.critical_failed })}</div>
               </div>
               <div className="rounded-lg bg-slate-500/10 px-3 py-2">
                 <div className="font-bold text-slate-600 dark:text-slate-300">÷ {doc.compliance_breakdown.applicable}</div>
-                <div className="text-slate-500 dark:text-navy-300">applicable checks{doc.compliance_breakdown.na_excluded > 0 ? ` (${doc.compliance_breakdown.na_excluded} N/A excluded)` : ''}</div>
+                <div className="text-slate-500 dark:text-navy-300">{t('result.calcApplicable')}{doc.compliance_breakdown.na_excluded > 0 ? ` ${t('result.calcNaExcluded', { n: doc.compliance_breakdown.na_excluded })}` : ''}</div>
               </div>
               <div className="rounded-lg bg-slate-500/10 px-3 py-2">
                 <div className="font-bold text-slate-600 dark:text-slate-300">{doc.compliance_breakdown.raw_score} → {doc.compliance_breakdown.final_score}</div>
-                <div className="text-slate-500 dark:text-navy-300">raw{doc.compliance_breakdown.clamped ? ' → clamped to verdict band' : ''}</div>
+                <div className="text-slate-500 dark:text-navy-300">{t('result.calcRaw')}{doc.compliance_breakdown.clamped ? ` ${t('result.calcClamped')}` : ''}</div>
               </div>
               <div className="rounded-lg bg-brand-500/10 px-3 py-2">
                 <div className="font-bold text-brand-600 dark:text-brand-400">{doc.compliance_breakdown.band}</div>
-                <div className="text-slate-500 dark:text-navy-300">verdict band</div>
+                <div className="text-slate-500 dark:text-navy-300">{t('result.calcBand')}</div>
               </div>
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-              Each rule above (see Compliance breakdown) contributes its status. N/A means the check does not apply
-              (e.g. allergen rule on allergen-free food) — it is excluded, never counted as failure. A failing check
-              caps the band: critical can never score above 49, violation never above 74.
+              {t('result.calcExplainer')}
             </p>
           </div>
         ) : (
           <p className="mt-2 text-xs text-slate-400">
-            Rule counts for this report: {counts.passed} passed · {counts.review} review · {counts.failed} failed ·{' '}
-            {counts.criticalFailed} critical · {counts.na} N/A. Formula: [100×(passed) + 70×(review)] ÷ applicable − 15×(failed).
+            {t('result.formulaFallback', { p: counts.passed, r: counts.review, f: counts.failed, c: counts.criticalFailed, n: counts.na })}
           </p>
         )}
       </details>
@@ -820,9 +825,9 @@ export default function ScanResultPage() {
       {/* Compliance breakdown */}
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-          Compliance breakdown
+          {t('result.bdTitle')}
         </h2>
-        <p className="mb-4 text-xs text-slate-400">Applicable checks run deterministically on the extracted label text.</p>
+        <p className="mb-4 text-xs text-slate-400">{t('result.bdSub')}</p>
         <div className="mb-1 flex h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-navy-800">
           <div className="bg-emerald-500" style={{ width: `${(counts.passed / Math.max(1, findings.length)) * 100}%` }} />
           <div className="bg-amber-500" style={{ width: `${(counts.review / Math.max(1, findings.length)) * 100}%` }} />
@@ -830,10 +835,10 @@ export default function ScanResultPage() {
         </div>
         <ul className="mt-4 space-y-2">
           {findings.map((f) => (
-            <li key={f.rule_id} className="flex items-start justify-between gap-3 rounded-xl border border-line px-3 py-2.5 dark:border-white/10">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <ToneBadge tone={findingTone(f)}>{f.status === 'critical_failed' ? 'critical' : f.status}</ToneBadge>
+              <li key={f.rule_id} className="flex items-start justify-between gap-3 rounded-xl border border-line px-3 py-2.5 dark:border-white/10">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <ToneBadge tone={findingTone(f)}>{findingText(f.status)}</ToneBadge>
                   <span className="truncate text-sm font-medium text-ink-text dark:text-slate-100">{f.label}</span>
                 </div>
                 {f.detected_value && (
@@ -851,9 +856,9 @@ export default function ScanResultPage() {
       {/* Product info + sources */}
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-          Product information
+          {t('result.prodInfo')}
         </h2>
-        <p className="mb-4 text-xs text-slate-400">Each value traces back to the photo and OCR block that produced it.</p>
+        <p className="mb-4 text-xs text-slate-400">{t('result.prodInfoSub')}</p>
         <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
           {details.map((r) => {
             const conf = doc.field_confidence?.[r.key]
@@ -880,22 +885,22 @@ export default function ScanResultPage() {
               </div>
             )
           })}
-          {details.length === 0 && <p className="text-sm text-slate-400">No label fields could be read confidently.</p>}
+          {details.length === 0 && <p className="text-sm text-slate-400">{t('result.noFields')}</p>}
         </div>
       </section>
 
       {/* Price & quantity */}
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-line bg-white/60 p-4 dark:border-white/10 dark:bg-navy-900/60">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">MRP</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.mrp')}</p>
           <p className="mt-1 text-lg font-bold text-ink-text dark:text-white">{doc.ocr_fields?.mrp || '—'}</p>
         </div>
         <div className="rounded-2xl border border-line bg-white/60 p-4 dark:border-white/10 dark:bg-navy-900/60">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Net quantity</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.netQty')}</p>
           <p className="mt-1 text-lg font-bold text-ink-text dark:text-white">{doc.ocr_fields?.net_quantity || '—'}</p>
         </div>
         <div className="rounded-2xl border border-line bg-white/60 p-4 dark:border-white/10 dark:bg-navy-900/60">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Batch / mfg / expiry</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.batchDates')}</p>
           <p className="mt-1 text-sm font-semibold text-ink-text dark:text-slate-100">
             {doc.ocr_fields?.batch_no || '—'} · {doc.ocr_fields?.mfg_date || '—'} · {doc.ocr_fields?.expiry_date || '—'}
           </p>
@@ -906,7 +911,7 @@ export default function ScanResultPage() {
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-            Change detection {doc.match_confidence ? `· ${doc.match_confidence.replace('_', ' ')}` : ''}
+            {t('result.changeTitle')} {doc.match_confidence ? `· ${doc.match_confidence.replace('_', ' ')}` : ''}
           </h2>
           {(doc.changes ?? []).length > 0 && (
             <Button
@@ -918,19 +923,19 @@ export default function ScanResultPage() {
               onClick={() => void onVerify()}
               disabled={verified}
             >
-              {verified ? 'Verified' : 'Mark as verified'}
+              {verified ? t('result.verified') : t('result.verify')}
             </Button>
           )}
         </div>
         {doc.match_confidence ? (
           <p className="mt-1 text-xs text-slate-400">
-            Compared against <button className="text-brand-500 underline" onClick={() => doc.previous_scan_id && navigate(`/scan-result/${doc.previous_scan_id}`)}>the previous scan</button> of the same product.
+            {t('result.prevScan')} <button className="text-brand-500 underline" onClick={() => doc.previous_scan_id && navigate(`/scan-result/${doc.previous_scan_id}`)}>{t('result.prevScanLink')}</button> {t('result.prevScanSuffix')}
           </p>
         ) : (
-          <p className="mt-1 text-xs text-slate-400">No previous scan of this product was found — this is the baseline reading.</p>
+          <p className="mt-1 text-xs text-slate-400">{t('result.noPrev')}</p>
         )}
         {(doc.changes ?? []).length === 0 ? (
-          <p className="mt-3 text-sm text-ink-text-soft dark:text-navy-300">No label declarations changed since the previous scan.</p>
+          <p className="mt-3 text-sm text-ink-text-soft dark:text-navy-300">{t('result.noChanges')}</p>
         ) : (
           <ul className="mt-4 space-y-2">
             {(doc.changes ?? []).map((c) => (
@@ -949,9 +954,9 @@ export default function ScanResultPage() {
       {/* Conflicts */}
       {(doc.conflicts ?? []).length > 0 && (
         <section className="mt-6 rounded-2xl border border-amber-500/40 bg-amber-500/5 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Conflicting readings</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">{t('result.conflicts')}</h2>
           <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
-            Different photos showed different values. Both are kept for human review — nothing was overwritten.
+            {t('result.conflictsMsg')}
           </p>
           <ul className="mt-3 space-y-2">
             {(doc.conflicts ?? []).map((c, i) => (
@@ -967,7 +972,7 @@ export default function ScanResultPage() {
       {/* Attention flags */}
       {findings.filter((f) => f.status !== 'compliant' && f.status !== 'na').length > 0 && (
         <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Attention needed</h2>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.attention')}</h2>
           <div className="space-y-2">
             {findings
               .filter((f) => f.status !== 'compliant' && f.status !== 'na')
@@ -980,7 +985,7 @@ export default function ScanResultPage() {
                   )}
                   <span className="text-ink-text dark:text-slate-200">
                     <span className="font-medium">{f.label}:</span> {f.explanation ?? f.status}
-                    {f.hint ? <span className="block text-xs text-slate-400">Hint: {f.hint}</span> : null}
+                    {f.hint ? <span className="block text-xs text-slate-400">{t('result.hintPrefix')} {f.hint}</span> : null}
                   </span>
                 </div>
               ))}
@@ -990,7 +995,7 @@ export default function ScanResultPage() {
 
       {/* OCR confidence */}
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">OCR confidence</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.ocrConf')}</h2>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           <span className="rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-navy-950">
             provider <span className="font-semibold text-ink-text dark:text-white">{doc.ocr_provider ?? 'unknown'}</span>
@@ -1001,21 +1006,21 @@ export default function ScanResultPage() {
             </span>
           )}
           <span className="rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-navy-950">
-            confidence{' '}
+            {t('result.confidence')}{' '}
             <span className="font-semibold text-ink-text dark:text-white">
               {doc.ocr_confidence != null ? `${Math.round(doc.ocr_confidence * 100)}%` : '—'}
             </span>
           </span>
-          <span className="text-xs text-slate-400">Raw transcript: {String(doc.ocr_text ?? '').length} chars</span>
+          <span className="text-xs text-slate-400">{t('result.rawChars', { n: String(doc.ocr_text ?? '').length })}</span>
         </div>
       </section>
 
       {/* Unclear / low-confidence text */}
       {doc.unclear_text && doc.unclear_text.length > 0 && (
         <section className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-50/60 p-5 dark:border-amber-500/20 dark:bg-amber-950/20">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Low-confidence / unclear text</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">{t('result.unclearTitle')}</h2>
           <p className="mt-1 text-xs text-amber-600/70 dark:text-amber-400/60">
-            These lines were detected by only one engine or had conflicting readings.
+            {t('result.unclearMsg')}
           </p>
           <ul className="mt-3 space-y-1.5 text-sm text-ink-text dark:text-slate-200">
             {doc.unclear_text.map((line, i) => (
@@ -1032,12 +1037,12 @@ export default function ScanResultPage() {
       <section className="mt-6 rounded-2xl border border-brand-500/30 bg-gradient-to-br from-brand-500/10 to-transparent p-5">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-brand-500" />
-          <h2 className="text-sm font-semibold text-ink-text dark:text-slate-100">Assistant briefing</h2>
+          <h2 className="text-sm font-semibold text-ink-text dark:text-slate-100">{t('result.briefing')}</h2>
         </div>
         <p className="mt-3 text-sm text-ink-text dark:text-slate-200">{doc.briefing?.summary ?? doc.summary}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Key points</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.keyPoints')}</p>
             <ul className="mt-2 space-y-1.5 text-sm text-ink-text dark:text-slate-200">
               {(doc.briefing?.key_points ?? []).map((k, i) => (
                 <li key={i} className="flex gap-2">
@@ -1048,7 +1053,7 @@ export default function ScanResultPage() {
             </ul>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Recommendations</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.recommendations')}</p>
             <ul className="mt-2 space-y-1.5 text-sm text-ink-text dark:text-slate-200">
               {(doc.briefing?.recommendations ?? []).map((r, i) => (
                 <li key={i} className="flex gap-2">
@@ -1065,14 +1070,14 @@ export default function ScanResultPage() {
       {photos.length > 0 && (
         <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
           <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-            Evidence photos ({photos.length})
+            {t('result.evidence')} ({photos.length})
           </h2>
-          <p className="mb-4 text-xs text-slate-400">Original label photos used for this inspection.</p>
+          <p className="mb-4 text-xs text-slate-400">{t('result.evidenceSub')}</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {photos.map((url, i) =>
               url ? (
                 <a key={i} href={url} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-xl border border-line dark:border-white/10">
-                  <img src={url} alt={`Evidence ${i + 1}`} className="h-36 w-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
+                  <img src={url} alt={`${t('result.evidenceAlt')} ${i + 1}`} className="h-36 w-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
                 </a>
               ) : null,
             )}
@@ -1084,7 +1089,7 @@ export default function ScanResultPage() {
       {doc.ocr_text && (
         <details className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
           <summary className="cursor-pointer text-sm font-semibold text-ink-text dark:text-slate-100">
-            Raw extracted text
+            {t('result.rawText')}
           </summary>
           <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-navy-950 dark:text-slate-400">
             {doc.ocr_text}
@@ -1096,7 +1101,7 @@ export default function ScanResultPage() {
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
         <div className="flex items-center gap-2">
           <MessageSquareText className="h-4 w-4 text-ink-text-soft dark:text-navy-300" />
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">Inspector remarks</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">{t('result.remarks')}</h2>
         </div>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <textarea
@@ -1104,10 +1109,10 @@ export default function ScanResultPage() {
             rows={3}
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
-            placeholder="Add a note for the inspector / audit trail…"
+            placeholder={t('result.remarksPh')}
           />
           <Button variant="outline" size="sm" className="sm:self-start" loading={savingRemarks} onClick={() => void onSaveRemarks()}>
-            Save
+            {t('result.remarksSave')}
           </Button>
         </div>
       </section>
@@ -1117,8 +1122,7 @@ export default function ScanResultPage() {
         <div className="flex items-start gap-2">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-ink-text-soft dark:text-navy-300" />
           <p className="text-xs leading-relaxed text-slate-500 dark:text-navy-300">
-            This report is generated from the text visible on the photographs. It is an automated, deterministic summary of the
-            label — not a legal certification. Verify anything relied upon against the physical product before acting.
+            {t('result.disclaimer')}
           </p>
         </div>
       </section>

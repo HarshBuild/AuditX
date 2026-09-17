@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { ToastProvider } from './components/ui/Toast'
+import { LanguageProvider } from './i18n/LanguageContext'
 import PwaInstallPrompt from './components/ui/PwaInstallPrompt'
 import { applyPlatformTag } from './lib/platform'
 import './index.css'
@@ -23,8 +24,10 @@ applyPlatformTag()
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ToastProvider>
-      <App />
-      <PwaInstallPrompt />
+      <LanguageProvider>
+        <App />
+        <PwaInstallPrompt />
+      </LanguageProvider>
     </ToastProvider>
   </React.StrictMode>,
 )

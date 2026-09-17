@@ -5,6 +5,8 @@ import ConfirmDialog from '../ui/ConfirmDialog'
 import NotificationsPanel from '../notifications/NotificationsPanel'
 import { cn } from '../../utils/format'
 import { useToast } from '../ui/Toast'
+import { useLanguage } from '../../i18n/LanguageContext'
+import type { DictKey } from '../../i18n/en'
 import { roleLabel, homePath, type Role, type UserProfile } from '../../lib/rbac'
 import { AuditXMark } from '../brand/AuditXMark'
 import Avatar from '../ui/Avatar'
@@ -36,6 +38,36 @@ export const PAGE_TITLES: Record<string, string> = {
   '/compliance-rules': 'Compliance Rules',
   '/activity-logs': 'Activity Logs',
   '/system-settings': 'System Settings',
+}
+
+/** Route path → translatable title key (falls back to PAGE_TITLES English). */
+const PAGE_TITLE_KEYS: Record<string, DictKey> = {
+  '/user-dashboard': 'title.dashboard',
+  '/scan-product': 'title.scanProduct',
+  '/scan-history': 'title.scanHistory',
+  '/my-reports': 'title.myReports',
+  '/profile': 'title.profile',
+  '/settings': 'title.settings',
+  '/notifications': 'title.notifications',
+  '/help': 'title.help',
+  '/inspector-dashboard': 'title.inspector',
+  '/admin/scans': 'title.adminScans',
+  '/admin/violations': 'title.adminViolations',
+  '/admin/reports': 'title.adminReports',
+  '/admin/evidence': 'title.adminEvidence',
+  '/admin/manufacturers': 'title.adminManufacturers',
+  '/admin/products': 'title.adminProducts',
+  '/admin/users': 'title.users',
+  '/admin/analytics': 'title.adminAnalytics',
+  '/admin/settings': 'title.adminSettings',
+  '/admin-dashboard': 'title.adminDashboard',
+  '/super-admin-dashboard': 'title.superAdmin',
+  '/admin-requests': 'title.adminRequests',
+  '/admin-management': 'title.adminManagement',
+  '/users': 'title.users',
+  '/compliance-rules': 'title.complianceRules',
+  '/activity-logs': 'title.activityLogs',
+  '/system-settings': 'title.systemSettings',
 }
 
 export function recordsPath(role: Role): string | null {
@@ -84,12 +116,14 @@ export default function Header({
   onLogout,
 }: HeaderProps) {
   const { toast } = useToast()
+  const { lang, setLang, t } = useLanguage()
   const [logoutOpen, setLogoutOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const navTimer = useRef<number | null>(null)
   const unread = notifications.filter((n) => n.unread).length
 
-  const title = pageTitle(path)
+  const titleKey = PAGE_TITLE_KEYS[path]
+  const title = titleKey ? t(titleKey) : pageTitle(path)
   const role: Role = profile?.role ?? 'user'
   const recPath = recordsPath(role)
 
@@ -142,7 +176,7 @@ export default function Header({
         </button>
         <div className="min-w-0 leading-tight">
           <p className="truncate text-sm font-bold text-ink-text dark:text-navy-50" title={title}>{title}</p>
-          <p className="hidden text-xs text-ink-text-faint sm:block dark:text-navy-400">Legal Metrology Suite</p>
+          <p className="hidden text-xs text-ink-text-faint sm:block dark:text-navy-400">{t('header.suite')}</p>
         </div>
       </div>
 
@@ -154,8 +188,8 @@ export default function Header({
             type="search"
             value={globalQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search records…"
-            aria-label="Global search"
+            placeholder={t('header.searchPlaceholder')}
+            aria-label={t('header.searchLabel')}
             className="h-10 w-full rounded-field border border-line bg-surface-secondary pl-9 pr-12 text-sm text-ink-text placeholder:text-ink-text-faint shadow-sm transition-all focus:border-transparent focus:bg-white focus:shadow-glow-sm focus:ring-2 focus:ring-brand-500 dark:border-white/10 dark:bg-navy-900/70 dark:text-navy-100 dark:placeholder:text-navy-400 dark:focus:bg-navy-900"
           />
           <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-control border border-line bg-surface px-1.5 py-0.5 text-2xs font-medium text-ink-text-faint lg:block dark:border-white/10 dark:bg-navy-900 dark:text-navy-400">
@@ -165,6 +199,28 @@ export default function Header({
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div
+          role="group"
+          aria-label={t('header.langLabel')}
+          className="flex h-9 items-center rounded-control border border-line text-xs font-bold dark:border-white/10"
+        >
+          {(['en', 'hi'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => setLang(l)}
+              aria-pressed={lang === l}
+              title={t('header.langLabel')}
+              className={`h-full rounded-control px-2 transition-colors ${
+                lang === l
+                  ? 'bg-brand-500 text-white'
+                  : 'text-ink-text-soft hover:bg-slate-100 dark:text-navy-300 dark:hover:bg-white/10'
+              }`}
+            >
+              {l === 'en' ? 'EN' : 'हिं'}
+            </button>
+          ))}
+        </div>
         <button
           onClick={onCycleTheme}
           aria-label={`Switch theme (currently ${resolvedDark ? 'dark' : 'light'})`}
@@ -213,16 +269,16 @@ export default function Header({
             </button>
           }
         >
-          <MenuHeader>Signed in as {profile?.email ?? '—'}</MenuHeader>
+          <MenuHeader>{t('header.signedInAs')} {profile?.email ?? '—'}</MenuHeader>
           <MenuItem icon={<SlidersHorizontal className="h-4 w-4" />} onClick={() => onNavigate(profilePath(role))}>
-            Profile & account
+            {t('header.profileAccount')}
           </MenuItem>
           <MenuItem icon={<HelpCircle className="h-4 w-4" />} onClick={() => onNavigate('/help')}>
-            Help & support
+            {t('header.helpSupport')}
           </MenuItem>
           <MenuDivider />
           <MenuItem icon={<LogOut className="h-4 w-4" />} danger onClick={() => setLogoutOpen(true)}>
-            Log out
+            {t('header.logout')}
           </MenuItem>
         </Dropdown>
       </div>
@@ -230,13 +286,13 @@ export default function Header({
       <ConfirmDialog
         open={logoutOpen}
         onClose={() => setLogoutOpen(false)}
-        title="Log out"
-        message="You will be signed out of AuditX."
-        confirmLabel="Log out"
+        title={t('header.logoutTitle')}
+        message={t('header.logoutMsg')}
+        confirmLabel={t('header.logout')}
         onConfirm={() => {
           setLogoutOpen(false)
           onLogout()
-          toast('info', 'Signed out', 'See you soon!')
+          toast('info', t('header.signedOut'), t('header.signedOutMsg'))
         }}
       />
     </header>
