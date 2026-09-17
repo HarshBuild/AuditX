@@ -103,6 +103,8 @@ export function normDate(v: string | null | undefined): string | null {
   const dmy = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/.exec(t)
   if (dmy) {
     let [, a, b, y] = dmy
+    // Two-digit years are everywhere on Indian labels ("12/06/25").
+    if (y.length === 2) y = Number(y) > 49 ? `19${y}` : `20${y}`
     let n: Date | null = null
     if (Number(a) > 12 && Number(a) <= 31) {
       n = new Date(Number(y), Number(b) - 1, Number(a))

@@ -102,7 +102,7 @@ export function canonicalNumeric(s: string): string | null {
   return `${numStr}${unit}`
 }
 
-/** Canonical date form: common IN formats → YYYYMMDD digits, else null. */
+/** Canonical date form: full dates → YYYYMMDD, month precision → YYYYMM, else null. */
 export function canonicalDate(s: string): string | null {
   const t = s.trim()
   let m = /^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/.exec(t)
@@ -115,10 +115,28 @@ export function canonicalDate(s: string): string | null {
   m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(t)
   if (m) {
     let [, d, mo, y] = m
-    if (y.length === 2) y = Number(y) > 30 ? `19${y}` : `20${y}`
+    if (y.length === 2) y = Number(y) > 49 ? `19${y}` : `20${y}`
     if (Number(mo) >= 1 && Number(mo) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
       return `${y}${mo.padStart(2, '0')}${d.padStart(2, '0')}`
     }
+  }
+  // Month precision ("05/2026", "May 2026") → YYYYMM.
+  m = /^(?:0?[1-9]|1[0-2])[\/\-.](?:19|20)?(\d{2}|\d{4})$/.exec(t)
+  if (m) {
+    const parts = t.split(/[\/\-.]/)
+    const mo = parts[0].padStart(2, '0')
+    let y = parts[1]
+    if (y.length === 2) y = Number(y) > 49 ? `19${y}` : `20${y}`
+    if (y.length !== 4) y = `20${y}`
+    return `${y}${mo}`
+  }
+  m = /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s/.\-]*(\d{2,4})$/i.exec(t)
+  if (m) {
+    const mon = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.exec(t)?.[1].toLowerCase() ?? ''
+    const idx: Record<string, string> = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' }
+    let y = m[1]
+    if (y.length === 2) y = Number(y) > 49 ? `19${y}` : `20${y}`
+    if (idx[mon]) return `${y}${idx[mon]}`
   }
   return null
 }
@@ -296,12 +314,21 @@ function adjudicateField(
     }
   }
 
-  // Group votes by canonical form.
+  // Group votes by canonical form. Dates group at MONTH granularity
+  // (YYYYMM): day-level OCR wobble must not fake a conflict, and critical
+  // prediction (expired or not) is decided month-wise with the
+  // end-of-month rule in the compliance engine.
   const groups = new Map<string, FieldVote[]>()
   for (const v of votes) {
-    const canon = def.strict
-      ? (canonicalStrict(def.key, v.value ?? '') ?? `loose:${v.normalized}`)
-      : (v.normalized ?? '')
+    let canon: string
+    if (def.strict && DATE_KEYS.has(def.key)) {
+      const c = canonicalStrict(def.key, v.value ?? '')
+      canon = c && c.length === 8 ? c.slice(0, 6) : (c ?? `loose:${v.normalized}`)
+    } else {
+      canon = def.strict
+        ? (canonicalStrict(def.key, v.value ?? '') ?? `loose:${v.normalized}`)
+        : (v.normalized ?? '')
+    }
     const list = groups.get(canon) ?? []
     list.push(v)
     groups.set(canon, list)

@@ -102,15 +102,60 @@ function dateStatus(raw: string | null | undefined, isExpiry: boolean): RuleOutc
     if (!raw) return review(null, 'No date could be read — verify on the physical label.')
     return review(raw, `Could not recognise "${raw}" as a date — verify manually.`)
   }
+  // Month-precision expiry ("05/2026", "May 2026") is valid through the END
+  // of that month — never flag it critical on day 1. MFG keeps day 1
+  // (conservative for future-date checks).
+  const effective = isExpiry && raw && isMonthPrecision(raw) ? endOfMonth(parsed) : parsed
   const td = today().getTime()
   if (isExpiry) {
-    return parsed.getTime() > td
+    return effective.getTime() > td
       ? ok(raw, 'The expiry/best-before date is in the future.')
-      : crit(raw, `The expiry/best-before date (${parsed.toISOString().slice(0, 10)}) is in the past or today — the product may be expired.`)
+      : crit(raw, `The expiry/best-before date (${fmtLocal(effective)}) is in the past or today — the product may be expired.`)
   }
-  return parsed.getTime() <= td
+  return effective.getTime() <= td
     ? ok(raw, 'The manufacturing date is not in the future.')
-    : fail(raw, `The manufacturing date (${parsed.toISOString().slice(0, 10)}) is in the future — suspicious read, verify on the label.`)
+    : fail(raw, `The manufacturing date (${fmtLocal(effective)}) is in the future — suspicious read, verify on the label.`)
+}
+
+/** True when the raw text carries only month precision (no day digits). */
+function isMonthPrecision(raw: string): boolean {
+  const t = raw.trim()
+  if (/^(?:0?[1-9]|1[0-2])[\/\-.](?:19|20)?\d{2}$/.test(t)) return true
+  if (/^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s/.\-]*(\d{2,4})$/i.test(t)) return true
+  return false
+}
+
+function endOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0)
+}
+
+/** Local YYYY-MM-DD (toISOString is UTC and shifts IST dates back a day). */
+function fmtLocal(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
+/** Add whole months to a date, clamping to the target month's last day. */
+function addMonthsClamped(d: Date, months: number): Date {
+  const day = d.getDate()
+  const last = new Date(d.getFullYear(), d.getMonth() + months + 1, 0).getDate()
+  return new Date(d.getFullYear(), d.getMonth() + months, Math.min(day, last))
+}
+
+/**
+ * Relative shelf life ("Best before 6 months from manufacture/packaging",
+ * "Use within 12 months") → months, else null.
+ */
+function relativeShelfMonths(text: string): number | null {
+  const m = /best\s*(?:before|within|use\s*within|before\s*the\s*end\s*of)\s*(\d{1,3})\s*(day|month|year)/i.exec(text)
+  if (!m) return null
+  const n = Number(m[1])
+  const unit = m[2].toLowerCase()
+  if (!Number.isFinite(n) || n <= 0) return null
+  if (unit.startsWith('day')) return n / 30.44
+  if (unit.startsWith('year')) return n * 12
+  return n
 }
 
 const RULES: Rule[] = [
@@ -194,6 +239,27 @@ const RULES: Rule[] = [
       if (raw) return dateStatus(raw, true)
       const hit = findInText(ctx.text, EXPIRY_PATTERNS)
       if (hit) return dateStatus(hit, true)
+      // Relative shelf life: "Best before 6 months from manufacture" +
+      // a known MFG/packing date → compute the effective expiry. This
+      // catches expired products whose label states no absolute date.
+      const shelfMonths = relativeShelfMonths(`${ctx.fields.best_before_date ?? ''}\n${ctx.text}`)
+      const mfgRaw = ctx.fields.mfg_date
+      const mfg = mfgRaw ? parseDateValue(mfgRaw) : null
+      if (shelfMonths !== null && mfg) {
+        const computed = addMonthsClamped(mfg, Math.round(shelfMonths))
+        const iso = `${computed.getFullYear()}-${String(computed.getMonth() + 1).padStart(2, '0')}-${String(computed.getDate()).padStart(2, '0')}`
+        const outcome = dateStatus(iso, true)
+        if (outcome.status === 'critical_failed') {
+          return crit(
+            `${mfgRaw} + ${Math.round(shelfMonths)} months`,
+            `Best-before period computed from manufacture date ended ${iso} — the product may be expired.`,
+          )
+        }
+        return ok(
+          `${mfgRaw} + ${Math.round(shelfMonths)} months`,
+          `Best-before period computed from manufacture date runs to ${iso}.`,
+        )
+      }
       return review(null, 'Expiry/best-before date could not be read — verify on the label.')
     },
   },
