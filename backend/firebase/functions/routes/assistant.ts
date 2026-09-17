@@ -10,7 +10,7 @@
  */
 
 import { Router, Request, Response } from 'express'
-import admin from 'firebase-admin'
+import { getScanDoc } from '../supabase-admin.js'
 import { DEFAULT_GEMINI_MODEL, geminiGenerateContent } from '../lib/gemini.js'
 
 const router = Router()
@@ -90,12 +90,11 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const snap = await admin.firestore().doc(`scans/${scanId}`).get()
-    if (!snap.exists) {
+    const scan = await getScanDoc(scanId).catch(() => null)
+    if (!scan) {
       res.status(404).json({ ok: false, error: 'Scan not found.' })
       return
     }
-    const scan = snap.data()
 
     const userMsg = `Scan data (JSON):\n${buildContext(scan)}\n\nAnswer in ${langName(lang)}: ${q}`
 

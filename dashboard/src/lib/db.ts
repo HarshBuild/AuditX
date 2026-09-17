@@ -1,47 +1,29 @@
 /*
- * AuditX v3.0 — Firestore data layer.
+ * AuditX — Supabase data layer (replaces Firestore).
  *
- * Migration map (Supabase table → Firestore collection):
- *   profiles           → users
- *   scans              → scans
- *   violations         → violations
- *   reports            → reports
- *   notifications      → notifications
- *   activity_logs      → activityLogs
- *   compliance_rules   → complianceRules
- *   admin_requests     → adminRequests
- *   inspection_reviews → inspectionReviews
+ * Table map:
+ *   profiles           ← users
+ *   scans              ← scans
+ *   violations         ← violations
+ *   reports            ← reports
+ *   notifications      ← notifications
+ *   activity_logs      ← activityLogs
+ *   compliance_rules   ← complianceRules
+ *   admin_requests     ← adminRequests
+ *   inspection_reviews ← inspectionReviews
+ *   products           ← products
  *
- * Document field names keep the original snake_case names so existing
- * components read the same shapes as before (id = Firestore document id).
+ * All functions keep their previous signatures so pages, admin panels and
+ * services compile and behave unchanged. Rows are merged from queryable
+ * columns + the flexible `data` jsonb catch-all, so both old and new field
+ * shapes read identically.
  *
- * Query strategy: bounded recent-fetch + client-side filter/pagination keeps
- * the app index-free and honours the original UI contracts (page/pageSize,
- * ilike search, risk bands, date ranges).
- *
- * Authorization: reads/writes are enforced by Firestore security rules
- * (backend/firebase/firestore.rules) on top of Firebase custom claims.
- * The client-side role pre-checks in services.ts are a UX fail-fast, not
- * the security boundary.
+ * Authorization: Supabase RLS policies (see
+ * supabase/migrations/0001_auditx_core.sql). The backend service-role key
+ * bypasses RLS; this client uses the anon key and stays inside RLS.
  */
 
-import {
-  collection,
-  doc,
-  getDoc,
-  getCountFromServer,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  startAfter,
-  updateDoc,
-  where,
-  type DocumentData,
-  type QueryDocumentSnapshot,
-} from 'firebase/firestore'
-import { auth, db } from './firebase'
+import { supabase } from './supabase'
 import { getLocalScans } from './localStore'
 import type {
   ActivityLogRow,
@@ -69,49 +51,63 @@ export interface ListOptions {
 }
 
 /* ------------------------------------------------------------------ */
-/* Collections + shared helpers                                        */
+/* Tables + flexible row mapping                                        */
 /* ------------------------------------------------------------------ */
 
+/** Legacy collection-name constants (kept so existing imports compile). */
 export const COLLECTIONS = {
-  USERS: 'users',
+  USERS: 'profiles',
   SCANS: 'scans',
   VIOLATIONS: 'violations',
   REPORTS: 'reports',
   NOTIFICATIONS: 'notifications',
-  ACTIVITY_LOGS: 'activityLogs',
-  COMPLIANCE_RULES: 'complianceRules',
-  ADMIN_REQUESTS: 'adminRequests',
-  INSPECTION_REVIEWS: 'inspectionReviews',
+  ACTIVITY_LOGS: 'activity_logs',
+  COMPLIANCE_RULES: 'compliance_rules',
+  ADMIN_REQUESTS: 'admin_requests',
+  INSPECTION_REVIEWS: 'inspection_reviews',
   PRODUCTS: 'products',
 } as const
 
-interface SnapshotDoc {
+/** Opaque pagination cursor (replaces the Firestore document snapshot). */
+export interface PageCursor {
+  created_at: string
   id: string
-  data(): DocumentData
 }
 
-function normalize(value: unknown): unknown {
-  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: unknown }).toDate === 'function') {
-    return (value as { toDate: () => Date }).toDate().toISOString()
+/** Queryable columns per table — everything else rides in `data` jsonb. */
+const COLUMNS: Record<string, string[]> = {
+  profiles: ['id', 'email', 'full_name', 'organization', 'role', 'status', 'prefs', 'created_at', 'last_login', 'updated_at'],
+  scans: ['id', 'user_id', 'status', 'verdict', 'overall_score', 'risk_score', 'product_name', 'brand', 'manufacturer', 'barcode', 'category', 'ocr_status', 'photo_path', 'created_at', 'updated_at'],
+  products: ['id', 'barcode', 'name', 'brand', 'manufacturer', 'category', 'net_quantity', 'mrp', 'consumer_care', 'country_of_origin', 'best_before_label', 'created_at', 'updated_at'],
+  violations: ['id', 'scan_id', 'product_name', 'manufacturer', 'category', 'type', 'description', 'severity', 'status', 'created_at', 'updated_at'],
+  reports: ['id', 'scan_id', 'title', 'description', 'product_name', 'manufacturer', 'category', 'status', 'priority', 'created_at', 'updated_at'],
+  notifications: ['id', 'user_id', 'type', 'title', 'body', 'link', 'read', 'read_at', 'created_at'],
+  activity_logs: ['id', 'user_id', 'actor_id', 'actor_name', 'action', 'target_type', 'target_id', 'details', 'created_at'],
+  compliance_rules: ['id', 'title', 'created_at'],
+  admin_requests: ['id', 'user_id', 'status', 'created_at'],
+  inspection_reviews: ['id', 'scan_id', 'created_at'],
+}
+
+/** Split a write object into queryable columns + flexible `data` jsonb extras. */
+export function splitRow(table: string, obj: Record<string, unknown>): { cols: Record<string, unknown>; data: Record<string, unknown> } {
+  const known = COLUMNS[table] ?? []
+  const cols: Record<string, unknown> = {}
+  const data: Record<string, unknown> = { ...(obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : {}) }
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'data' || k === 'id') continue
+    if (known.includes(k)) cols[k] = v
+    else data[k] = v
   }
-  return value
+  return { cols, data }
 }
 
-export function docToRow<T>(snap: SnapshotDoc): T {
-  const data = snap.data() ?? {}
-  const row: Record<string, unknown> = { id: snap.id }
-  for (const k of Object.keys(data)) row[k] = normalize(data[k])
-  return row as T
-}
-
-function rowsFrom<T>(snapshot: { docs: SnapshotDoc[] }): T[] {
-  return snapshot.docs.map((d) => docToRow<T>(d))
-}
-
-async function recentRows<T>(collectionName: string, cap = 1000): Promise<T[]> {
-  const ref = collection(db, collectionName)
-  const snapshot = await getDocs(query(ref, orderBy('created_at', 'desc'), limit(cap)))
-  return rowsFrom<T>(snapshot)
+/** Merge flat columns + data jsonb back into one row (columns win). */
+export function mergeRow<T>(_table: string, row: Record<string, unknown>): T {
+  void _table
+  const { data: _drop, ...cols } = row
+  void _drop
+  const extras = row.data && typeof row.data === 'object' ? (row.data as Record<string, unknown>) : {}
+  return { ...extras, ...cols } as T
 }
 
 function matchesAny(haystack: string, needle: string): boolean {
@@ -120,8 +116,15 @@ function matchesAny(haystack: string, needle: string): boolean {
 }
 
 /** One day window used by analytics date filters. */
-export function daysAgo(n: number): string {
-  return new Date(Date.now() - n * 86400_000).toISOString()
+export function daysAgo(n: string | number): string {
+  const days = typeof n === 'string' ? Number(n) : n
+  return new Date(Date.now() - days * 86400_000).toISOString()
+}
+
+async function recentRows<T>(table: string, cap = 1000): Promise<T[]> {
+  const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: false }).limit(cap)
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<T>(table, r))
 }
 
 /* ------------------------------------------------------------------ */
@@ -160,11 +163,11 @@ export async function listScans(
 }
 
 export async function countScans(from?: string | null): Promise<number> {
-  const ref = collection(db, COLLECTIONS.SCANS)
-  const c = from
-    ? await getCountFromServer(query(ref, where('created_at', '>=', from)))
-    : await getCountFromServer(ref)
-  return c.data().count
+  let q = supabase.from(COLLECTIONS.SCANS).select('id', { count: 'exact', head: true })
+  if (from) q = q.gte('created_at', from)
+  const { count, error } = await q
+  if (error) throw new Error(error.message)
+  return count ?? 0
 }
 
 export interface RiskDistribution {
@@ -190,11 +193,16 @@ export async function fetchScansForUser(uid: string, cap = 200): Promise<ScanRow
   const local = getLocalScans(uid)
   let cloud: ScanRow[] = []
   try {
-    const ref = collection(db, COLLECTIONS.SCANS)
-    const snapshot = await getDocs(query(ref, where('user_id', '==', uid), limit(cap)))
-    cloud = rowsFrom<ScanRow>(snapshot)
+    const { data, error } = await supabase
+      .from(COLLECTIONS.SCANS)
+      .select('*')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(cap)
+    if (error) throw new Error(error.message)
+    cloud = ((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ScanRow>(COLLECTIONS.SCANS, r))
   } catch {
-    // Rules may deny the collection query in this release; the user's own
+    // RLS may deny the query in this release; the user's own
     // locally-persisted scans still render the history/reports.
     cloud = []
   }
@@ -209,74 +217,77 @@ export async function fetchScansForUser(uid: string, cap = 200): Promise<ScanRow
 
 export interface ScanPageResult {
   data: ScanRow[]
-  /** Opaque cursor suitable for `startAfter` on the next page load. */
-  lastDoc: QueryDocumentSnapshot | null
+  /** Opaque cursor suitable for the next page load. */
+  lastDoc: PageCursor | null
   hasMore: boolean
 }
 
 /**
  * Cursor-paginated scan history for a single user. Newest-first (created_at
- * desc). The optional `lastDoc` cursor continues from the previous page.
- * Falls back to an index-free query if the composite (where+orderBy) index is
- * not provisioned in this environment, so the history never silently empties.
+ * desc). The cursor continues from the previous page's last row.
  */
-export async function fetchScansForUserPage(uid: string, pageSize = 50, lastDoc: QueryDocumentSnapshot | null = null): Promise<ScanPageResult> {
-  const ref = collection(db, COLLECTIONS.SCANS)
-  let snapshot: { docs: QueryDocumentSnapshot[] }
+export async function fetchScansForUserPage(uid: string, pageSize = 50, lastDoc: PageCursor | null = null): Promise<ScanPageResult> {
   const paged = lastDoc !== null
-  try {
-    const base = query(ref, where('user_id', '==', uid), orderBy('created_at', 'desc'), limit(pageSize))
-    snapshot = await getDocs(lastDoc ? query(base, startAfter(lastDoc)) : base)
-  } catch {
-    // Composite index may be unprovisioned — use the old index-free query so
-    // pagination degrades gracefully instead of losing the cloud list.
-    snapshot = await getDocs(query(ref, where('user_id', '==', uid), limit(pageSize)))
+  let q = supabase
+    .from(COLLECTIONS.SCANS)
+    .select('*')
+    .eq('user_id', uid)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(pageSize + 1)
+  if (lastDoc) {
+    q = q.or(`created_at.lt.${lastDoc.created_at},and(created_at.eq.${lastDoc.created_at},id.lt.${lastDoc.id})`)
   }
-  const docs = snapshot.docs
-  const cloud = rowsFrom<ScanRow>({ docs })
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  const rows = ((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ScanRow>(COLLECTIONS.SCANS, r))
+  const hasMore = rows.length > pageSize
+  const page = hasMore ? rows.slice(0, pageSize) : rows
+  const tail = page[page.length - 1]
+  const cursor: PageCursor | null = tail ? { created_at: tail.created_at, id: tail.id } : null
   if (!paged) {
     // First page also prepends any locally-persisted scans (offline cub).
     const local = getLocalScans(uid)
     const seen = new Set<string>()
     const merged: ScanRow[] = []
-    for (const s of [...cloud, ...local]) {
+    for (const s of [...page, ...local]) {
       if (!seen.has(s.id)) { seen.add(s.id); merged.push(s) }
     }
     merged.sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
-    return { data: merged, lastDoc: docs[docs.length - 1] ?? null, hasMore: docs.length === pageSize }
+    return { data: merged, lastDoc: cursor, hasMore }
   }
   return {
-    data: cloud,
-    lastDoc: docs[docs.length - 1] ?? null,
-    hasMore: docs.length === pageSize,
+    data: page,
+    lastDoc: cursor,
+    hasMore,
   }
 }
 
-/** Fetch a single scan by id, local first then Firestore. Powers deep links
+/** Fetch a single scan by id, local first then Supabase. Powers deep links
  *  (?open=<id>) so a shared result URL survives refresh/back/forward. */
 export async function fetchScanById(id: string, uid: string | null): Promise<ScanRow | null> {
   if (!id) return null
   const local = getLocalScans(uid).find((s) => s.id === id)
   if (local) return local
   try {
-    const snap = await getDoc(doc(db, COLLECTIONS.SCANS, id))
-    if (!snap.exists()) return null
-    return docToRow<ScanRow>(snap)
+    const { data, error } = await supabase.from(COLLECTIONS.SCANS).select('*').eq('id', id).maybeSingle()
+    if (error || !data) return null
+    return mergeRow<ScanRow>(COLLECTIONS.SCANS, data as Record<string, unknown>)
   } catch {
     return null
   }
 }
 
 export async function fetchViolationsForScan(scanId: string): Promise<ViolationRow[]> {
-  const ref = collection(db, COLLECTIONS.VIOLATIONS)
-  const snapshot = await getDocs(query(ref, where('scan_id', '==', scanId), limit(200)))
-  return rowsFrom<ViolationRow>(snapshot)
+  const { data, error } = await supabase.from(COLLECTIONS.VIOLATIONS).select('*').eq('scan_id', scanId).limit(200)
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ViolationRow>(COLLECTIONS.VIOLATIONS, r))
 }
 
 export async function fetchReportsForScan(scanId: string): Promise<ReportRow[]> {
-  const ref = collection(db, COLLECTIONS.REPORTS)
-  const snapshot = await getDocs(query(ref, where('scan_id', '==', scanId), limit(200)))
-  return rowsFrom<ReportRow>(snapshot)
+  const { data, error } = await supabase.from(COLLECTIONS.REPORTS).select('*').eq('scan_id', scanId).limit(200)
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ReportRow>(COLLECTIONS.REPORTS, r))
 }
 
 /* ------------------------------------------------------------------ */
@@ -303,10 +314,11 @@ export async function listViolations(
 }
 
 export async function setViolationStatus(violationId: string, status: ViolationRow['status']) {
-  await updateDoc(doc(db, COLLECTIONS.VIOLATIONS, violationId), {
-    status,
-    updated_at: new Date().toISOString(),
-  })
+  const { data: current } = await supabase.from(COLLECTIONS.VIOLATIONS).select('data').eq('id', violationId).maybeSingle()
+  const prev = (current as { data?: Record<string, unknown> } | null)?.data ?? {}
+  const { cols, data } = splitRow(COLLECTIONS.VIOLATIONS, { status, updated_at: new Date().toISOString() })
+  const { error } = await supabase.from(COLLECTIONS.VIOLATIONS).update({ ...cols, data: { ...prev, ...data } }).eq('id', violationId)
+  if (error) throw new Error(error.message)
 }
 
 /* ------------------------------------------------------------------ */
@@ -339,7 +351,11 @@ export async function updateReportStatus(
 ) {
   const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
   if (priority) patch.priority = priority
-  await updateDoc(doc(db, COLLECTIONS.REPORTS, reportId), patch)
+  const { data: current } = await supabase.from(COLLECTIONS.REPORTS).select('data').eq('id', reportId).maybeSingle()
+  const prev = (current as { data?: Record<string, unknown> } | null)?.data ?? {}
+  const { cols, data } = splitRow(COLLECTIONS.REPORTS, patch)
+  const { error } = await supabase.from(COLLECTIONS.REPORTS).update({ ...cols, data: { ...prev, ...data } }).eq('id', reportId)
+  if (error) throw new Error(error.message)
 }
 
 /* ------------------------------------------------------------------ */
@@ -347,22 +363,24 @@ export async function updateReportStatus(
 /* ------------------------------------------------------------------ */
 
 export async function fetchUserDoc(uid: string): Promise<Record<string, unknown> | null> {
-  const snap = await getDoc(doc(db, COLLECTIONS.USERS, uid))
-  if (!snap.exists()) return null
-  const row: Record<string, unknown> = { id: snap.id }
-  for (const k of Object.keys(snap.data())) row[k] = normalize(snap.data()[k])
-  return row
+  const { data, error } = await supabase.from(COLLECTIONS.USERS).select('*').eq('id', uid).maybeSingle()
+  if (error || !data) return null
+  return mergeRow<Record<string, unknown>>(COLLECTIONS.USERS, data as Record<string, unknown>)
 }
 
 export async function listProfiles(role: string, limit = 500): Promise<ProfileAdminRow[]> {
-  const rows = await recentRows<ProfileAdminRow>(COLLECTIONS.USERS, limit)
-  return rows.filter((p) => p.role === role)
+  const { data, error } = await supabase.from(COLLECTIONS.USERS).select('*').order('created_at', { ascending: false }).limit(limit)
+  if (error) throw new Error(error.message)
+  return (((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ProfileAdminRow>(COLLECTIONS.USERS, r)))
+    .filter((p) => p.role === role)
 }
 
-/** Super admins (includes legacy admin/inspector docs mapped to super_admin). */
+/** Super admins (includes legacy admin/inspector rows mapped to super_admin). */
 export async function listAdmins(): Promise<ProfileAdminRow[]> {
-  const rows = await recentRows<ProfileAdminRow>(COLLECTIONS.USERS, 500)
-  return rows.filter((p) => p.role === 'admin' || p.role === 'super_admin' || p.role === 'inspector')
+  const { data, error } = await supabase.from(COLLECTIONS.USERS).select('*').order('created_at', { ascending: false }).limit(500)
+  if (error) throw new Error(error.message)
+  return (((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ProfileAdminRow>(COLLECTIONS.USERS, r)))
+    .filter((p) => p.role === 'admin' || p.role === 'super_admin' || p.role === 'inspector')
 }
 
 /* ------------------------------------------------------------------ */
@@ -403,30 +421,60 @@ export async function listActivityLogs(queryText?: string, limit = 200): Promise
 /* Notifications (current user's inbox)                                */
 /* ------------------------------------------------------------------ */
 
+async function myUid(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser()
+  return data.user?.id ?? null
+}
+
 export async function listMyNotifications(max = 100): Promise<NotificationRow[]> {
-  const uid = auth.currentUser?.uid
+  const uid = await myUid()
   if (!uid) return []
-  const ref = collection(db, COLLECTIONS.NOTIFICATIONS)
-  const snapshot = await getDocs(query(ref, where('user_id', '==', uid), limit(max)))
-  return rowsFrom<NotificationRow>(snapshot).sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
+  const { data, error } = await supabase
+    .from(COLLECTIONS.NOTIFICATIONS)
+    .select('*')
+    .eq('user_id', uid)
+    .order('created_at', { ascending: false })
+    .limit(max)
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<NotificationRow>(COLLECTIONS.NOTIFICATIONS, r))
 }
 
 export async function unreadNotificationCount(): Promise<number> {
-  const uid = auth.currentUser?.uid
+  const uid = await myUid()
   if (!uid) return 0
-  const ref = collection(db, COLLECTIONS.NOTIFICATIONS)
-  const snapshot = await getDocs(query(ref, where('user_id', '==', uid), limit(300)))
-  return rowsFrom<NotificationRow>(snapshot).filter((n) => !n.read).length
+  const { data, error } = await supabase
+    .from(COLLECTIONS.NOTIFICATIONS)
+    .select('id,read')
+    .eq('user_id', uid)
+    .eq('read', false)
+    .limit(300)
+  if (error) throw new Error(error.message)
+  return (data ?? []).length
 }
 
 /* ------------------------------------------------------------------ */
 /* Generic counts (dashboard stat cards)                               */
 /* ------------------------------------------------------------------ */
 
+const COUNT_TABLES: Record<string, string> = {
+  scans: 'scans',
+  users: 'profiles',
+  profiles: 'profiles',
+  violations: 'violations',
+  reports: 'reports',
+  notifications: 'notifications',
+  activityLogs: 'activity_logs',
+  activity_logs: 'activity_logs',
+  complianceRules: 'compliance_rules',
+  adminRequests: 'admin_requests',
+  products: 'products',
+}
+
 export async function countCollection(collectionName: string): Promise<number> {
-  const ref = collection(db, collectionName)
-  const c = await getCountFromServer(ref)
-  return c.data().count
+  const table = COUNT_TABLES[collectionName] ?? collectionName
+  const { count, error } = await supabase.from(table).select('id', { count: 'exact', head: true })
+  if (error) throw new Error(error.message)
+  return count ?? 0
 }
 
 /* ------------------------------------------------------------------ */
@@ -449,29 +497,59 @@ export async function listProducts(
 }
 
 export async function findProductByBarcode(barcode: string): Promise<ProductRow | null> {
-  const ref = collection(db, COLLECTIONS.PRODUCTS)
-  const snapshot = await getDocs(query(ref, where('barcode', '==', barcode), limit(1)))
-  if (snapshot.empty) return null
-  return docToRow<ProductRow>(snapshot.docs[0])
+  const { data, error } = await supabase.from(COLLECTIONS.PRODUCTS).select('*').eq('barcode', barcode).limit(1).maybeSingle()
+  if (error || !data) return null
+  return mergeRow<ProductRow>(COLLECTIONS.PRODUCTS, data as Record<string, unknown>)
 }
 
 /**
- * Realtime subscription over the product database (most recent 2000 docs).
- * Products created by scans or other managers appear live on the admin panel
+ * Live subscription over the product database (most recent rows).
+ * Products created by scans or other managers appear on the admin panel
  * without a manual reload. Returns an unsubscribe function.
  */
 export function subscribeProducts(
   onChange: (rows: ProductRow[]) => void,
   onError?: (err: Error) => void,
 ): () => void {
-  const ref = query(collection(db, COLLECTIONS.PRODUCTS), orderBy('created_at', 'desc'), limit(2000))
-  return onSnapshot(
-    ref,
-    (snap) => {
-      onChange(snap.docs.map((d) => docToRow<ProductRow>(d)))
-    },
-    (err) => {
-      onError?.(err as Error)
-    },
-  )
+  let stopped = false
+  void (async () => {
+    try {
+      const { data, error } = await supabase
+        .from(COLLECTIONS.PRODUCTS)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(2000)
+      if (error) throw new Error(error.message)
+      if (!stopped) {
+        onChange(((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ProductRow>(COLLECTIONS.PRODUCTS, r)))
+      }
+    } catch (e) {
+      onError?.(e as Error)
+    }
+  })()
+  const channel = supabase
+    .channel('products-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: COLLECTIONS.PRODUCTS }, () => {
+      if (stopped) return
+      void (async () => {
+        try {
+          const { data, error } = await supabase
+            .from(COLLECTIONS.PRODUCTS)
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(2000)
+          if (error) throw new Error(error.message)
+          if (!stopped) {
+            onChange(((data ?? []) as Record<string, unknown>[]).map((r) => mergeRow<ProductRow>(COLLECTIONS.PRODUCTS, r)))
+          }
+        } catch (e) {
+          onError?.(e as Error)
+        }
+      })()
+    })
+    .subscribe()
+  return () => {
+    stopped = true
+    void supabase.removeChannel(channel)
+  }
 }

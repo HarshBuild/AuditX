@@ -10,7 +10,7 @@
  * pending screen with a Retry action.
  */
 
-import admin from 'firebase-admin'
+import { downloadPhoto, listUserScans } from '../../supabase-admin.js'
 import type {
   AnalysisInput,
   AnalysisResult,
@@ -39,42 +39,31 @@ function averageConfidence(perImages: PerImageExtract[]): number {
   return Math.round((sum / perImages.length) * 100) / 100
 }
 
-/** Materialize photo inputs into data URLs + storage paths. */
+/** Materialize photo inputs into data URLs + storage paths (Supabase Storage). */
 async function materializePhotos(uid: string, photos: AnalysisInput['photos']): Promise<{ paths: string[]; dataUrls: string[] }> {
   const paths: string[] = []
   const dataUrls: string[] = []
-  let bucket: ReturnType<ReturnType<typeof admin.storage>['bucket']> | null = null
-  try {
-    bucket = admin.storage().bucket()
-  } catch {
-    bucket = null
-    console.warn('⚠️ storage bucket not configured; photos kept in-memory only.')
-  }
 
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i]
     if (photo.data) {
       dataUrls.push(photo.data)
-      if (bucket) {
-        try {
-          paths.push(await savePhoto(uid, i, photo.data))
-          continue
-        } catch (e) {
-          console.warn('⚠️ photo save failed (analysis continues in-memory):', (e as Error)?.message ?? e)
-          continue
-        }
+      try {
+        paths.push(await savePhoto(uid, i, photo.data))
+        continue
+      } catch (e) {
+        console.warn('⚠️ photo save failed (analysis continues in-memory):', (e as Error)?.message ?? e)
+        continue
       }
-      continue
     }
     if (photo.path) {
-      const file = bucket?.file(photo.path)
-      if (!file) throw new Error('Storage is unavailable to read the photo. Add the photo again as a fresh capture.')
-      const [bufFile] = await file.download()
-      const metaArr = await file.getMetadata().catch(() => undefined)
-      const mime = metaArr?.[0]?.contentType ?? 'image/jpeg'
-      const b64 = bufFile.toString('base64')
-      paths.push(photo.path)
-      dataUrls.push(`data:${mime};base64,${b64}`)
+      try {
+        const bufFile = await downloadPhoto(photo.path)
+        paths.push(photo.path)
+        dataUrls.push(`data:image/jpeg;base64,${bufFile.toString('base64')}`)
+      } catch (e) {
+        throw new Error(`Storage is unavailable to read the photo: ${(e as Error)?.message ?? e}. Add the photo again as a fresh capture.`)
+      }
       continue
     }
     throw new Error('Each photo must carry either `data` (data URL) or `path` (storage path).')
@@ -82,16 +71,11 @@ async function materializePhotos(uid: string, photos: AnalysisInput['photos']): 
   return { paths, dataUrls }
 }
 
-/** Load previous scans (latest-first) for change detection — index-free query. */
+/** Load previous scans (latest-first) for change detection. */
 async function recentScansForUser(uid: string, cap = 60): Promise<Array<{ id: string } & Record<string, unknown>>> {
   try {
-    const snap = await admin.firestore().collection('scans')
-      .orderBy('created_at', 'desc')
-      .limit(cap)
-      .get()
-    return snap.docs
-      .filter((d) => d.data()?.user_id === uid)
-      .map((d) => ({ id: d.id, ...(d.data() ?? {}) }))
+    const rows = await listUserScans(uid, cap)
+    return rows.map((d) => ({ id: String(d.id), ...d }))
   } catch (e) {
     console.warn('⚠️ recentScansForUser fell back:', (e as Error)?.message ?? e)
     return []

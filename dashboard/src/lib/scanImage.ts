@@ -2,11 +2,9 @@
  * MISA-style photo pipeline client:
  *  - downsizes every shot to ≤1600 px JPEG (~0.82 quality) before upload,
  *  - grades the frame budget (brightness, sharpness, resolution) and returns
- *    honest warnings so the user can retake a bad shot BEFORE analysis,
+ *  - honest warnings so the user can retake a bad shot BEFORE analysis,
  *  - wraps a File/Blob into a ready-to-send data URL.
  */
-
-import { auth } from '../lib/firebase'
 
 export const MAX_PHOTO_DIM = 1600
 export const JPEG_QUALITY = 0.82
@@ -157,5 +155,3 @@ export function fileToDataUrl(file: File, maxDim = MAX_PHOTO_DIM): Promise<strin
     reader.readAsDataURL(file)
   })
 }
-
-export const canUpload = (): boolean => Boolean(auth.currentUser)

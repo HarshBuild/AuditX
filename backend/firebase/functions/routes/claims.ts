@@ -1,20 +1,18 @@
 /**
- * Claims route — mirrors the setClaims callable as REST.
+ * Claims route — role/status administration (Supabase version).
  *
  * POST /api/set-claims  { uid, role?, status? }
  *   -> { ok: true, uid, role, status }
  *
- * Mint/prune the Firestore-rule custom claims (role, status) that collection
- * LIST queries depend on. Omitted fields are taken from the user's existing
- * profile/claims so a status-only change never wipes the role. The Firestore
- * document remains the authoritative role source for get rules; this keeps
- * custom claims in sync for query-compatible list rules.
+ * Roles and statuses live directly on the `profiles` row (no custom-claim
+ * indirection). Omitted fields are taken from the user's existing profile
+ * so a status-only change never wipes the role.
  *
  * Restricted to admin / super_admin accounts (verified by the auth middleware).
  */
 
 import { Router, Request, Response } from 'express'
-import admin from 'firebase-admin'
+import { getProfile, updateProfileRow, createProfileRow } from '../supabase-admin.js'
 
 const router = Router()
 
@@ -46,36 +44,21 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Resolve defaults from the existing profile so partial updates are safe.
-    const now = new Date().toISOString()
-    const profileRef = admin.firestore().doc(`users/${uid}`)
-    const profileSnap = await profileRef.get()
+    const existing = await getProfile(uid).catch(() => null)
     let finalRole = role
     let finalStatus = status
-    if (profileSnap.exists) {
-      const data = profileSnap.data() ?? {}
-      if (!finalRole) finalRole = String(data.role ?? 'user')
-      if (!finalStatus) finalStatus = String(data.status ?? 'active')
+    if (existing) {
+      if (!finalRole) finalRole = String(existing.role ?? 'user')
+      if (!finalStatus) finalStatus = String(existing.status ?? 'active')
     } else {
       if (!finalRole) finalRole = 'user'
       if (!finalStatus) finalStatus = 'active'
     }
 
-    await admin.auth().setCustomUserClaims(uid, { role: finalRole, status: finalStatus })
-
-    // Mirror syncClaimsOnUserStatus: keep the Firestore profile in sync.
-    if (profileSnap.exists) {
-      await profileRef.update({ role: finalRole, status: finalStatus, updated_at: now, updated_by: (req as any).uid })
+    if (existing) {
+      await updateProfileRow(uid, { role: finalRole, status: finalStatus, updated_by: (req as any).uid })
     } else {
-      await profileRef.set({
-        uid,
-        email: '',
-        name: '',
-        role: finalRole,
-        status: finalStatus,
-        invited_by: (req as any).uid,
-        created_at: now,
-        updated_at: now,
-      })
+      await createProfileRow({ id: uid, role: finalRole, status: finalStatus })
     }
 
     res.json({ ok: true, uid, role: finalRole, status: finalStatus })

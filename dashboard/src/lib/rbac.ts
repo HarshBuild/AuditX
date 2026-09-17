@@ -1,4 +1,4 @@
-import type { AuthUser } from './firebase'
+import type { AuthUser } from './supabase'
 
 /**
  * AuditX role model — exactly two roles.

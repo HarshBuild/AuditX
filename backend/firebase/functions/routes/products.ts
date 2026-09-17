@@ -9,20 +9,18 @@
  *   DELETE /api/products/:id
  *                          deletes the product document.
  *
- * These writes use the Firebase Admin SDK, which is NOT constrained by the
- * client Firestore security rules — so a product save on the admin panel can
- * never be rejected with "Missing or insufficient permissions" even if the
- * deployed rules lag behind the repo. The Admin SDK also means the audit trail
- * (activityLogs) is recorded server-side.
+ * These writes use the Supabase service-role client, which bypasses RLS —
+ * so a product save on the admin panel can never be rejected with
+ * "permission denied" even if the deployed policies lag behind the repo.
+ * The audit trail (activity_logs) is recorded server-side.
  *
- * Authorization: the firebaseAuthMiddleware has already verified the ID token
- * and validated the caller's users/{uid} profile; this route additionally
- * restricts to admin / super_admin accounts (matching allow isManager() in
- * backend/firebase/firestore.rules).
+ * Authorization: the auth middleware has already verified the session
+ * and validated the caller's profiles row; this route additionally
+ * restricts to admin / super_admin accounts.
  */
 
 import { Router, Request, Response } from 'express'
-import admin from 'firebase-admin'
+import { deleteProductRow, getProfile, logActivity, upsertProduct } from '../supabase-admin.js'
 
 const router = Router()
 
@@ -32,9 +30,8 @@ function isManager(req: Request): boolean {
 }
 
 async function actorName(uid: string): Promise<string> {
-  const snap = await admin.firestore().doc(`users/${uid}`).get()
-  const data = snap.data() ?? {}
-  return String(data.full_name ?? data.display_name ?? data.name ?? '')
+  const profile = await getProfile(uid).catch(() => null)
+  return String(profile?.full_name ?? '')
 }
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -68,35 +65,18 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       updated_at: now,
     }
 
-    const products = admin.firestore().collection('products')
-    const existing = await products.where('barcode', '==', barcode).limit(1).get()
+    const { id: productId, created } = await upsertProduct({ ...data, created_at: now })
+    const action = created ? 'product.created' : 'product.updated'
 
-    let productId: string
-    let action: 'product.created' | 'product.updated'
-    if (!existing.empty) {
-      productId = existing.docs[0].id
-      await existing.docs[0].ref.update(data)
-      action = 'product.updated'
-    } else {
-      const docRef = await products.add({ ...data, created_at: now })
-      productId = docRef.id
-      action = 'product.created'
-    }
-
-    void admin
-      .firestore()
-      .collection('activityLogs')
-      .add({
-        user_id: null,
-        actor_id: (req as any).uid,
-        actor_name: await actorName((req as any).uid),
-        action,
-        target_type: 'product',
-        target_id: productId,
-        details: { barcode },
-        created_at: now,
-      })
-      .catch(() => {})
+    void logActivity({
+      user_id: null,
+      actor_id: (req as any).uid,
+      actor_name: await actorName((req as any).uid),
+      action,
+      target_type: 'product',
+      target_id: productId,
+      details: { barcode },
+    })
 
     res.json({ ok: true, product_id: productId })
   } catch (e: any) {
@@ -118,29 +98,21 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const ref = admin.firestore().doc(`products/${id}`)
-    const snap = await ref.get()
-    if (!snap.exists) {
+    const barcodeOfDeleted = await deleteProductRow(id)
+    if (barcodeOfDeleted === null) {
       res.status(404).json({ ok: false, error: 'Product not found.' })
       return
     }
-    const dataDoc = snap.data() ?? {}
-    await ref.delete()
 
-    void admin
-      .firestore()
-      .collection('activityLogs')
-      .add({
-        user_id: null,
-        actor_id: (req as any).uid,
-        actor_name: await actorName((req as any).uid),
-        action: 'product.deleted',
-        target_type: 'product',
-        target_id: id,
-        details: { barcode: String(dataDoc.barcode ?? '') },
-        created_at: new Date().toISOString(),
-      })
-      .catch(() => {})
+    void logActivity({
+      user_id: null,
+      actor_id: (req as any).uid,
+      actor_name: await actorName((req as any).uid),
+      action: 'product.deleted',
+      target_type: 'product',
+      target_id: id,
+      details: { barcode: barcodeOfDeleted },
+    })
 
     res.json({ ok: true })
   } catch (e: any) {

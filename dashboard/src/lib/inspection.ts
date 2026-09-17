@@ -4,9 +4,7 @@
  * private storage photo paths into renderable URLs via getDownloadURL.
  */
 
-import { auth } from './firebase'
-import { storage } from './firebase'
-import { getDownloadURL, ref } from 'firebase/storage'
+import { accessToken, currentUid, supabase } from './supabase'
 import { fetchWithTimeout } from './net'
 import { CONFIG } from './config'
 
@@ -172,15 +170,15 @@ export interface CreateInspectionResponse {
 }
 
 async function authedFetch(path: string, init: RequestInit = {}, timeoutMs = 90_000): Promise<Response> {
-  const uid = auth.currentUser?.uid
-  const idToken = auth.currentUser ? await auth.currentUser.getIdToken(true) : null
-  if (!uid || !idToken) throw new Error('Not signed in for inspections')
+  const uid = await currentUid()
+  const token = await accessToken(true)
+  if (!uid || !token) throw new Error('Not signed in for inspections')
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
   return fetchWithTimeout(`${base}${path}`, {
     method: init.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
+      Authorization: `Bearer ${token}`,
       ...(init.headers ?? {}),
     },
     body: init.body,
@@ -245,24 +243,28 @@ export async function getInspection(scanId: string): Promise<InspectionDoc> {
 const urlCache = new Map<string, Promise<string>>()
 
 /**
- * Resolve a storage path (e.g. `scans/uid/…jpg`) to a renderable URL.
- * Passes http(s) URLs through untouched. Rules (owner or staff) gate the
- * underlying read; results are cached per path.
+ * Resolve a storage path (e.g. `scans/<uid>/…jpg`, legacy or new) to a
+ * renderable URL via the public Supabase `scans` bucket.
+ * Passes http(s) URLs and data: URLs through untouched. Rules (owner or
+ * staff) gate the underlying read; results are cached per path.
  */
 export function photoUrl(pathOrUrl: string | null | undefined): Promise<string> | null {
   const v = pathOrUrl
   if (!v) return null
-  if (/^https?:\/\//i.test(v)) return Promise.resolve(v)
+  // Data URLs (thumbnails) and remote URLs pass through untouched.
+  if (/^data:image\//i.test(v) || /^https?:\/\//i.test(v)) return Promise.resolve(v)
   const hit = urlCache.get(v)
   if (hit) return hit
-  const refOr = ref(storage, v)
-  const p = getDownloadURL(refOr)
-    .catch((e) => {
-      urlCache.delete(v)
-      throw e
-    })
-  urlCache.set(v, p)
-  return p
+  const key = v.replace(/^\/+/, '').replace(/^scans\//, '')
+  try {
+    const url = supabase.storage.from('scans').getPublicUrl(key).data.publicUrl
+    const p = Promise.resolve(url)
+    urlCache.set(v, p)
+    return p
+  } catch (e) {
+    urlCache.delete(v)
+    return Promise.reject(e)
+  }
 }
 
 /** Resolve a list of paths/URLs in order; failures become null. */

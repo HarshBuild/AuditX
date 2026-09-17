@@ -14,8 +14,7 @@
  *                extraction back onto our field vocabulary.
  */
 
-import { randomUUID } from 'node:crypto'
-import admin from 'firebase-admin'
+import { uploadPhoto } from '../../supabase-admin.js'
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectorHints, InspectionCategory } from './types.js'
 import { runMultipass, type MultipassOutcome } from './multipass.js'
 import { geminiVisionOCR } from './gemini-ocr.js'
@@ -69,8 +68,8 @@ export function decodeDataUrl(dataUrl: string): { mime: string; buffer: Buffer }
 }
 
 /**
- * Save one photo to `scans/{uid}/{ts}-{n}.{ext}` and write a download token so
- * the browser can render it via getDownloadURL. Returns the storage path.
+ * Save one photo to `scans/{uid}/{ts}-{n}.{ext}` (Supabase Storage bucket
+ * `scans`, public read). Returns the storage path.
  */
 export async function savePhoto(uid: string, index: number, dataUrl: string): Promise<string> {
   const { mime, buffer } = decodeDataUrl(dataUrl)
@@ -79,26 +78,7 @@ export async function savePhoto(uid: string, index: number, dataUrl: string): Pr
 
   const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg'
   const path = `scans/${uid}/${Date.now()}-${index}.${ext}`
-  const file = admin.storage().bucket().file(path)
-  const token = randomUUID()
-
-  await file.save(buffer, {
-    contentType: mime,
-    metadata: {
-      contentType: mime,
-      cacheControl: 'public, max-age=86400',
-      metadata: { firebaseStorageDownloadTokens: token },
-    },
-  })
-  // Belt-and-suspenders: ensure the download token is actually persisted.
-  try {
-    const [meta] = await file.getMetadata()
-    if (!meta.metadata?.firebaseStorageDownloadTokens) {
-      await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } })
-    }
-  } catch {
-    /* best-effort */
-  }
+  await uploadPhoto(path, buffer, mime)
   return path
 }
 

@@ -7,8 +7,7 @@ import Button from '../ui/Button'
 import { FormAlert } from '../auth/FormAlert'
 import { useAuth } from '../../lib/auth'
 import { homePath } from '../../lib/rbac'
-import { auth } from '../../lib/firebase'
-import { sendPasswordResetEmail } from 'firebase/auth'
+import { supabase } from '../../lib/supabase'
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/
 
@@ -92,7 +91,8 @@ export default function LoginPage() {
     }
     setResetBusy(true)
     try {
-      await sendPasswordResetEmail(auth, email)
+      const { error } = await supabase.auth.resetPasswordForEmail(email)
+      if (error) throw new Error(error.message)
       setResetSent(true)
     } catch (e) {
       setError((e as Error).message)

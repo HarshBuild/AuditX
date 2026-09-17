@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowUpRight, ChevronDown, RefreshCw, ScanLine, Search } from 'lucide-react'
-import type { QueryDocumentSnapshot } from 'firebase/firestore'
 import Button from '../ui/Button'
 import DataTable, { type DataColumn } from '../table/DataTable'
 import { ToneBadge } from '../ui/Badge'
@@ -10,7 +9,7 @@ import { useToast } from '../ui/Toast'
 import PageHeader from '../ui/PageHeader'
 import Tabs, { type TabItem } from '../ui/Tabs'
 import { useAuth } from '../../lib/auth'
-import { fetchScansForUserPage } from '../../lib/db'
+import { fetchScansForUserPage, type PageCursor } from '../../lib/db'
 import { photoUrl } from '../../lib/inspection'
 import { scanStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
@@ -78,7 +77,7 @@ export default function RecordsPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null)
+  const [lastDoc, setLastDoc] = useState<PageCursor | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const seenIds = useRef(new Set<string>())
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')

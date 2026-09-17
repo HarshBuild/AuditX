@@ -13,7 +13,8 @@
  */
 
 import { Router, Request, Response } from 'express'
-import admin from 'firebase-admin'
+import { randomUUID } from 'node:crypto'
+import { createScanDoc, getScanDoc, updateScanDoc } from '../supabase-admin.js'
 import { analyzeInspection } from '../lib/inspection/analyze.js'
 import type { AnalysisResult, InspectionCategory, InspectionStatus, OcrStatus } from '../lib/inspection/types.js'
 
@@ -170,9 +171,11 @@ function toCreateBody(req: Request): CreateBody {
 }
 
 /** Finalize a scan document with the full analysis outcome. */
-async function finalizeScan(scanRef: FirebaseFirestore.DocumentReference, result: AnalysisResult, savedPaths: string[]): Promise<void> {
+async function finalizeScan(scanId: string, result: AnalysisResult, savedPaths: string[]): Promise<void> {
   const now = new Date().toISOString()
-  const paths = savedPaths.length > 0 ? savedPaths : ((await scanRef.get().catch(() => null))?.data()?.photo_paths ?? [])
+  const current = await getScanDoc(scanId).catch(() => null)
+  const existing = current as Record<string, unknown> | null
+  const paths = savedPaths.length > 0 ? savedPaths : ((existing?.photo_paths as string[] | undefined) ?? [])
   const patch: Record<string, unknown> = {
     product_name: safe(result.product_name),
     brand: safe(result.brand),
@@ -213,7 +216,7 @@ async function finalizeScan(scanRef: FirebaseFirestore.DocumentReference, result
     image_url: Array.isArray(paths) && paths.length > 0 ? paths[0] : '',
     updated_at: now,
   }
-  await scanRef.update(sanitizeForFirestore(patch) as Record<string, unknown>)
+  await updateScanDoc(scanId, sanitizeForFirestore(patch) as Record<string, unknown>)
 }
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -231,14 +234,14 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
   }
 
   // Create the scan document FIRST (status needs_review / ocr pending).
-  const scanRef = admin.firestore().collection('scans').doc()
-  const initial = sanitizeForFirestore(buildDoc(uid, body, { scanId: scanRef.id, now })) as Record<string, unknown>
+  const scanId = randomUUID()
+  const initial = sanitizeForFirestore(buildDoc(uid, body, { scanId, now })) as Record<string, unknown>
   let analysis: AnalysisResult | null = null
   let savedPaths: string[] = []
   let ocrError: string | null = null
 
   try {
-    await scanRef.set(initial)
+    await createScanDoc({ ...initial, id: scanId })
   } catch (e) {
     console.error('⚠️ inspection create-persist failed:', (e as Error)?.message ?? e)
     res.status(500).json({ ok: false, error: 'Could not create the inspection. Please try again.' })
@@ -262,18 +265,18 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     })
     analysis = outcome.result
     savedPaths = outcome.savedPaths
-    await finalizeScan(scanRef, outcome.result, savedPaths)
+    await finalizeScan(scanId, outcome.result, savedPaths)
   } catch (e) {
     ocrError = errorMessage(e)
     console.warn('⚠️ inspection analysis failed (kept pending):', ocrError)
     try {
-      await scanRef.update({ ocr_status: 'failed', ocr_error: ocrError, status: 'needs_review', updated_at: new Date().toISOString() })
+      await updateScanDoc(scanId, { ocr_status: 'failed', ocr_error: ocrError, status: 'needs_review', updated_at: new Date().toISOString() })
     } catch (ue) {
       console.warn('⚠️ failed to flag inspection as failed:', (ue as Error)?.message ?? ue)
     }
   }
 
-  res.json({ ok: true, scan_id: scanRef.id, pending: !analysis, result: analysis, error: ocrError })
+  res.json({ ok: true, scan_id: scanId, pending: !analysis, result: analysis, error: ocrError })
 })
 
 router.post('/analyze', async (req: Request, res: Response): Promise<void> => {
@@ -284,13 +287,12 @@ router.post('/analyze', async (req: Request, res: Response): Promise<void> => {
     return
   }
 
-  const scanRef = admin.firestore().collection('scans').doc(scanId)
-  const snap = await scanRef.get().catch(() => null)
-  if (!snap?.exists) {
+  const existing = await getScanDoc(scanId).catch(() => null)
+  if (!existing) {
     res.status(404).json({ ok: false, error: 'Inspection not found.' })
     return
   }
-  const data = snap.data() ?? {}
+  const data = existing as Record<string, unknown>
   if (data.user_id !== uid) {
     res.status(403).json({ ok: false, error: 'You can only retry your own inspections.' })
     return
@@ -320,10 +322,10 @@ router.post('/analyze', async (req: Request, res: Response): Promise<void> => {
       previousScanId: scanId,
     })
     analysis = outcome.result
-    await finalizeScan(scanRef, outcome.result, [])
+    await finalizeScan(scanId, outcome.result, [])
   } catch (e) {
     const msg = errorMessage(e)
-    await scanRef.update({ ocr_status: 'failed', ocr_error: msg, status: 'needs_review', updated_at: new Date().toISOString() }).catch(() => undefined)
+    await updateScanDoc(scanId, { ocr_status: 'failed', ocr_error: msg, status: 'needs_review', updated_at: new Date().toISOString() }).catch(() => undefined)
     res.json({ ok: true, scan_id: scanId, pending: true, result: null, error: msg })
     return
   }
@@ -336,18 +338,18 @@ router.post('/:id/verify', async (req: Request, res: Response): Promise<void> =>
   const id = req.params.id
   const verified = (req.body as any)?.verified !== false
 
-  const snap = await admin.firestore().collection('scans').doc(id).get().catch(() => null)
-  if (!snap?.exists) {
+  const existing = await getScanDoc(id).catch(() => null)
+  if (!existing) {
     res.status(404).json({ ok: false, error: 'Inspection not found.' })
     return
   }
-  const data = snap.data() ?? {}
+  const data = existing as Record<string, unknown>
   if (data.user_id !== uid && !['inspector', 'admin', 'super_admin'].includes((req as any).role ?? '')) {
     res.status(403).json({ ok: false, error: 'Not allowed to verify this inspection.' })
     return
   }
 
-  await admin.firestore().collection('scans').doc(id).update({
+  await updateScanDoc(id, {
     changes_verified: verified,
     updated_at: new Date().toISOString(),
   })
@@ -358,18 +360,18 @@ router.put('/:id/remarks', async (req: Request, res: Response): Promise<void> =>
   const id = req.params.id
   const remarks = String((req.body as any)?.remarks ?? '').slice(0, 2000)
 
-  const snap = await admin.firestore().collection('scans').doc(id).get().catch(() => null)
-  if (!snap?.exists) {
+  const existing = await getScanDoc(id).catch(() => null)
+  if (!existing) {
     res.status(404).json({ ok: false, error: 'Inspection not found.' })
     return
   }
-  const data = snap.data() ?? {}
+  const data = existing as Record<string, unknown>
   if (data.user_id !== (req as any).uid && !['inspector', 'admin', 'super_admin'].includes((req as any).role ?? '')) {
     res.status(403).json({ ok: false, error: 'Not allowed to add remarks.' })
     return
   }
 
-  await admin.firestore().collection('scans').doc(id).update({
+  await updateScanDoc(id, {
     remarks,
     notes: remarks,
     updated_at: new Date().toISOString(),
@@ -379,12 +381,12 @@ router.put('/:id/remarks', async (req: Request, res: Response): Promise<void> =>
 
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
   const id = req.params.id
-  const snap = await admin.firestore().collection('scans').doc(id).get().catch(() => null)
-  if (!snap?.exists) {
+  const existing = await getScanDoc(id).catch(() => null)
+  if (!existing) {
     res.status(404).json({ ok: false, error: 'Inspection not found.' })
     return
   }
-  const data = snap.data() ?? {}
+  const data = existing as Record<string, unknown>
   const result: AnalysisResult | null =
     data.ocr_status === 'done' && data.compliance_findings ? (data as unknown as AnalysisResult) : null
   res.json({ ok: true, scan_id: id, result, doc: { id, ...data } })

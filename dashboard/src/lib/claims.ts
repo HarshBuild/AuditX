@@ -1,18 +1,17 @@
 /*
- * AuditX v3.0 — Custom-claim sync client.
+ * AuditX — Role/status sync client.
  *
- * Firestore security rules gate staff collection LIST queries on custom claims
- * (role, status) because a list rule cannot call get() on another document.
- * Claims can only be minted server-side (Firebase Admin SDK), so this client
- * calls the deployed AuditX Express API's existing POST /api/set-claims route
- * after a manager approves/revokes an admin or changes account status.
+ * Roles live directly on the `profiles` row (no custom-claim indirection).
+ * This client calls the deployed AuditX Express API's existing
+ * POST /api/set-claims route after a manager approves/revokes an admin or
+ * changes account status, so any server-side cache refreshes.
  *
- * The call is best-effort and never blocks the Firestore write that already
- * happened; if /api/set-claims fails, the operator is told to run
- * scripts/mint-claims.cjs (see DEPLOYMENT.md) so staff list queries work again.
+ * The call is best-effort and never blocks the profiles write that already
+ * happened; if /api/set-claims fails, the operator is told to check the
+ * AuditX API deployment.
  */
 
-import { auth } from './firebase'
+import { accessToken, currentUid } from './supabase'
 import { CONFIG } from './config'
 import { fetchWithTimeout } from './net'
 
@@ -23,15 +22,16 @@ export interface SyncClaimsInput {
 }
 
 /**
- * Mint/sync custom claims for a target user via /api/set-claims.
- * Requires the caller to be signed in (their ID token authorizes the route).
+ * Sync role/status for a target user via /api/set-claims.
+ * Requires the caller to be signed in (their session token authorizes the route).
  * Throws only when the request fails outright; callers decide how to surface it.
  */
 export async function syncUserClaims(input: SyncClaimsInput): Promise<void> {
-  const user = auth.currentUser
+  const user = await currentUid()
   if (!user) throw new Error('Not signed in — claims cannot be synced')
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
-  const token = await user.getIdToken(true)
+  const token = await accessToken(true)
+  if (!token) throw new Error('Not signed in — claims cannot be synced')
   const res = await fetchWithTimeout(`${base}/api/set-claims`, {
     method: 'POST',
     headers: {

@@ -3,11 +3,10 @@
  * 
  * Environment variables:
  *   PORT                 — listen port (default: 8080, Render injects its own)
- *   PROJECT_ID           — Firebase project ID
- *   CLIENT_EMAIL         — Firebase client email
- *   PRIVATE_KEY          — Firebase private key (PEM; literal \\n supported)
- *   STORAGE_BUCKET       — Firebase Storage bucket name (default <PROJECT_ID>.firebasestorage.app)
-*   GEMINI_API_KEY       — Google Gemini API key (Report 2: Gemini Vision)
+ *   SUPABASE_URL         — Supabase project URL
+ *   SUPABASE_SERVICE_ROLE_KEY — Supabase service_role secret (backend only)
+ *   STORAGE_BUCKET       — photo Storage bucket name (default `scans`)
+ *   GEMINI_API_KEY       — Google Gemini API key (Report 2: Gemini Vision)
 *   GEMINI_VISION_MODEL  — Gemini model for label extraction (default gemini-3.6-flash)
 *   GEMINI_TEXT_MODEL    — Gemini model for assistant answers (default gemini-3.6-flash)
 *   OPENROUTER_API_KEY   — OpenRouter API key (Report 3: OpenRouter Vision; unset = report skipped)
@@ -24,12 +23,9 @@
 // --- Load local .env first (no-op in production; Render injects environment) ---
 import './env.js'
 
-import admin from 'firebase-admin'
 import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
-
-// --- Firebase Admin initialization from env vars ---
-import './firebase-admin-init.js'
+import { ensureProfile, verifyAccessToken } from './supabase-admin.js'
 
 // --- API routers ---
 import scanRouter from './routes/scan.js'
@@ -82,7 +78,7 @@ app.use(
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
-// --- Firebase ID token authentication middleware ---
+// --- Supabase session authentication middleware ---
 function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
   void (async () => {
     try {
@@ -91,29 +87,11 @@ function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction)
         res.status(401).json({ ok: false, error: 'Unauthorized — missing Bearer token.' })
         return
       }
-      const idToken: string = authHeader.slice('Bearer '.length).trim()
-      const decoded = await admin.auth().verifyIdToken(idToken)
-      const profileSnap = await admin.firestore().doc(`users/${decoded.uid}`).get()
-      if (!profileSnap.exists) {
-        // Auto-create user profile for authenticated users (first login)
-        const email = decoded.email ?? ''
-        const displayName = decoded.name ?? decoded.email?.split('@')[0] ?? 'User'
-        await admin.firestore().doc(`users/${decoded.uid}`).set({
-          email,
-          display_name: displayName,
-          role: 'user',
-          status: 'active',
-          created_at: new Date().toISOString(),
-        })
-        ;(req as any).uid = decoded.uid
-        ;(req as any).role = 'user'
-        ;(req as any).status = 'active'
-        next()
-        return
-      }
-      const data = profileSnap.data()
-      const role: string = String(data?.role ?? '')
-      const status: string = String(data?.status ?? '')
+      const accessToken: string = authHeader.slice('Bearer '.length).trim()
+      const caller = await verifyAccessToken(accessToken)
+      const profile = await ensureProfile(caller.uid, caller.email, caller.name)
+      const role: string = String(profile.role ?? '')
+      const status: string = String(profile.status ?? '')
       const validRoles: string[] = ['user', 'inspector', 'admin', 'super_admin']
       if (!validRoles.includes(role)) {
         res.status(403).json({ ok: false, error: 'Invalid account role.' })
@@ -127,25 +105,22 @@ function firebaseAuthMiddleware(req: Request, res: Response, next: NextFunction)
         res.status(403).json({ ok: false, error: 'Your account has been restricted. Contact the system administrator.' })
         return
       }
-      ;(req as any).uid = decoded.uid
+      ;(req as any).uid = caller.uid
+      ;(req as any).email = caller.email
       ;(req as any).role = role
       ;(req as any).status = status
       next()
     } catch (e: any) {
-      if (e.code === 'auth/id-token-expired' || e.code === 'auth/user-token-expired') {
-        res.status(401).json({ ok: false, error: 'Unauthorized — ID token has expired.' })
-        return
-      }
-      if (e.code === 'auth/invalid-id-token') {
-        res.status(401).json({ ok: false, error: 'Unauthorized — invalid ID token.' })
+      const msg = String(e?.message ?? '')
+      if (/invalid or expired session|invalid session|expired/i.test(msg)) {
+        res.status(401).json({ ok: false, error: 'Unauthorized — session has expired. Please sign in again.' })
         return
       }
       // Log full error for debugging
-      console.error('⚠️ Firebase auth middleware error:', {
+      console.error('⚠️ Supabase auth middleware error:', {
         code: e?.code,
         message: e?.message,
         stack: e?.stack,
-        projectId: process.env.PROJECT_ID,
       })
       res.status(500).json({ ok: false, error: `Authentication service error: ${e?.message || e?.code || 'unexpected failure'}` })
     }
@@ -159,7 +134,7 @@ app.get('/health', (_req: Request, res: Response): void => {
   res.json({ ok: true, service: 'AuditX backend' })
 })
 
-// --- API route mounts (all require Firebase ID token auth) ---
+// --- API route mounts (all require Supabase session auth) ---
 app.use('/api/scan', firebaseAuthMiddleware, scanRouter)
 app.use('/api/assistant', firebaseAuthMiddleware, assistantRouter)
 app.use('/api/barcode', firebaseAuthMiddleware, barcodeRouter)

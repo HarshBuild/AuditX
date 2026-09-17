@@ -5,13 +5,13 @@
  *   -> { ok: true, found: boolean, source: 'off|firestore|none',
  *        product: { name, brand, manufacturer, category } | null }
  *
- * 1. Checks the local `products` collection first.
+ * 1. Checks the local `products` table first.
  * 2. Falls back to Open Food Facts (world.openfoodfacts.org).
  * 3. Returns found=false when neither has data.
  */
 
 import { Router, Request, Response } from 'express'
-import admin from 'firebase-admin'
+import { findProductByBarcode } from '../supabase-admin.js'
 
 const router = Router()
 
@@ -23,31 +23,25 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    // 1️⃣ Local Firestore products collection
+    // 1️⃣ Local Supabase products table
     try {
-      const snap = await admin
-        .firestore()
-        .collection('products')
-        .where('barcode', '==', barcode)
-        .limit(1)
-        .get()
-      if (!snap.empty) {
-        const p = snap.docs[0].data()
+      const p = await findProductByBarcode(barcode)
+      if (p) {
         res.json({
           ok: true,
           found: true,
-          source: 'firestore',
+          source: 'supabase',
           product: {
-            name: p.name ?? null,
-            brand: p.brand ?? null,
-            manufacturer: p.manufacturer ?? null,
-            category: p.category ?? null,
+            name: (p.name as string | null) ?? null,
+            brand: (p.brand as string | null) ?? null,
+            manufacturer: (p.manufacturer as string | null) ?? null,
+            category: (p.category as string | null) ?? null,
           },
         })
         return
       }
     } catch (e) {
-      console.warn('⚠️ Firestore product lookup failed:', (e as Error).message)
+      console.warn('⚠️ Supabase product lookup failed:', (e as Error).message)
     }
 
     // 2️⃣ Open Food Facts lookup

@@ -11,7 +11,7 @@
  * to the normal analysis without blocking the user.
  */
 
-import { auth } from './firebase'
+import { accessToken, currentUid } from './supabase'
 import { CONFIG } from './config'
 import { fetchWithTimeout } from './net'
 
@@ -122,10 +122,10 @@ export interface VisionOcrResult {
  */
 export async function runVisionOcr(images: string[], lang = 'en', category?: string | null): Promise<VisionOcrResult | null> {
   if (!images || images.length === 0) return null
-  const user = auth.currentUser
+  const user = await currentUid()
   if (!user) return null
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
-  const token = await user.getIdToken(true).catch(() => null)
+  const token = await accessToken(true).catch(() => null)
   if (!token) return null
 
   let res: Response

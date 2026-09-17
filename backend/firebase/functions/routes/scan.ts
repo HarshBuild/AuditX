@@ -16,7 +16,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express'
-import admin from 'firebase-admin'
+import { createScanDoc, pushNotification } from '../supabase-admin.js'
 import { buildExtractionPrompt, buildTranscriptPrompt, extractJson, norm, parseRaw, rawTranscriptText, type ParsedRaw, type SanitizedExtractions } from '../compliance/extraction.js'
 import { runAdaptiveVerification, normalizeRegions, fetchOcrEvidence, type AdaptiveVerification } from '../compliance/adaptiveOcr.js'
 import { runComplianceEngine } from '../compliance/engine.js'
@@ -290,16 +290,11 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         : {}),
     }
 
-    // 5️⃣ Persist to Firestore (best-effort, single batched write)
+    // 5️⃣ Persist to Supabase (best-effort, scan + notification)
     let scanId: string = `scan-${Date.now()}`
     try {
-      const db = admin.firestore()
-      const scanRef = db.collection('scans').doc()
-      scanId = scanRef.id
-      const notifRef = db.collection('notifications').doc()
-      const batch = db.batch()
       const now = new Date().toISOString()
-      batch.set(scanRef, {
+      scanId = await createScanDoc({
         user_id: (req as any).uid,
         product_name: result.product_name,
         brand: result.brand,
@@ -336,15 +331,13 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         notes: '',
         created_at: now,
       })
-      batch.set(notifRef, {
+      await pushNotification({
         user_id: (req as any).uid, type: 'scan', title: 'Analysis completed',
         body: `${result.product_name || 'Product'} scored ${result.overall_score}/100 — ${result.verdict}.`,
-        link: '/scan-history', read: false, read_at: null, data: { scan_id: scanRef.id },
-        created_at: now,
+        link: '/scan-history', data: { scan_id: scanId },
       })
-      await batch.commit()
     } catch (persistErr) {
-      console.warn('⚠️ Firestore persist error (non-fatal):', (persistErr as Error).message)
+      console.warn('⚠️ Supabase persist error (non-fatal):', (persistErr as Error).message)
     }
 
     res.json({ ok: true, scan_id: scanId, result })

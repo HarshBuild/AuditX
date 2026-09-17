@@ -3,8 +3,8 @@ import { Camera, RefreshCw, Search } from 'lucide-react'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
 import { ToneBadge } from '../ui/Badge'
 import { ErrorState } from '../ui/States'
-import { db, auth } from '../../lib/firebase'
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
+import { supabase } from '../../lib/supabase'
+import { mergeRow } from '../../lib/db'
 import { photoUrl } from '../../lib/inspection'
 import { timeAgo } from '../../utils/format'
 import { displayProductName, displayText } from '../../lib/textnorm'
@@ -36,7 +36,8 @@ export default function EvidencePage() {
       setLoading(true)
       setError(null)
       try {
-        const uid = auth.currentUser?.uid
+        const { data: auth } = await supabase.auth.getUser()
+        const uid = auth.user?.id
         if (!uid) {
           if (!cancelled) {
             setItems([])
@@ -44,32 +45,33 @@ export default function EvidencePage() {
           }
           return
         }
-        const q = query(
-          collection(db, 'scans'),
-          orderBy('created_at', 'desc'),
-          limit(200),
-        )
-        const snap = await getDocs(q)
+        const { data: rows, error } = await supabase
+          .from('scans')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200)
+        if (error) throw new Error(error.message)
         if (cancelled) return
         const evidence: EvidenceItem[] = []
-        for (const d of snap.docs) {
-          const data = d.data()
+        for (const row of (rows ?? []) as Record<string, unknown>[]) {
+          const d = mergeRow<Record<string, unknown>>('scans', row)
+          const data = d as Record<string, unknown>
           const urls = (data.image_urls as string[] | undefined) ?? (data.image_url ? [data.image_url as string] : [])
           if (!urls || urls.length === 0) continue
           for (let i = 0; i < urls.length; i++) {
             const maybe = photoUrl(urls[i])
             const resolved = maybe ? await maybe.catch(() => null) : null
             evidence.push({
-              id: `${d.id}_${i}`,
-              scan_id: d.id,
-              user_id: data.user_id ?? '',
-              user_name: data.user_name ?? '',
+              id: `${String(d.id)}_${i}`,
+              scan_id: String(d.id ?? ''),
+              user_id: String(data.user_id ?? ''),
+              user_name: String(data.user_name ?? ''),
               image_url: resolved ?? urls[i],
-              product_name: data.product_name ?? '',
-              manufacturer: data.manufacturer ?? '',
-              location_name: data.location_name ?? '',
-              created_at: data.created_at ?? '',
-              overall_score: data.overall_score ?? 0,
+              product_name: String(data.product_name ?? ''),
+              manufacturer: String(data.manufacturer ?? ''),
+              location_name: String(data.location_name ?? ''),
+              created_at: String(data.created_at ?? ''),
+              overall_score: Number(data.overall_score ?? 0),
             })
           }
         }

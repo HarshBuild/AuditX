@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
 import { ErrorState } from '../ui/States'
-import { db } from '../../lib/firebase'
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
-import { COLLECTIONS } from '../../lib/db'
+import { supabase } from '../../lib/supabase'
+import { mergeRow } from '../../lib/db'
 
 interface ScanDoc {
   created_at: string
@@ -39,9 +38,16 @@ export default function AdminAnalyticsPage() {
       setLoading(true)
       setError(null)
       try {
-        const snap = await getDocs(query(collection(db, COLLECTIONS.SCANS), orderBy('created_at', 'desc'), limit(2000)))
+        const { data: rows, error } = await supabase
+          .from('scans')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(2000)
+        if (error) throw new Error(error.message)
         if (cancelled) return
-        const scans: ScanDoc[] = snap.docs.map((d) => d.data() as ScanDoc)
+        const scans: ScanDoc[] = ((rows ?? []) as Record<string, unknown>[]).map(
+          (r) => mergeRow<ScanDoc>('scans', r),
+        )
         setTotalScans(scans.length)
 
         if (scans.length === 0) {

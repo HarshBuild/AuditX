@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { collection, limit, onSnapshot, query, where } from 'firebase/firestore'
-import { auth, db } from '../lib/firebase'
-import { COLLECTIONS } from '../lib/db'
+import { supabase } from '../lib/supabase'
 import { markAllNotificationsRead, markNotificationRead } from '../lib/services'
 import type { NotificationRow } from '../lib/types2'
 import type { AppNotification, NotificationType } from '../types'
@@ -25,9 +23,16 @@ function toAppNotification(n: NotificationRow): AppNotification {
   }
 }
 
+function toRow(r: Record<string, unknown>): NotificationRow {
+  const { data: _drop, ...cols } = r
+  void _drop
+  const extras = (r.data ?? {}) as Record<string, unknown>
+  return { ...extras, ...cols } as unknown as NotificationRow
+}
+
 /**
- * Realtime (Firestore) notifications for the signed-in user. Supabase realtime
- * equivalent: `onSnapshot` on the notifications collection.
+ * Realtime notifications for the signed-in user (Supabase Realtime on the
+ * notifications table, filtered to the caller's own inbox).
  */
 export function useNotifications({ enabled = true }: { enabled?: boolean } = {}) {
   const [items, setItems] = useState<AppNotification[]>([])
@@ -39,28 +44,47 @@ export function useNotifications({ enabled = true }: { enabled?: boolean } = {})
       setUnread(0)
       return
     }
-    const uid = auth.currentUser?.uid
-    if (!uid) {
-      setItems([])
-      setUnread(0)
-      return
-    }
-    const ref = query(collection(db, COLLECTIONS.NOTIFICATIONS), where('user_id', '==', uid), limit(30))
-    const unsubscribe = onSnapshot(
-      ref,
-      (snap) => {
-        const mine = snap.docs
-          .filter((d) => d.data().user_id === uid)
-          .map((d) => ({ id: d.id, ...d.data() }) as unknown as NotificationRow)
-          .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))
+    let stopped = false
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser()
+      const uid = auth.user?.id
+      if (stopped || !uid) {
+        if (!stopped) {
+          setItems([])
+          setUnread(0)
+        }
+        return
+      }
+      const load = async () => {
+        const { data } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', uid)
+          .order('created_at', { ascending: false })
+          .limit(30)
+        if (stopped) return
+        const mine = ((data ?? []) as Record<string, unknown>[]).map(toRow)
         setItems(mine.map(toAppNotification))
         setUnread(mine.filter((n) => !n.read).length)
-      },
-      () => {
-        /* transient listener errors are surfaced through the query loads */
-      },
-    )
-    return () => unsubscribe()
+      }
+      await load()
+      if (stopped) return
+      channel = supabase
+        .channel(`notifications-${uid}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${uid}` },
+          () => {
+            void load()
+          },
+        )
+        .subscribe()
+    })()
+    return () => {
+      stopped = true
+      if (channel) void supabase.removeChannel(channel)
+    }
   }, [enabled])
 
   const markOne = useCallback((id: string) => {

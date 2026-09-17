@@ -12,18 +12,13 @@ import {
   Sun,
   UserCircle2,
 } from 'lucide-react'
-import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword,
-} from 'firebase/auth'
 import AnalyticsCard from '../dashboard/AnalyticsCard'
 import Input from '../ui/Input'
 import Button from '../ui/Button'
 import { ToneBadge } from '../ui/Badge'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../lib/auth'
-import { auth } from '../../lib/firebase'
+import { supabase } from '../../lib/supabase'
 import { roleLabel, defaultPrefs, type UserPrefs } from '../../lib/rbac'
 import type { ThemeMode } from '../../hooks/useTheme'
 import { cn } from '../../utils/format'
@@ -79,7 +74,8 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
   }
 
   const changePassword = async () => {
-    if (!auth.currentUser?.email) {
+    const { data } = await supabase.auth.getUser()
+    if (!data.user?.email) {
       toast('error', 'No session', 'You must be signed in to change your password.')
       return
     }
@@ -93,9 +89,15 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
     }
     setChangingPw(true)
     try {
-      const cred = EmailAuthProvider.credential(auth.currentUser.email, currentPw)
-      await reauthenticateWithCredential(auth.currentUser, cred)
-      await updatePassword(auth.currentUser, newPw)
+      // Re-verify the current password first (Supabase has no re-auth API —
+      // a password sign-in with the current credentials proves ownership).
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: data.user.email,
+        password: currentPw,
+      })
+      if (signInError) throw new Error('Current password is incorrect.')
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPw })
+      if (updateError) throw new Error(updateError.message)
       setCurrentPw('')
       setNewPw('')
       setConfirmPw('')
@@ -111,7 +113,8 @@ export default function SettingsPage({ mode, setMode }: SettingsPageProps) {
   const refreshSession = async () => {
     setRefreshing(true)
     try {
-      await auth.currentUser?.getIdToken(true)
+      const { error } = await supabase.auth.refreshSession()
+      if (error) throw new Error(error.message)
       toast('success', 'Session refreshed', 'Your access token has been refreshed.')
     } catch {
       toast('error', 'Could not refresh session', 'Please sign out and sign back in.')

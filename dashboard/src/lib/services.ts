@@ -1,56 +1,53 @@
 /*
- * AuditX v3.0 — Firestore mutation services.
+ * AuditX — Supabase mutation services (replaces Firestore writes).
  *
- * These replace the former Supabase RPCs (admin_set_scan_status, admin_manual_review,
- * set_admin_status, set_user_status, approve/reject_admin_request, touch_last_login…).
+ * Same exports and behavior as before; only the persistence layer moved.
  *
- * Security note: the client-side role check here (requireClaim) mirrors the previous
- * "UX fail-fast". The actual authorization boundary is the Firestore security rules
- * (backend/firebase/firestore.rules) which verify Firebase custom claims
- * (role = {admin,super_admin}, status == 'active') before allowing any write.
+ * Security note: the client-side role check here (requireStaff) is a UX
+ * fail-fast. The authorization boundary is Supabase RLS
+ * (supabase/migrations/0001_auditx_core.sql) plus the Express backend
+ * (service role) for privileged writes.
  */
 
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from 'firebase/firestore'
-import { auth, db } from './firebase'
-import { COLLECTIONS } from './db'
+import { supabase, accessToken } from './supabase'
+import { mergeRow, splitRow } from './db'
 import { syncUserClaims } from './claims'
 import { CONFIG } from './config'
 import { fetchWithTimeout } from './net'
 import type { ManualResult, ScanRow, Severity } from './types2'
 
 /* ------------------------------------------------------------------ */
-/* Pre-flight authorization (UX only — rules are the boundary)         */
+/* Pre-flight authorization (UX only — RLS is the boundary)            */
 /* ------------------------------------------------------------------ */
 
+async function currentUser() {
+  const { data } = await supabase.auth.getUser()
+  return data.user ?? null
+}
+
+async function profileRow(uid: string): Promise<Record<string, unknown> | null> {
+  const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
+  return (data as Record<string, unknown> | null) ?? null
+}
+
 async function requireStaff(): Promise<{ uid: string; name: string; role: string }> {
-  const user = auth.currentUser
+  const user = await currentUser()
   if (!user) throw new Error('Not authenticated')
-  const snap = await getDoc(doc(db, COLLECTIONS.USERS, user.uid))
-  const role = String(snap.data()?.role ?? 'user')
-  const status = String(snap.data()?.status ?? 'pending')
-  // Staff = super_admin only (legacy admin/inspector docs map here too).
+  const row = await profileRow(user.id)
+  const role = String(row?.role ?? 'user')
+  const status = String(row?.status ?? 'pending')
+  // Staff = super_admin only (legacy admin/inspector rows map here too).
   if (role !== 'admin' && role !== 'super_admin' && role !== 'inspector') {
     throw new Error('Forbidden: staff access required')
   }
   if (status !== 'active') {
     throw new Error('Forbidden: account is not active')
   }
-  return { uid: user.uid, name: String(snap.data()?.full_name ?? user.displayName ?? ''), role }
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>
+  return { uid: user.id, name: String(row?.full_name ?? meta.full_name ?? ''), role }
 }
 
-/** Managers only (admin + super_admin, incl. legacy admin docs) — for user/product/rule administration. */
+/** Managers only (admin + super_admin, incl. legacy admin rows) — for user/product/rule administration. */
 async function requireManager(): Promise<{ uid: string; name: string }> {
   const actor = await requireStaff()
   if (actor.role !== 'admin' && actor.role !== 'super_admin') {
@@ -61,7 +58,7 @@ async function requireManager(): Promise<{ uid: string; name: string }> {
 
 async function logActivity(actor: { uid: string; name: string }, action: string, targetType: string, targetId: string, details: Record<string, unknown>) {
   try {
-    await addDoc(collection(db, COLLECTIONS.ACTIVITY_LOGS), {
+    await supabase.from('activity_logs').insert({
       user_id: null,
       actor_id: actor.uid,
       actor_name: actor.name,
@@ -78,17 +75,36 @@ async function logActivity(actor: { uid: string; name: string }, action: string,
 
 async function notify(userId: string, type: string, title: string, body: string, link: string, data: Record<string, unknown> = {}) {
   if (!userId) return
-  await addDoc(collection(db, COLLECTIONS.NOTIFICATIONS), {
-    user_id: userId,
-    type,
-    title,
-    body,
-    link,
-    read: false,
-    read_at: null,
-    data,
-    created_at: new Date().toISOString(),
-  })
+  try {
+    await supabase.from('notifications').insert({
+      user_id: userId,
+      type,
+      title,
+      body,
+      link,
+      read: false,
+      read_at: null,
+      data,
+      created_at: new Date().toISOString(),
+    })
+  } catch {
+    /* non-critical */
+  }
+}
+
+async function getScanRow(scanId: string): Promise<Record<string, unknown> | null> {
+  const { data } = await supabase.from('scans').select('*').eq('id', scanId).maybeSingle()
+  if (!data) return null
+  return mergeRow<Record<string, unknown>>('scans', data as Record<string, unknown>)
+}
+
+async function updateScanRow(scanId: string, patch: Record<string, unknown>): Promise<void> {
+  const current = await getScanRow(scanId)
+  if (!current) throw new Error('Scan not found')
+  const merged = { ...current, ...patch, id: scanId, updated_at: new Date().toISOString() }
+  const { cols, data } = splitRow('scans', merged)
+  const { error } = await supabase.from('scans').update({ ...cols, data }).eq('id', scanId)
+  if (error) throw new Error(error.message)
 }
 
 /* ------------------------------------------------------------------ */
@@ -101,12 +117,12 @@ export async function createScan(
       image_url?: string
     },
 ): Promise<string> {
-  const user = auth.currentUser
+  const user = await currentUser()
   if (!user) throw new Error('Not authenticated')
-  const uid = user.uid
+  const uid = user.id
   const risk = Math.max(0, Math.min(100, input.risk_score ?? 100 - input.overall_score))
-  const ref = doc(collection(db, COLLECTIONS.SCANS))
-  await setDoc(ref, {
+  const now = new Date().toISOString()
+  const doc = {
     user_id: uid,
     product_name: input.product_name,
     brand: input.brand ?? '',
@@ -128,17 +144,26 @@ export async function createScan(
     longitude: input.longitude ?? null,
     location_name: input.location_name ?? '',
     language: input.language ?? '',
-    created_at: new Date().toISOString(),
-  })
+    created_at: now,
+    updated_at: now,
+  }
+  const { cols, data } = splitRow('scans', doc as unknown as Record<string, unknown>)
+  const { data: inserted, error } = await supabase
+    .from('scans')
+    .insert({ ...cols, data: { ...data, ...doc } })
+    .select('id')
+    .single()
+  if (error || !inserted) throw new Error(error?.message ?? 'Scan creation failed')
+  const id = String((inserted as { id: string }).id)
   void notify(
     uid,
     'scan',
     'Analysis completed',
     `"${input.product_name}" scored ${input.overall_score}/100.`,
     '/scan-history',
-    { scan_id: ref.id },
+    { scan_id: id },
   )
-  return ref.id
+  return id
 }
 
 /**
@@ -149,22 +174,24 @@ export async function createScan(
  * member may correct a scan.
  */
 export async function userCorrectField(scanId: string, field: string, corrected: string): Promise<void> {
-  const actor = auth.currentUser
+  const actor = await currentUser()
   if (!actor) throw new Error('Not authenticated')
-  const scanned = await getDoc(doc(db, COLLECTIONS.SCANS, scanId))
-  if (!scanned.exists()) throw new Error('Scan not found')
-  const data = scanned.data()
-  const ownerId = data.user_id ? String(data.user_id) : ''
-  const isStaff = await isStaffUser(actor.uid).catch(() => false)
-  if (ownerId && ownerId !== actor.uid && !isStaff) throw new Error('You can only correct scans you created.')
+  const scanned = await getScanRow(scanId)
+  if (!scanned) throw new Error('Scan not found')
+  const ownerId = scanned.user_id ? String(scanned.user_id) : ''
+  const isStaff = await isStaffUser(actor.id).catch(() => false)
+  if (ownerId && ownerId !== actor.id && !isStaff) throw new Error('You can only correct scans you created.')
 
   const key = field.replace(/[^a-zA-Z0-9_]/g, '_')
-  const prevField = data.extraction_fields?.[key]
+  const ef = (scanned.extraction_fields ?? {}) as Record<string, any>
+  const prevField = ef[key]
   const prevValue = typeof prevField?.value === 'string' ? prevField.value : null
-  const prevExtraction = data.extractions?.[key]
+  const ex = (scanned.extractions ?? {}) as Record<string, unknown>
+  const prevExtraction = ex[key]
 
-  const fresh: Record<string, unknown> = {
-    [`extraction_fields.${key}`]: {
+  const nextEf = {
+    ...ef,
+    [key]: {
       ...(prevField ?? {}),
       value: corrected,
       verification: 'user_corrected',
@@ -173,38 +200,44 @@ export async function userCorrectField(scanId: string, field: string, corrected:
       conflict: false,
       original_value: prevValue ?? prevExtraction ?? null,
     },
-    [`extractions.${key}`]: corrected,
-    [`user_corrections.${key}`]: {
+  }
+  const nextEx = { ...ex, [key]: corrected }
+  const uc = (scanned.user_corrections ?? {}) as Record<string, unknown>
+  const nextUc = {
+    ...uc,
+    [key]: {
       corrected_value: corrected,
       original_value: prevValue ?? prevExtraction ?? null,
-      corrected_by: actor.uid,
+      corrected_by: actor.id,
       corrected_at: new Date().toISOString(),
     },
-    updated_at: new Date().toISOString(),
   }
 
-  await updateDoc(doc(db, COLLECTIONS.SCANS, scanId), fresh)
-  void logActivity({ uid: actor.uid, name: actor.displayName ?? actor.email ?? '' }, 'scan.field_corrected', 'scan', scanId, { field: key, value: corrected, original: prevValue ?? prevExtraction ?? null })
+  await updateScanRow(scanId, {
+    extraction_fields: nextEf,
+    extractions: nextEx,
+    user_corrections: nextUc,
+  })
+  const meta = (actor.user_metadata ?? {}) as Record<string, unknown>
+  void logActivity({ uid: actor.id, name: String(meta.full_name ?? actor.email ?? '') }, 'scan.field_corrected', 'scan', scanId, { field: key, value: corrected, original: prevValue ?? prevExtraction ?? null })
 }
 
 async function isStaffUser(uid: string): Promise<boolean> {
-  const snap = await getDoc(doc(db, COLLECTIONS.USERS, uid))
-  const role = String(snap.data()?.role ?? 'user')
+  const row = await profileRow(uid)
+  const role = String(row?.role ?? 'user')
   return role === 'admin' || role === 'super_admin'
 }
 
 export async function setScanStatus(scanId: string, status: ScanRow['status'], notes: string) {
   const actor = await requireStaff()
-  const scan = await getDoc(doc(db, COLLECTIONS.SCANS, scanId))
-  if (!scan.exists()) throw new Error('Scan not found')
-  const data = scan.data()
+  const data = await getScanRow(scanId)
+  if (!data) throw new Error('Scan not found')
   const ownerId = data.user_id ? String(data.user_id) : ''
   const product = String(data.product_name ?? '')
 
-  await updateDoc(doc(db, COLLECTIONS.SCANS, scanId), {
+  await updateScanRow(scanId, {
     status,
-    notes: notes.trim() ? notes.trim() : (data.notes ?? ''),
-    updated_at: new Date().toISOString(),
+    notes: notes.trim() ? notes.trim() : ((data.notes as string | undefined) ?? ''),
   })
 
   if (ownerId) {
@@ -237,10 +270,8 @@ export async function manualReview(
   const actor = await requireStaff()
   if (payload.score < 0 || payload.score > 100) throw new Error('Manual score must be 0-100')
 
-  const scanRef = doc(db, COLLECTIONS.SCANS, scanId)
-  const scan = await getDoc(scanRef)
-  if (!scan.exists()) throw new Error('Scan not found')
-  const data = scan.data()
+  const data = await getScanRow(scanId)
+  if (!data) throw new Error('Scan not found')
   const ownerId = data.user_id ? String(data.user_id) : ''
   const product = String(data.product_name ?? '')
   const aiScore = Number(data.overall_score ?? 0)
@@ -253,53 +284,54 @@ export async function manualReview(
     notes: payload.notes,
   }
 
-  await updateDoc(scanRef, {
+  await updateScanRow(scanId, {
     manual_result: manual,
     overall_score: payload.score,
     risk_score: Math.max(0, Math.min(100, 100 - payload.score)),
     status: 'resolved',
-    notes: payload.notes.trim() ? payload.notes.trim() : (data.notes ?? ''),
-    updated_at: new Date().toISOString(),
+    notes: payload.notes.trim() ? payload.notes.trim() : ((data.notes as string | undefined) ?? ''),
   })
 
-  await addDoc(collection(db, COLLECTIONS.INSPECTION_REVIEWS), {
+  const now = new Date().toISOString()
+  await supabase.from('inspection_reviews').insert({
     scan_id: scanId,
-    admin_id: actor.uid,
-    ai_score: aiScore,
-    manual_score: payload.score,
-    corrections: payload.corrections,
-    violations_added: payload.violationsAdded,
-    violations_removed: payload.violationsRemoved.map((id) => ({ id })),
-    notes: payload.notes,
-    created_at: new Date().toISOString(),
+    created_at: now,
+    data: {
+      admin_id: actor.uid,
+      ai_score: aiScore,
+      manual_score: payload.score,
+      corrections: payload.corrections,
+      violations_added: payload.violationsAdded,
+      violations_removed: payload.violationsRemoved.map((id) => ({ id })),
+      notes: payload.notes,
+    },
   })
 
   for (const v of payload.violationsAdded) {
     if (!v.type && !v.description) continue
-    await addDoc(collection(db, COLLECTIONS.VIOLATIONS), {
+    await supabase.from('violations').insert({
       scan_id: scanId,
       product_name: product,
-      manufacturer: data.manufacturer ?? data.brand ?? '',
-      category: data.category ?? '',
+      manufacturer: String((data.manufacturer as string | undefined) ?? (data.brand as string | undefined) ?? ''),
+      category: String((data.category as string | undefined) ?? ''),
       type: v.type ?? 'rule_violation',
       severity: v.severity,
       status: 'Detected',
       description: v.description ?? '',
-      created_by: actor.uid,
-      created_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
+      data: { created_by: actor.uid },
     })
   }
 
   for (const id of payload.violationsRemoved) {
-    const vRef = doc(db, COLLECTIONS.VIOLATIONS, id)
-    const v = await getDoc(vRef)
-    if (v.exists() && v.data().scan_id === scanId) {
-      await updateDoc(vRef, {
+    const { data: v } = await supabase.from('violations').select('id,scan_id').eq('id', id).maybeSingle()
+    if (v && (v as { scan_id: string }).scan_id === scanId) {
+      await supabase.from('violations').update({
         status: 'Rejected',
-        resolved_by: actor.uid,
-        resolved_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      })
+        data: { resolved_by: actor.uid, resolved_at: new Date().toISOString() },
+      }).eq('id', id)
     }
   }
 
@@ -327,21 +359,27 @@ export async function manualReview(
 
 export async function approveAdminRequest(targetUserId: string, approve: boolean) {
   const actor = await requireManager()
-  const reqSnapshot = await getDocs(
-    query(collection(db, COLLECTIONS.ADMIN_REQUESTS), where('user_id', '==', targetUserId), limit(1)),
-  )
+  const { data: reqRow } = await supabase
+    .from('admin_requests')
+    .select('id')
+    .eq('user_id', targetUserId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
   const status = approve ? 'approved' : 'rejected'
-  await updateDoc(doc(db, COLLECTIONS.USERS, targetUserId), {
+  const { error: profileErr } = await supabase.from('profiles').update({
     role: approve ? 'super_admin' : 'user',
     status: 'active',
     updated_at: new Date().toISOString(),
-  })
-  if (!reqSnapshot.empty) {
-    await updateDoc(reqSnapshot.docs[0].ref, {
+  }).eq('id', targetUserId)
+  if (profileErr) throw new Error(profileErr.message)
+  const reqId = (reqRow as { id: string } | null)?.id ?? ''
+  if (reqId) {
+    await supabase.from('admin_requests').update({
       status,
-      reviewed_by: actor.uid,
-      reviewed_at: new Date().toISOString(),
-    })
+      updated_at: new Date().toISOString(),
+      data: { reviewed_by: actor.uid, reviewed_at: new Date().toISOString() },
+    }).eq('id', reqId)
   }
   void notify(
     targetUserId,
@@ -351,28 +389,27 @@ export async function approveAdminRequest(targetUserId: string, approve: boolean
       ? 'Welcome aboard! You now have super admin access.'
       : 'Your admin request was not approved. You can continue as a standard user.',
     approve ? '/super-admin-dashboard' : '/user-dashboard',
-    { request_id: reqSnapshot.empty ? '' : reqSnapshot.docs[0].id },
+    { request_id: reqId },
   )
   void logActivity(actor, approve ? 'admin_request.approved' : 'admin_request.rejected', 'user', targetUserId, { status })
-  // The doc write above already succeeded — but custom claims are what Firestore
-  // LIST rules check, and only the Admin SDK (via the AuditX API) can mint them.
-  // Sync them now; if the API is unreachable, surface it so the operator can run
-  // scripts/mint-claims.cjs and staff list queries take effect.
+  // Roles live on the profiles row (no custom-claim indirection). Sync the
+  // backend record best-effort so any server-side cache refreshes.
   try {
     await syncUserClaims({ uid: targetUserId, role: approve ? 'super_admin' : 'user', status: 'active' })
   } catch (e) {
     throw new Error(
-      `Account updated, but staff-access sync failed (${(e as Error).message}). Run scripts/mint-claims.cjs to grant list access, or check the AuditX API.`,
+      `Account updated, but backend sync failed (${(e as Error).message}). Check the AuditX API.`,
     )
   }
 }
 
 export async function setAdminStatus(targetUserId: string, status: 'active' | 'blocked' | 'pending') {
   const actor = await requireManager()
-  await updateDoc(doc(db, COLLECTIONS.USERS, targetUserId), {
+  const { error } = await supabase.from('profiles').update({
     status,
     updated_at: new Date().toISOString(),
-  })
+  }).eq('id', targetUserId)
+  if (error) throw new Error(error.message)
   void notify(
     targetUserId,
     'account',
@@ -386,23 +423,22 @@ export async function setAdminStatus(targetUserId: string, status: 'active' | 'b
     {},
   )
   void logActivity(actor, `admin.status.${status}`, 'user', targetUserId, { status })
-  // Keep custom claims in sync so status-gated rules (claimsActive) apply
-  // immediately after refresh. Role is preserved server-side when omitted.
   try {
     await syncUserClaims({ uid: targetUserId, status })
   } catch (e) {
     throw new Error(
-      `Status updated, but claim sync failed (${(e as Error).message}). Run scripts/mint-claims.cjs to apply the access change.`,
+      `Status updated, but backend sync failed (${(e as Error).message}). Check the AuditX API.`,
     )
   }
 }
 
 export async function setUserStatus(targetUserId: string, status: 'active' | 'blocked') {
   const actor = await requireManager()
-  await updateDoc(doc(db, COLLECTIONS.USERS, targetUserId), {
+  const { error } = await supabase.from('profiles').update({
     status,
     updated_at: new Date().toISOString(),
-  })
+  }).eq('id', targetUserId)
+  if (error) throw new Error(error.message)
   void notify(
     targetUserId,
     'account',
@@ -414,13 +450,11 @@ export async function setUserStatus(targetUserId: string, status: 'active' | 'bl
     {},
   )
   void logActivity(actor, `user.status.${status}`, 'user', targetUserId, { status })
-  // Keep custom claims in sync — a blocked claim immediately denies the
-  // account's staff-scoped queries on next token refresh.
   try {
     await syncUserClaims({ uid: targetUserId, status })
   } catch (e) {
     throw new Error(
-      `Status updated, but claim sync failed (${(e as Error).message}). Run scripts/mint-claims.cjs to apply the access change.`,
+      `Status updated, but backend sync failed (${(e as Error).message}). Check the AuditX API.`,
     )
   }
 }
@@ -431,7 +465,8 @@ export async function updateProfileFields(targetUserId: string, patch: { full_na
   const updates: Record<string, string> = { updated_at: new Date().toISOString() }
   if (patch.full_name !== undefined) updates.full_name = patch.full_name
   if (patch.organization !== undefined) updates.organization = patch.organization
-  await updateDoc(doc(db, COLLECTIONS.USERS, targetUserId), updates)
+  const { error } = await supabase.from('profiles').update(updates).eq('id', targetUserId)
+  if (error) throw new Error(error.message)
 }
 
 /* ------------------------------------------------------------------ */
@@ -447,30 +482,34 @@ export async function addComplianceRule(input: {
   required: boolean
 }) {
   const actor = await requireManager()
-  const ref = doc(collection(db, COLLECTIONS.COMPLIANCE_RULES))
-  await setDoc(ref, {
-    rule_key: input.rule_key.toUpperCase(),
+  const now = new Date().toISOString()
+  const { data, error } = await supabase.from('compliance_rules').insert({
     title: input.title,
-    description: input.description,
-    category: input.category,
-    severity: input.severity,
-    required: input.required,
-    status: 'active',
-    is_active: true,
-    created_by: actor.uid,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  })
-  void logActivity(actor, 'compliance_rule.created', 'complianceRule', ref.id, { rule_key: input.rule_key })
+    created_at: now,
+    data: {
+      rule_key: input.rule_key.toUpperCase(),
+      description: input.description,
+      category: input.category,
+      severity: input.severity,
+      required: input.required,
+      status: 'active',
+      is_active: true,
+      created_by: actor.uid,
+      updated_at: now,
+    },
+  }).select('id').single()
+  if (error || !data) throw new Error(error?.message ?? 'Rule creation failed')
+  void logActivity(actor, 'compliance_rule.created', 'complianceRule', String((data as { id: string }).id), { rule_key: input.rule_key })
 }
 
 export async function toggleComplianceRule(ruleId: string, active: boolean) {
   const actor = await requireManager()
-  await updateDoc(doc(db, COLLECTIONS.COMPLIANCE_RULES, ruleId), {
-    is_active: active,
-    status: active ? 'active' : 'disabled',
-    updated_at: new Date().toISOString(),
-  })
+  const { data: current } = await supabase.from('compliance_rules').select('data').eq('id', ruleId).maybeSingle()
+  const prev = ((current as { data?: Record<string, unknown> } | null)?.data ?? {}) as Record<string, unknown>
+  const { error } = await supabase.from('compliance_rules').update({
+    data: { ...prev, is_active: active, status: active ? 'active' : 'disabled', updated_at: new Date().toISOString() },
+  }).eq('id', ruleId)
+  if (error) throw new Error(error.message)
   void logActivity(actor, active ? 'compliance_rule.enabled' : 'compliance_rule.disabled', 'complianceRule', ruleId, {})
 }
 
@@ -479,20 +518,23 @@ export async function toggleComplianceRule(ruleId: string, active: boolean) {
 /* ------------------------------------------------------------------ */
 
 export async function markNotificationRead(notificationId: string) {
-  await updateDoc(doc(db, COLLECTIONS.NOTIFICATIONS, notificationId), {
+  const { error } = await supabase.from('notifications').update({
     read: true,
     read_at: new Date().toISOString(),
-  })
+  }).eq('id', notificationId)
+  if (error) throw new Error(error.message)
 }
 
 export async function markAllNotificationsRead() {
-  const uid = auth.currentUser?.uid
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth.user?.id
   if (!uid) return
-  const snap = await getDocs(
-    query(collection(db, COLLECTIONS.NOTIFICATIONS), orderBy('created_at', 'desc'), limit(150)),
-  )
-  const mine = snap.docs.filter((d) => d.data()?.user_id === uid && d.data()?.read === false)
-  await Promise.all(mine.map((d) => updateDoc(d.ref, { read: true, read_at: new Date().toISOString() })))
+  const { data, error } = await supabase.from('notifications').select('id').eq('user_id', uid).eq('read', false).limit(150)
+  if (error) throw new Error(error.message)
+  const ids = ((data ?? []) as Array<{ id: string }>).map((r) => r.id)
+  if (ids.length === 0) return
+  const { error: upErr } = await supabase.from('notifications').update({ read: true, read_at: new Date().toISOString() }).in('id', ids)
+  if (upErr) throw new Error(upErr.message)
 }
 
 /* ------------------------------------------------------------------ */
@@ -508,46 +550,54 @@ export async function submitReport(input: {
   category: string
   severity: Severity
 }) {
-  const uid = auth.currentUser?.uid
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth.user?.id
   if (!uid) throw new Error('Not authenticated')
-  const ref = doc(collection(db, COLLECTIONS.REPORTS))
-  await setDoc(ref, {
-    user_id: uid,
+  const now = new Date().toISOString()
+  const { data, error } = await supabase.from('reports').insert({
     scan_id: input.scanId ?? null,
     title: input.title,
     description: input.description,
     product_name: input.productName,
     manufacturer: input.manufacturer,
     category: input.category,
-    severity: input.severity,
-    priority: input.severity === 'critical' ? 'Critical' : input.severity === 'high' ? 'High' : input.severity === 'medium' ? 'Medium' : 'Low',
     status: 'Pending',
-    assigned_to: null,
-    assigned_at: null,
-    resolved_by: null,
-    resolved_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  })
-  // Notify active staff. Enforcement is via rules; we gather the roster here.
-  const roster = await getDocs(query(collection(db, COLLECTIONS.USERS), orderBy('created_at', 'desc'), limit(500)))
-  const staff = roster.docs.filter((d) => {
-    const r = d.data()
-    return (r.role === 'admin' || r.role === 'super_admin' || r.role === 'inspector') && r.status === 'active'
-  })
-  void Promise.all(
-    staff.map((d) =>
-      notify(
-        d.id,
-        'report',
-        'New compliance report',
-        `"${input.title}" — "${input.productName}" by ${input.manufacturer || 'unknown'}.`,
-        '/admin/reports',
-        { report_id: ref.id },
+    priority: input.severity === 'critical' ? 'Critical' : input.severity === 'high' ? 'High' : input.severity === 'medium' ? 'Medium' : 'Low',
+    created_at: now,
+    updated_at: now,
+    data: {
+      user_id: uid,
+      severity: input.severity,
+      assigned_to: null,
+      assigned_at: null,
+      resolved_by: null,
+      resolved_at: null,
+    },
+  }).select('id').single()
+  if (error || !data) throw new Error(error?.message ?? 'Report creation failed')
+  const reportId = String((data as { id: string }).id)
+  // Notify active staff.
+  try {
+    const { data: roster } = await supabase.from('profiles').select('id,role,status').limit(500)
+    const staff = ((roster ?? []) as Array<{ id: string; role: string; status: string }>).filter(
+      (r) => (r.role === 'admin' || r.role === 'super_admin' || r.role === 'inspector') && r.status === 'active',
+    )
+    void Promise.all(
+      staff.map((s) =>
+        notify(
+          s.id,
+          'report',
+          'New compliance report',
+          `"${input.title}" — "${input.productName}" by ${input.manufacturer || 'unknown'}.`,
+          '/admin/reports',
+          { report_id: reportId },
+        ),
       ),
-    ),
-  ).catch((e) => console.error('submitReport notify failed', e))
-  return ref.id
+    ).catch((e) => console.error('submitReport notify failed', e))
+  } catch (e) {
+    console.error('submitReport roster failed', e)
+  }
+  return reportId
 }
 
 /* ------------------------------------------------------------------ */
@@ -578,31 +628,29 @@ export async function upsertProduct(input: {
     // Server-authoritative failures (auth, validation, 403/500) are never
     // retried — they surface to the admin as the real cause.
     if (!(e instanceof TypeError)) throw e
-    // Network-level failure (backend down / CORS / wrong base URL). Every
-    // build falls back to a direct Firestore write, which succeeds whenever
-    // the products rules allow (isManager() || claimsManager()). If that
-    // write is denied, rethrow with the combined, honest cause so the
-    // operator knows exactly which gate to fix: backend availability or
-    // rules/claims.
+    // Network-level failure (backend down / CORS / wrong base URL). Fall back
+    // to a direct Supabase write, which succeeds whenever RLS allows
+    // (is_admin()). If that write is denied, rethrow with the combined,
+    // honest cause.
     console.warn(
-      `[products] auditx-api unreachable at ${CONFIG.AUDITX_API_URL} — falling back to a direct Firestore write.`,
+      `[products] auditx-api unreachable at ${CONFIG.AUDITX_API_URL} — falling back to a direct Supabase write.`,
     )
     try {
       const productId = await saveProductDirect({ ...input, barcode })
-      void logActivity(actor, 'product.upserted_via_firestore', 'product', productId, { barcode, api: false })
+      void logActivity(actor, 'product.upserted_via_supabase', 'product', productId, { barcode, api: false })
       return productId
     } catch (fallbackErr) {
       throw new Error(
         `Product save failed: ${describeWriteBlock(fallbackErr, 'save')} ` +
           `The AuditX product API at ${CONFIG.AUDITX_API_URL} is unreachable ` +
-          'and the direct Firestore write was denied. Deploy the auditx-api service (render.yaml) ' +
-          'or upload backend/firebase/firestore.rules and confirm this account has the manager role/claims.',
+          'and the direct Supabase write was denied. Deploy the AuditX-111 backend service ' +
+          'or confirm this account has the manager role.',
       )
     }
   }
 }
 
-/** Direct Firestore write used by the offline/fallback path for products. */
+/** Direct Supabase write used by the offline/fallback path for products. */
 async function saveProductDirect(input: {
   barcode: string
   name: string
@@ -632,22 +680,22 @@ async function saveProductDirect(input: {
   }
 
   if (existing) {
-    await updateDoc(doc(db, COLLECTIONS.PRODUCTS, existing.id), data)
+    const { error } = await supabase.from('products').update(data).eq('id', existing.id)
+    if (error) throw new Error(error.message)
     return existing.id
   }
-  const ref = doc(collection(db, COLLECTIONS.PRODUCTS))
-  await setDoc(ref, { ...data, created_at: now })
-  return ref.id
+  const { data: inserted, error } = await supabase.from('products').insert({ ...data, created_at: now }).select('id').single()
+  if (error || !inserted) throw new Error(error?.message ?? 'Product creation failed')
+  return String((inserted as { id: string }).id)
 }
 
-/** Readable explanation of a Firestore fallback rejection. */
+/** Readable explanation of a Supabase fallback rejection. */
 function describeWriteBlock(err: unknown, action: 'save' | 'delete'): string {
-  const code = (err as { code?: string })?.code ?? ''
   const msg = (err as Error)?.message ?? ''
-  if (code === 'permission-denied' || /denied|permission/i.test(msg)) {
-    return `Firestore rejected the ${action} with "Missing or insufficient permissions".`
+  if (/denied|permission|policy|rls/i.test(msg)) {
+    return `Supabase rejected the ${action} ("permission denied" — RLS policy).`
   }
-  return `The direct Firestore ${action} failed${msg ? ` (${msg})` : ''}.`
+  return `The direct Supabase ${action} failed${msg ? ` (${msg})` : ''}.`
 }
 
 export async function deleteProduct(productId: string) {
@@ -659,29 +707,29 @@ export async function deleteProduct(productId: string) {
   } catch (e) {
     if (!(e instanceof TypeError)) throw e
     console.warn(
-      `[products] auditx-api unreachable at ${CONFIG.AUDITX_API_URL} — falling back to a direct Firestore delete.`,
+      `[products] auditx-api unreachable at ${CONFIG.AUDITX_API_URL} — falling back to a direct Supabase delete.`,
     )
     try {
-      const snap = await getDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
-      if (!snap.exists()) throw new Error('Product not found')
-      const { deleteDoc } = await import('firebase/firestore')
-      await deleteDoc(doc(db, COLLECTIONS.PRODUCTS, productId))
-      void logActivity(actor, 'product.deleted', 'product', productId, { barcode: snap.data()?.barcode })
+      const { data: snap } = await supabase.from('products').select('barcode').eq('id', productId).maybeSingle()
+      if (!snap) throw new Error('Product not found')
+      const { error } = await supabase.from('products').delete().eq('id', productId)
+      if (error) throw new Error(error.message)
+      void logActivity(actor, 'product.deleted', 'product', productId, { barcode: (snap as { barcode: string }).barcode })
       return
     } catch (fallbackErr) {
       throw new Error(
         `Product delete failed: ${describeWriteBlock(fallbackErr, 'delete')} ` +
           `The AuditX product API at ${CONFIG.AUDITX_API_URL} is unreachable ` +
-          'and the direct Firestore write was denied. Deploy the auditx-api service (render.yaml) ' +
-          'or upload backend/firebase/firestore.rules and confirm this account has the manager role/claims.',
+          'and the direct Supabase write was denied. Deploy the AuditX-111 backend service ' +
+          'or confirm this account has the manager role.',
       )
     }
   }
 }
 
-/* Admin-SDK product writes via the AuditX Express API. The backend's
-   firebase-admin writes are exempt from client Firestore rules, so a working
-   admin account can never be hit by "Missing or insufficient permissions". */
+/* Product writes via the AuditX Express API. The backend's service-role
+   writes bypass RLS, so a working admin account can never be hit by
+   "permission denied". */
 async function apiUpsertProduct(input: {
   barcode: string
   name: string
@@ -694,12 +742,12 @@ async function apiUpsertProduct(input: {
   country_of_origin?: string
   best_before_label?: string
 }): Promise<string> {
-  if (!auth.currentUser) throw new Error('Not signed in for product API')
-  const idToken = await auth.currentUser.getIdToken(true)
+  const token = await accessToken(true)
+  if (!token) throw new Error('Not signed in for product API')
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
   const res = await fetchWithTimeout(`${base}/api/products`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
   })
   if (!res.ok) {
@@ -718,12 +766,12 @@ async function apiUpsertProduct(input: {
 }
 
 async function apiDeleteProduct(productId: string): Promise<void> {
-  const idToken = await auth.currentUser?.getIdToken(true)
-  if (!idToken) throw new Error('Not signed in for product API')
+  const token = await accessToken(true)
+  if (!token) throw new Error('Not signed in for product API')
   const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
   const res = await fetchWithTimeout(`${base}/api/products/${encodeURIComponent(productId)}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${idToken}` },
+    headers: { Authorization: `Bearer ${token}` },
   })
   if (!res.ok) {
     let detail = ''
@@ -739,28 +787,31 @@ async function apiDeleteProduct(productId: string): Promise<void> {
 }
 
 async function findProductByBarcodeInternal(barcode: string) {
-  const ref = collection(db, COLLECTIONS.PRODUCTS)
-  const snap = await getDocs(query(ref, where('barcode', '==', barcode), limit(1)))
-  if (snap.empty) return null
-  return { id: snap.docs[0].id, ...snap.docs[0].data() } as { id: string; barcode: string }
+  const { data } = await supabase.from('products').select('id,barcode').eq('barcode', barcode).limit(1).maybeSingle()
+  if (!data) return null
+  return data as { id: string; barcode: string }
 }
 
 /* ------------------------------------------------------------------ */
-/* External barcode lookup (Open Food Facts via server callable).       */
+/* External barcode lookup (Open Food Facts via the Express API).       */
 /* ------------------------------------------------------------------ */
 export async function lookupBarcodeExternal(
   barcode: string,
 ): Promise<{ name: string; brand: string; manufacturer: string } | null> {
   try {
-    const { httpsCallable } = await import('firebase/functions')
-    const { functions } = await import('./firebase')
-    const fn = httpsCallable<{ barcode: string }, { found: boolean; source: string; product: { name: string | null; brand: string | null; manufacturer: string | null; category: string | null } | null }>(
-      functions,
-      'lookupBarcode',
-    )
-    const res = await fn({ barcode })
-    if (!res.data.found || !res.data.product) return null
-    const p = res.data.product
+    const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
+    const res = await fetchWithTimeout(`${base}/api/barcode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ barcode }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      found: boolean
+      product: { name: string | null; brand: string | null; manufacturer: string | null } | null
+    }
+    if (!data.found || !data.product) return null
+    const p = data.product
     return {
       name: p.name ?? barcode,
       brand: p.brand ?? '',
