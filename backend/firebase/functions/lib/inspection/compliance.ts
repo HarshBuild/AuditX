@@ -401,8 +401,10 @@ export function runCompliance(
 
   // The number must never contradict the verdict: a CRITICAL report must
   // score below 50, a VIOLATION below 75. Clamp into the status band.
-  if (status === 'critical') overall_score = Math.min(overall_score, 49)
-  else if (status === 'violation') overall_score = Math.min(overall_score, 74)
+  const raw_score = overall_score
+  let clamped = false
+  if (status === 'critical' && overall_score > 49) { overall_score = 49; clamped = true }
+  else if (status === 'violation' && overall_score > 74) { overall_score = 74; clamped = true }
 
   const verdict = status === 'compliant' ? 'COMPLIANT' : status === 'critical' ? 'NON_COMPLIANT' : 'PARTIALLY_COMPLIANT'
   const risk = status === 'compliant' ? 'Low' : status === 'needs_review' ? 'Medium' : status === 'violation' ? 'High' : 'Critical'
@@ -414,6 +416,18 @@ export function runCompliance(
     summaryParts.push(`Needs attention: ${names}${missing.length > 4 ? ' and more.' : '.'}`)
   }
 
+  const passed_points = counts.passed * 100
+  const review_points = Math.round(counts.review * 70 * 10) / 10
+  const fail_penalty = hardFails * 15
+  const band = status === 'compliant' ? 'compliant (90–100)'
+    : status === 'needs_review' ? 'needs review (75–89)'
+    : status === 'violation' ? 'violation (50–74)' : 'critical (0–49)'
+  const formula = applicable === 0
+    ? 'No applicable checks ran — neutral score 50, human review required.'
+    : `[100×(${counts.passed} passed) + 70×(${counts.review} review)] ÷ ${applicable} applicable − 15×(${hardFails} failed) = ${raw_score}` +
+      (counts.na > 0 ? ` (${counts.na} N/A excluded)` : '') +
+      (clamped ? ` → clamped to ${overall_score} (${band})` : ` → ${overall_score} (${band})`)
+
   return {
     overall_score,
     status,
@@ -422,6 +436,22 @@ export function runCompliance(
     summary: summaryParts.join(' '),
     findings,
     counts,
+    score_breakdown: {
+      applicable,
+      na_excluded: counts.na,
+      passed: counts.passed,
+      review: counts.review,
+      failed: counts.failed,
+      critical_failed: counts.criticalFailed,
+      passed_points,
+      review_points,
+      fail_penalty,
+      raw_score,
+      final_score: overall_score,
+      clamped,
+      formula,
+      band,
+    },
   }
 }
 

@@ -108,6 +108,35 @@ export interface ComplianceResult {
   summary: string
   findings: Finding[]
   counts: ComplianceCounts
+  /** Rule-by-rule score math (all numbers real, computed from the findings). */
+  score_breakdown: ScoreBreakdown
+}
+
+/** Transparent derivation of the compliance score from rule outcomes. */
+export interface ScoreBreakdown {
+  /** Checks counted (N/A excluded — not applicable is not a failure). */
+  applicable: number
+  na_excluded: number
+  passed: number
+  review: number
+  failed: number
+  critical_failed: number
+  /** passed × 100 */
+  passed_points: number
+  /** review × 70 */
+  review_points: number
+  /** (failed + critical_failed) × 15 */
+  fail_penalty: number
+  /** Rounded score before the verdict-band clamp. */
+  raw_score: number
+  /** Final score after clamp (equals overall_score). */
+  final_score: number
+  /** True when the band clamp changed the number. */
+  clamped: boolean
+  /** Human-readable formula with the real numbers plugged in. */
+  formula: string
+  /** Verdict band the final score sits in. */
+  band: string
 }
 
 export interface Change {
@@ -291,6 +320,7 @@ export interface AnalysisResult {
   conflicts: MisaConflict[]
   compliance_findings: Finding[]
   compliance_score: number
+  compliance_breakdown: ScoreBreakdown
   compliance_status: InspectionStatus
   compliance_display: { verdict: string; risk: string; summary: string; counts: ComplianceCounts }
   previous_scan_id: string | null

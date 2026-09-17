@@ -724,26 +724,6 @@ export default function ScanResultPage() {
         </div>
       </div>
 
-      {/* Real-vs-demo source banner */}
-      {doc.ocr_provider === 'mock' ? (
-        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-          <p className="text-sm text-amber-700 dark:text-amber-300">
-            <span className="font-semibold">Demo data</span> — this report echoes the details typed at capture time.
-            It was <span className="font-semibold">not read from the photo</span>. Enable a real OCR provider on the
-            backend and press Retry for a genuine label reading.
-          </p>
-        </div>
-      ) : (
-        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-          <p className="text-sm text-emerald-700 dark:text-emerald-300">
-            <span className="font-semibold">Read from the label photo</span>
-            {doc.ocr_provider ? ` via ${doc.ocr_provider}` : ''}{doc.ocr_engines && doc.ocr_engines.length > 0 ? ` (${doc.ocr_engines.join(' + ')})` : ''} — values below come from the actual image.
-          </p>
-        </div>
-      )}
-
       {/* Hero + score */}
       <section className="grid gap-4 lg:grid-cols-[220px_1fr]">
         <div className="flex flex-col items-center justify-center rounded-2xl border border-line bg-white/60 p-4 dark:border-white/10 dark:bg-navy-900/60">
@@ -786,6 +766,56 @@ export default function ScanResultPage() {
 
       {/* Multi-AI verification & adjudication */}
       <VerificationSection doc={doc} photos={photos} onRetry={() => void onRetry()} retryBusy={busy} />
+
+      {/* How the score is calculated — rule-by-rule, real numbers */}
+      <details className="mt-4 rounded-2xl border border-line bg-white/60 px-5 py-4 dark:border-white/10 dark:bg-navy-900/60">
+        <summary className="cursor-pointer text-sm font-semibold text-ink-text dark:text-slate-100">
+          How is {score}/100 calculated? <span className="font-normal text-slate-400">— rule-by-rule breakdown</span>
+        </summary>
+        {doc.compliance_breakdown ? (
+          <div className="mt-3">
+            <p className="rounded-xl bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-700 dark:bg-navy-950 dark:text-slate-300">
+              {doc.compliance_breakdown.formula}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+              <div className="rounded-lg bg-emerald-500/10 px-3 py-2">
+                <div className="font-bold text-emerald-600 dark:text-emerald-400">+{doc.compliance_breakdown.passed_points}</div>
+                <div className="text-slate-500 dark:text-navy-300">{doc.compliance_breakdown.passed} passed × 100</div>
+              </div>
+              <div className="rounded-lg bg-amber-500/10 px-3 py-2">
+                <div className="font-bold text-amber-600 dark:text-amber-400">+{doc.compliance_breakdown.review_points}</div>
+                <div className="text-slate-500 dark:text-navy-300">{doc.compliance_breakdown.review} review × 70</div>
+              </div>
+              <div className="rounded-lg bg-rose-500/10 px-3 py-2">
+                <div className="font-bold text-rose-600 dark:text-rose-400">−{doc.compliance_breakdown.fail_penalty}</div>
+                <div className="text-slate-500 dark:text-navy-300">{doc.compliance_breakdown.failed + doc.compliance_breakdown.critical_failed} failed × 15</div>
+              </div>
+              <div className="rounded-lg bg-slate-500/10 px-3 py-2">
+                <div className="font-bold text-slate-600 dark:text-slate-300">÷ {doc.compliance_breakdown.applicable}</div>
+                <div className="text-slate-500 dark:text-navy-300">applicable checks{doc.compliance_breakdown.na_excluded > 0 ? ` (${doc.compliance_breakdown.na_excluded} N/A excluded)` : ''}</div>
+              </div>
+              <div className="rounded-lg bg-slate-500/10 px-3 py-2">
+                <div className="font-bold text-slate-600 dark:text-slate-300">{doc.compliance_breakdown.raw_score} → {doc.compliance_breakdown.final_score}</div>
+                <div className="text-slate-500 dark:text-navy-300">raw{doc.compliance_breakdown.clamped ? ' → clamped to verdict band' : ''}</div>
+              </div>
+              <div className="rounded-lg bg-brand-500/10 px-3 py-2">
+                <div className="font-bold text-brand-600 dark:text-brand-400">{doc.compliance_breakdown.band}</div>
+                <div className="text-slate-500 dark:text-navy-300">verdict band</div>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+              Each rule above (see Compliance breakdown) contributes its status. N/A means the check does not apply
+              (e.g. allergen rule on allergen-free food) — it is excluded, never counted as failure. A failing check
+              caps the band: critical can never score above 49, violation never above 74.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-slate-400">
+            Rule counts for this report: {counts.passed} passed · {counts.review} review · {counts.failed} failed ·{' '}
+            {counts.criticalFailed} critical · {counts.na} N/A. Formula: [100×(passed) + 70×(review)] ÷ applicable − 15×(failed).
+          </p>
+        )}
+      </details>
 
       {/* Compliance breakdown */}
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
@@ -976,12 +1006,6 @@ export default function ScanResultPage() {
               {doc.ocr_confidence != null ? `${Math.round(doc.ocr_confidence * 100)}%` : '—'}
             </span>
           </span>
-          <span className="rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-navy-950">
-            demo provider{' '}
-            <span className={cn('font-semibold', doc.briefing?.assistant_status === 'demo' ? 'text-amber-500' : 'text-emerald-500')}>
-              {doc.briefing?.assistant_status === 'demo' ? 'yes' : 'no'}
-            </span>
-          </span>
           <span className="text-xs text-slate-400">Raw transcript: {String(doc.ocr_text ?? '').length} chars</span>
         </div>
       </section>
@@ -1095,7 +1119,6 @@ export default function ScanResultPage() {
           <p className="text-xs leading-relaxed text-slate-500 dark:text-navy-300">
             This report is generated from the text visible on the photographs. It is an automated, deterministic summary of the
             label — not a legal certification. Verify anything relied upon against the physical product before acting.
-            {doc.briefing?.assistant_status === 'demo' && ' The OCR provider ran in demo mode: values echo the details typed at capture time.'}
           </p>
         </div>
       </section>

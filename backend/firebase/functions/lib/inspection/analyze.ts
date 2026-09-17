@@ -171,6 +171,7 @@ export async function analyzeInspection(input: AnalysisInput): Promise<AnalyzeOu
     conflicts: merged.conflicts,
     compliance_findings: compliance.findings,
     compliance_score: compliance.overall_score,
+    compliance_breakdown: compliance.score_breakdown,
     compliance_status: compliance.status,
     compliance_display: {
       verdict: compliance.verdict,

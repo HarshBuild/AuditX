@@ -93,6 +93,24 @@ export interface VerificationCounts {
   total: number
 }
 
+/** Rule-by-rule score math (computed server-side from the findings). */
+export interface ScoreBreakdown {
+  applicable: number
+  na_excluded: number
+  passed: number
+  review: number
+  failed: number
+  critical_failed: number
+  passed_points: number
+  review_points: number
+  fail_penalty: number
+  raw_score: number
+  final_score: number
+  clamped: boolean
+  formula: string
+  band: string
+}
+
 export interface VerificationSummary {
   single_source: boolean
   single_source_note: string | null
@@ -134,6 +152,7 @@ export interface InspectionDoc {
   conflicts?: Array<{ field: string; label: string; values: Array<{ image: number; value: string }> }>
   compliance_findings?: Finding[]
   compliance_score?: number | null
+  compliance_breakdown?: ScoreBreakdown | null
   previous_scan_id?: string | null
   match_confidence?: 'same_product' | 'same_barcode' | null
   changes?: Change[]
