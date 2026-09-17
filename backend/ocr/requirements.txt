@@ -12,7 +12,8 @@
 # (ConvertPirAttribute2RuntimeAttribute) — the 2.6.x + OCR 2.7 stack is reliable.
 paddlepaddle==2.6.2
 paddleocr==2.7.0.3
-PyMuPDF==1.24.10
+# NOTE: do NOT pin PyMuPDF — paddleocr==2.7.0.3 pulls its own PyMuPDF<1.21.0.
+# (Our code never imports fitz directly.)
 numpy==1.26.4
 # NOTE: do NOT pin opencv here — paddleocr==2.7.0.3 pulls its own
 # opencv-python / opencv-contrib-python (<=4.6.0.66) and any explicit
