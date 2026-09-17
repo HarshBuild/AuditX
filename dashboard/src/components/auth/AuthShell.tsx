@@ -1,15 +1,13 @@
 import { type ReactNode } from 'react'
 import { CheckCircle2, Lock } from 'lucide-react'
 import { AuditXMark } from '../brand/AuditXMark'
+import { useLanguage } from '../../i18n/LanguageContext'
+import type { DictKey } from '../../i18n/en'
 
-const highlights = [
-  'AI-powered label scanning',
-  '10-rule compliance check',
-  'Instant PDF reports',
-  'Barcode + GPS tracking',
-]
+const HIGHLIGHT_KEYS: DictKey[] = ['auth.h1', 'auth.h2', 'auth.h3', 'auth.h4']
 
 export default function AuthShell({ children }: { children: ReactNode }) {
+  const { t } = useLanguage()
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-navy-950">
       <div aria-hidden="true" className="animated-bg" />
@@ -26,20 +24,20 @@ export default function AuthShell({ children }: { children: ReactNode }) {
             <h1 className="text-5xl font-black tracking-tight text-white">
               Audit<span className="text-accent-400">X</span>
             </h1>
-            <p className="mt-2 text-lg text-white/60">Legal Metrology Compliance Scanner</p>
+            <p className="mt-2 text-lg text-white/60">{t('auth.tagline')}</p>
           </div>
           <div className="h-px w-16 bg-white/20" />
           <ul className="space-y-3 text-left">
-            {highlights.map((h) => (
-              <li key={h} className="flex items-center gap-2.5 text-sm text-white/85">
+            {HIGHLIGHT_KEYS.map((k) => (
+              <li key={k} className="flex items-center gap-2.5 text-sm text-white/85">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-500/25 text-accent-300">
                   <CheckCircle2 className="h-3.5 w-3.5" />
                 </span>
-                {h}
+                {t(k)}
               </li>
             ))}
           </ul>
-          <p className="mt-6 text-xs text-white/30">Aligned with Legal Metrology Act, 2009</p>
+          <p className="mt-6 text-xs text-white/30">{t('auth.aligned')}</p>
         </div>
       </aside>
 
@@ -57,7 +55,7 @@ export default function AuthShell({ children }: { children: ReactNode }) {
           </div>
           <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-slate-400 dark:text-white/35">
             <Lock className="h-3 w-3" aria-hidden="true" />
-            Secured with Firebase Auth
+            {t('auth.secured')}
           </p>
         </div>
       </main>

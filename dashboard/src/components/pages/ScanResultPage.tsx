@@ -699,6 +699,18 @@ export default function ScanResultPage() {
     : s === 'failed' ? t('result.failed')
     : s === 'critical_failed' ? t('result.critical')
     : t('result.na')
+  const RULE_IDS = [
+    'rule_identification', 'rule_manufacturer', 'rule_net_quantity', 'rule_mrp',
+    'rule_batch', 'rule_mfg_date', 'rule_expiry', 'rule_ingredients',
+    'rule_allergen', 'rule_required_declarations', 'rule_warnings',
+    'rule_label_info', 'rule_certification',
+  ]
+  const ruleLabel = (f: Finding): string =>
+    RULE_IDS.includes(f.rule_id) ? t(`rule.${f.rule_id}` as DictKey) : f.label
+  const matchText =
+    doc.match_confidence === 'same_product' ? t('match.sameProduct')
+    : doc.match_confidence === 'same_barcode' ? t('match.sameBarcode')
+    : String(doc.match_confidence ?? '').replace('_', ' ')
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:py-8">
@@ -837,10 +849,10 @@ export default function ScanResultPage() {
           {findings.map((f) => (
               <li key={f.rule_id} className="flex items-start justify-between gap-3 rounded-xl border border-line px-3 py-2.5 dark:border-white/10">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                     <ToneBadge tone={findingTone(f)}>{findingText(f.status)}</ToneBadge>
-                  <span className="truncate text-sm font-medium text-ink-text dark:text-slate-100">{f.label}</span>
-                </div>
+                    <span className="truncate text-sm font-medium text-ink-text dark:text-slate-100">{ruleLabel(f)}</span>
+                  </div>
                 {f.detected_value && (
                   <p className="mt-1 truncate text-xs text-slate-500 dark:text-navy-300">{f.detected_value}</p>
                 )}
@@ -911,7 +923,7 @@ export default function ScanResultPage() {
       <section className="mt-6 rounded-2xl border border-line bg-white/60 p-5 dark:border-white/10 dark:bg-navy-900/60">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-text-soft dark:text-navy-300">
-            {t('result.changeTitle')} {doc.match_confidence ? `· ${doc.match_confidence.replace('_', ' ')}` : ''}
+            {t('result.changeTitle')} {doc.match_confidence ? `· ${matchText}` : ''}
           </h2>
           {(doc.changes ?? []).length > 0 && (
             <Button
@@ -984,7 +996,7 @@ export default function ScanResultPage() {
                     <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
                   )}
                   <span className="text-ink-text dark:text-slate-200">
-                    <span className="font-medium">{f.label}:</span> {f.explanation ?? f.status}
+                    <span className="font-medium">{ruleLabel(f)}:</span> {f.explanation ?? f.status}
                     {f.hint ? <span className="block text-xs text-slate-400">{t('result.hintPrefix')} {f.hint}</span> : null}
                   </span>
                 </div>

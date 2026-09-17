@@ -7,7 +7,7 @@ import { cn } from '../../utils/format'
 import { useToast } from '../ui/Toast'
 import { useLanguage } from '../../i18n/LanguageContext'
 import type { DictKey } from '../../i18n/en'
-import { roleLabel, homePath, type Role, type UserProfile } from '../../lib/rbac'
+import { homePath, type Role, type UserProfile } from '../../lib/rbac'
 import { AuditXMark } from '../brand/AuditXMark'
 import Avatar from '../ui/Avatar'
 
@@ -264,7 +264,7 @@ export default function Header({
                 <span className="block max-w-[140px] truncate text-sm font-semibold leading-tight text-ink-text dark:text-navy-50">
                   {profile?.name ?? 'User'}
                 </span>
-                <span className="block text-[11px] leading-tight text-ink-text-faint">{roleLabel(role)}</span>
+                <span className="block text-[11px] leading-tight text-ink-text-faint">{role === 'super_admin' ? t('role.superAdmin') : t('role.consumer')}</span>
               </span>
             </button>
           }

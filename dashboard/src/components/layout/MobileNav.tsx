@@ -1,27 +1,29 @@
 import { AlertTriangle, ClipboardList, LayoutDashboard, Plus, ScanLine, Settings, ShieldCheck, UserCircle2, Users } from 'lucide-react'
 import { cn } from '../../utils/format'
 import { type Role } from '../../lib/rbac'
+import { useLanguage } from '../../i18n/LanguageContext'
+import type { DictKey } from '../../i18n/en'
 
 interface MobileItem {
   path: string
-  label: string
+  labelKey: DictKey
   icon: typeof LayoutDashboard
 }
 
 const USER_ITEMS: MobileItem[] = [
-  { path: '/user-dashboard', label: 'Home', icon: LayoutDashboard },
-  { path: '/scan-product', label: 'Scan', icon: ScanLine },
-  { path: '/scan-history', label: 'History', icon: ClipboardList },
-  { path: '/settings', label: 'Settings', icon: Settings },
+  { path: '/user-dashboard', labelKey: 'nav.home', icon: LayoutDashboard },
+  { path: '/scan-product', labelKey: 'nav.scan', icon: ScanLine },
+  { path: '/scan-history', labelKey: 'nav.history', icon: ClipboardList },
+  { path: '/settings', labelKey: 'nav.settings', icon: Settings },
 ]
 
 const SUPER_ADMIN_ITEMS: MobileItem[] = [
-  { path: '/super-admin-dashboard', label: 'Home', icon: LayoutDashboard },
-  { path: '/admin/scans', label: 'Scans', icon: ClipboardList },
-  { path: '/admin/violations', label: 'Violations', icon: AlertTriangle },
-  { path: '/users', label: 'Users', icon: Users },
-  { path: '/admin-requests', label: 'Requests', icon: ShieldCheck },
-  { path: '/profile', label: 'Profile', icon: UserCircle2 },
+  { path: '/super-admin-dashboard', labelKey: 'nav.home', icon: LayoutDashboard },
+  { path: '/admin/scans', labelKey: 'nav.scans', icon: ClipboardList },
+  { path: '/admin/violations', labelKey: 'nav.violations', icon: AlertTriangle },
+  { path: '/users', labelKey: 'nav.users', icon: Users },
+  { path: '/admin-requests', labelKey: 'nav.requests', icon: ShieldCheck },
+  { path: '/profile', labelKey: 'nav.profile', icon: UserCircle2 },
 ]
 
 interface MobileNavProps {
@@ -32,6 +34,7 @@ interface MobileNavProps {
 }
 
 export default function MobileNav({ path, onNavigate, onAdd, role }: MobileNavProps) {
+  const { t } = useLanguage()
   const items = role === 'super_admin' ? SUPER_ADMIN_ITEMS : USER_ITEMS
 
   // Consumers get the floating scan button; super admins navigate to scan from the drawer.
@@ -68,7 +71,7 @@ export default function MobileNav({ path, onNavigate, onAdd, role }: MobileNavPr
           )}
         >
           <Icon className={cn('h-5 w-5', active && 'scale-105')} />
-          <span className="max-w-full truncate">{item.label}</span>
+          <span className="max-w-full truncate">{t(item.labelKey)}</span>
         </span>
       </button>
     )
@@ -83,7 +86,7 @@ export default function MobileNav({ path, onNavigate, onAdd, role }: MobileNavPr
       {showAdd ? (
         <button
           onClick={centerAction}
-          aria-label="Scan product"
+          aria-label={t('nav.scanProductAction')}
           className="relative -mt-5 flex h-12 w-12 shrink-0 items-center justify-center self-start rounded-full bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 text-white shadow-glow shadow-inset-top ring-4 ring-surface-bg transition-transform active:scale-95 dark:ring-navy-950"
         >
           <Plus className="h-6 w-6" />

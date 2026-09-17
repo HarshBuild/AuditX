@@ -24,6 +24,13 @@ function verdictTone(s: ScanRow): 'emerald' | 'amber' | 'rose' | 'cyan' {
   return 'cyan'
 }
 
+function verdictText(v: string | null | undefined, t: (k: 'verdict.compliant' | 'verdict.partial' | 'verdict.nonCompliant' | 'verdict.pending') => string): string {
+  if (v === 'COMPLIANT') return t('verdict.compliant')
+  if (v === 'PARTIALLY_COMPLIANT') return t('verdict.partial')
+  if (v === 'NON_COMPLIANT') return t('verdict.nonCompliant')
+  return t('verdict.pending')
+}
+
 /** Thumbnail that resolves Firebase Storage paths to download URLs. */
 function ScanThumb({ path, name }: { path: string; name: string }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -189,7 +196,7 @@ export default function RecordsPage() {
     {
       key: 'verdict',
       label: t('history.colVerdict'),
-      render: (s) => <ToneBadge tone={verdictTone(s)}>{s.verdict || 'Pending'}</ToneBadge>,
+      render: (s) => <ToneBadge tone={verdictTone(s)}>{verdictText(s.verdict, t)}</ToneBadge>,
     },
     {
       key: 'status',

@@ -22,43 +22,45 @@ import {
 } from 'lucide-react'
 import { cn } from '../../utils/format'
 import { type Role } from '../../lib/rbac'
+import { useLanguage } from '../../i18n/LanguageContext'
+import type { DictKey } from '../../i18n/en'
 import { LogoMark } from '../auth/guards'
 import Tooltip from '../ui/Tooltip'
 
 export interface NavItem {
   path: string
-  label: string
+  labelKey: DictKey
   icon: LucideIcon
 }
 
 export const USER_NAV: NavItem[] = [
-  { path: '/user-dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/scan-product', label: 'Scan Product', icon: ScanLine },
-  { path: '/scan-history', label: 'Scan History', icon: ClipboardList },
-  { path: '/my-reports', label: 'My Reports', icon: FileText },
-  { path: '/profile', label: 'Profile', icon: UserCircle2 },
-  { path: '/settings', label: 'Settings', icon: Settings },
+  { path: '/user-dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { path: '/scan-product', labelKey: 'nav.scanProduct', icon: ScanLine },
+  { path: '/scan-history', labelKey: 'nav.scanHistory', icon: ClipboardList },
+  { path: '/my-reports', labelKey: 'nav.myReports', icon: FileText },
+  { path: '/profile', labelKey: 'nav.profile', icon: UserCircle2 },
+  { path: '/settings', labelKey: 'nav.settings', icon: Settings },
 ]
 
 /** Super Admin — the ONLY operator role (inspector/admin capabilities merged). */
 export const SUPER_ADMIN_NAV: NavItem[] = [
-  { path: '/super-admin-dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/scan-product', label: 'Scan Product', icon: ScanLine },
-  { path: '/admin/scans', label: 'Product Scans', icon: ClipboardList },
-  { path: '/admin/violations', label: 'Violations', icon: AlertTriangle },
-  { path: '/admin/reports', label: 'Reports', icon: FileText },
-  { path: '/admin/evidence', label: 'Evidence', icon: Camera },
-  { path: '/admin/manufacturers', label: 'Manufacturers', icon: Factory },
-  { path: '/admin/products', label: 'Product Database', icon: Package },
-  { path: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-  { path: '/admin-requests', label: 'Staff Requests', icon: ClipboardCheck },
-  { path: '/admin-management', label: 'Admin Management', icon: ShieldCheck },
-  { path: '/users', label: 'Users', icon: Users },
-  { path: '/compliance-rules', label: 'Compliance Rules', icon: FileCheck2 },
-  { path: '/activity-logs', label: 'Activity Logs', icon: Activity },
-  { path: '/system-settings', label: 'System Settings', icon: Settings },
-  { path: '/profile', label: 'Profile', icon: UserCircle2 },
-  { path: '/settings', label: 'Settings', icon: Settings },
+  { path: '/super-admin-dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { path: '/scan-product', labelKey: 'nav.scanProduct', icon: ScanLine },
+  { path: '/admin/scans', labelKey: 'nav.productScans', icon: ClipboardList },
+  { path: '/admin/violations', labelKey: 'nav.violations', icon: AlertTriangle },
+  { path: '/admin/reports', labelKey: 'nav.reports', icon: FileText },
+  { path: '/admin/evidence', labelKey: 'nav.evidence', icon: Camera },
+  { path: '/admin/manufacturers', labelKey: 'nav.manufacturers', icon: Factory },
+  { path: '/admin/products', labelKey: 'nav.productDb', icon: Package },
+  { path: '/admin/analytics', labelKey: 'nav.analytics', icon: BarChart3 },
+  { path: '/admin-requests', labelKey: 'nav.staffRequests', icon: ClipboardCheck },
+  { path: '/admin-management', labelKey: 'nav.adminMgmt', icon: ShieldCheck },
+  { path: '/users', labelKey: 'nav.users', icon: Users },
+  { path: '/compliance-rules', labelKey: 'nav.complianceRules', icon: FileCheck2 },
+  { path: '/activity-logs', labelKey: 'nav.activityLogs', icon: Activity },
+  { path: '/system-settings', labelKey: 'nav.systemSettings', icon: Settings },
+  { path: '/profile', labelKey: 'nav.profile', icon: UserCircle2 },
+  { path: '/settings', labelKey: 'nav.settings', icon: Settings },
 ]
 
 export function sidebarItems(role: Role): NavItem[] {
@@ -77,6 +79,8 @@ function NavLink({
   collapsed: boolean
   onNavigate: (p: string) => void
 }) {
+  const { t } = useLanguage()
+  const label = t(item.labelKey)
   const Icon = item.icon
   const button = (
     <button
@@ -103,11 +107,11 @@ function NavLink({
           !collapsed && active && 'scale-110',
         )}
       />
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      {!collapsed && <span className="truncate">{label}</span>}
     </button>
   )
   return collapsed ? (
-    <Tooltip content={item.label} side="right" className="w-full">
+    <Tooltip content={label} side="right" className="w-full">
       {button}
     </Tooltip>
   ) : (
@@ -136,6 +140,7 @@ export default function Sidebar({
   role,
   onLogout,
 }: SidebarProps) {
+  const { t } = useLanguage()
   const items = sidebarItems(role)
   const navigate = (p: string) => {
     onNavigate(p)
@@ -151,7 +156,7 @@ export default function Sidebar({
       </nav>
       <div className="space-y-1 border-t border-white/10 p-3">
         {collapsed ? (
-          <Tooltip content="Logout" side="right" className="w-full">
+          <Tooltip content={t('header.logout')} side="right" className="w-full">
             <button
               onClick={onLogout}
               className="flex w-full items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-rose-300/90 transition-colors hover:bg-rose-500/10 hover:text-rose-200"
@@ -165,7 +170,7 @@ export default function Sidebar({
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-300/90 transition-colors hover:bg-rose-500/10 hover:text-rose-200"
           >
             <LogOut className="h-[18px] w-[18px] shrink-0" />
-            <span className="truncate">Logout</span>
+            <span className="truncate">{t('header.logout')}</span>
           </button>
         )}
         <button
@@ -174,10 +179,10 @@ export default function Sidebar({
             'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white',
             collapsed && 'justify-center px-0',
           )}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? t('nav.expand') : t('nav.collapse')}
         >
           <Braces className="h-[18px] w-[18px] rotate-90" />
-          {!collapsed && <span>Collapse</span>}
+          {!collapsed && <span>{t('nav.collapse')}</span>}
         </button>
       </div>
     </>
@@ -223,7 +228,7 @@ export default function Sidebar({
               </div>
               <button
                 onClick={onMobileClose}
-                aria-label="Close navigation"
+                aria-label={t('nav.closeNav')}
                 className="rounded-lg p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <X className="h-5 w-5" />
@@ -240,7 +245,7 @@ export default function Sidebar({
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-300/90 transition-colors hover:bg-rose-500/10 hover:text-rose-200"
               >
                 <LogOut className="h-[18px] w-[18px] shrink-0" />
-                <span>Logout</span>
+                <span>{t('header.logout')}</span>
               </button>
             </div>
           </aside>
