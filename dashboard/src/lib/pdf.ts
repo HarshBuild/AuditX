@@ -323,6 +323,7 @@ function buildCoverHtml(scan: ScanRow, lang: string, generatedAt: string): strin
   const label = `#${scan.id.slice(0, 8)}`
   return `
   <div style="box-sizing:border-box;width:794px;height:1123px;background:${IVORY};color:${BODY};font-family:${FONT};padding:64px 68px;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(to right,#FF9933 0%,#FF9933 33%,#FFFFFF 33%,#FFFFFF 66%,#138808 66%,#138808 100%);"></div>
     <div style="position:absolute;right:-70px;bottom:-70px;width:230px;height:230px;border-radius:50%;border:1px solid ${BORDER};"></div>
     <div style="position:absolute;right:76px;bottom:76px;width:10px;height:10px;border-radius:50%;background:${BLUE};"></div>
     <div style="position:absolute;right:-40px;bottom:-40px;width:140px;height:140px;border-radius:50%;border:1px solid ${BORDER};"></div>
@@ -593,7 +594,8 @@ function buildMisaReportHtml(d: InspectionDoc, generatedAt: string): string {
   return `
   <div style="font-family:${FONT};background:${IVORY};color:${BODY};padding:6px 40px 40px">
     <!-- Cover -->
-    <div style="background:${NAVY};border-radius:14px;color:#fff;padding:28px 26px;position:relative;overflow:hidden">
+    <div style="background:${NAVY};border-radius:14px;color:#fff;padding:28px 26px;padding-top:24px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(to right,#FF9933 0%,#FF9933 33%,#FFFFFF 33%,#FFFFFF 66%,#138808 66%,#138808 100%);"></div>
       <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#93A7C7;font-weight:700">Legal Metrology · Label Inspection Report</div>
       <div style="font-size:20px;font-weight:800;margin-top:12px;line-height:1.25">${esc(d.product_name || 'Product label inspection')}</div>
       <div style="font-size:11px;color:#C6D3EA;margin-top:8px">

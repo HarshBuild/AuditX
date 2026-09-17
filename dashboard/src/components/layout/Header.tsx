@@ -155,6 +155,7 @@ export default function Header({
 
   return (
     <header className="sticky top-0 z-header flex h-12 items-center gap-1.5 border-b border-line bg-surface/80 px-3 backdrop-blur-xl sm:h-14 sm:gap-3 sm:px-6 dark:border-navy-700/60 dark:bg-navy-950/70">
+      <div aria-hidden="true" className="tiranga-hairline absolute inset-x-0 top-0" />
 
       <button
         onClick={onMenu}

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import Button from '../ui/Button'
 import { ToneBadge } from '../ui/Badge'
+import ChakraLoader from '../ui/ChakraLoader'
 import { useToast } from '../ui/Toast'
 import {
   getInspection,
@@ -657,7 +658,7 @@ export default function ScanResultPage() {
         {failed ? (
           <TriangleAlert className="mx-auto h-10 w-10 text-amber-500" />
         ) : (
-          <Loader2 className="mx-auto h-10 w-10 animate-spin text-brand-500" />
+          <ChakraLoader size={44} />
         )}
         <h1 className="mt-4 text-xl font-bold text-ink-text dark:text-white">
           {failed ? t('result.readFailTitle') : t('result.analyzingTitle')}

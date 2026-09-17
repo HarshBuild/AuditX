@@ -420,3 +420,9 @@ html.dark .animated-bg::after {
   .btn-hover-lift, .btn-press-scale { animation: none !important; }
   .page-transition { transition-duration: 0.01ms !important; }
 }
+
+/* ---------- Tiranga hairline (Indian tricolor identity strip) ---------- */
+.tiranga-hairline {
+  height: 3px;
+  background: linear-gradient(to right, #FF9933 0%, #FF9933 33%, #FFFFFF 33%, #FFFFFF 66%, #138808 66%, #138808 100%);
+}
