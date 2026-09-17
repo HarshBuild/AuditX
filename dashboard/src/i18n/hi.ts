@@ -66,6 +66,9 @@ export const hi: Record<DictKey, string> = {
   'acc.pass': 'उत्तीर्ण',
   'acc.fail': 'अनुत्तीर्ण',
   'acc.loadFail': 'मूल्यांकन नहीं चल सका',
+  'acc.retry': 'पुनः प्रयास करें',
+  'acc.backendOld': 'बैकएंड अपडेट चाहिए',
+  'acc.backendOldMsg': 'लाइव API पुराना कोड चला रहा है जिसमें मूल्यांकन एंडपॉइंट नहीं है। AuditX-111 को नवीनतम commit से redeploy करें (Manual Deploy → Clear build cache & deploy), फिर पुनः प्रयास दबाएं।',
 
   // Login
   'login.title': 'वापसी पर स्वागत है',

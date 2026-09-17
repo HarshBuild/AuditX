@@ -64,6 +64,9 @@ export const en = {
   'acc.pass': 'Pass',
   'acc.fail': 'Fail',
   'acc.loadFail': 'Could not run evaluation',
+  'acc.retry': 'Try again',
+  'acc.backendOld': 'Backend update required',
+  'acc.backendOldMsg': 'The live API is running older code without the evaluation endpoint. Redeploy AuditX-111 with the latest commit (Manual Deploy → Clear build cache & deploy), then press Try again.',
 
   // Login
   'login.title': 'Welcome back',

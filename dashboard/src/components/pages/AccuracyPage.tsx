@@ -40,9 +40,11 @@ export default function AccuracyPage() {
   const { toast } = useToast()
   const [result, setResult] = useState<EvalResult | null>(null)
   const [running, setRunning] = useState(false)
+  const [outdatedBackend, setOutdatedBackend] = useState(false)
 
   const run = async () => {
     setRunning(true)
+    setOutdatedBackend(false)
     try {
       const token = await accessToken(true)
       if (!token) throw new Error('Not signed in')
@@ -56,7 +58,13 @@ export default function AccuracyPage() {
         },
         60_000,
       )
-      const data = (await res.json()) as EvalResult
+      const data = (await res.json().catch(() => ({}))) as EvalResult
+      if (res.status === 404 || /not found/i.test(data.error ?? '')) {
+        // The live backend predates the evaluation endpoint — actionable, not cryptic.
+        setOutdatedBackend(true)
+        setResult(null)
+        return
+      }
       if (!res.ok || !data.ok) throw new Error(data.error ?? `Request failed (${res.status})`)
       setResult(data)
     } catch (e) {
@@ -82,6 +90,24 @@ export default function AccuracyPage() {
 
       {!result ? (
         <div className="panel p-6">
+          {outdatedBackend ? (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-center">
+              <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{t('acc.backendOld')}</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-amber-700/80 dark:text-amber-300/80">
+                {t('acc.backendOldMsg')}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                icon={<Play className="h-4 w-4" />}
+                onClick={() => void run()}
+                loading={running}
+              >
+                {t('acc.retry')}
+              </Button>
+            </div>
+          ) : (
           <EmptyState
             title={t('acc.title')}
             message={t('acc.runFirst')}
@@ -91,6 +117,7 @@ export default function AccuracyPage() {
               </Button>
             }
           />
+          )}
         </div>
       ) : (
         <>
