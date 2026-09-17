@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Apple,
+  Aperture,
   Barcode,
   Camera,
   Check,
@@ -48,7 +49,11 @@ export default function ScanProductPage() {
   const [lang, setLang] = useState('en')
 
   const [submitting, setSubmitting] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Separate inputs: `capture` forces the camera on Android (no gallery
+  // chooser), so Gallery must use an input WITHOUT capture, while the
+  // device-camera fallback needs one WITH capture="environment".
+  const galleryInputRef = useRef<HTMLInputElement>(null)
+  const deviceCameraInputRef = useRef<HTMLInputElement>(null)
 
   const addFiles = useCallback(
     async (files: File[]) => {
@@ -83,6 +88,11 @@ export default function ScanProductPage() {
   const onCapture = (r: { file: File; dataUrl: string }) => {
     void addFiles([r.file])
     setCameraOpen(false)
+  }
+
+  const onGalleryFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    void addFiles(Array.from(e.target.files ?? []))
+    e.target.value = ''
   }
 
   const removePhoto = (index: number) => {
@@ -203,7 +213,7 @@ export default function ScanProductPage() {
                 <Button icon={<Camera className="h-4 w-4" />} onClick={() => setCameraOpen(true)}>
                   Camera
                 </Button>
-                <Button variant="outline" icon={<ImagePlus className="h-4 w-4" />} onClick={() => fileInputRef.current?.click()}>
+                <Button variant="outline" icon={<ImagePlus className="h-4 w-4" />} onClick={() => galleryInputRef.current?.click()}>
                   Gallery
                 </Button>
               </div>
@@ -236,7 +246,7 @@ export default function ScanProductPage() {
               {photos.length < MAX_PHOTOS && (
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => galleryInputRef.current?.click()}
                   disabled={preparing}
                   className="grid h-full min-h-[7.5rem] place-items-center rounded-xl border border-dashed border-line text-ink-text-soft transition-colors hover:border-brand-500 hover:text-brand-500 disabled:opacity-50 dark:border-white/15 dark:text-navy-300"
                 >
@@ -245,17 +255,25 @@ export default function ScanProductPage() {
               )}
             </div>
           )}
+          {/* Gallery input: NO capture attribute so mobile shows the
+              Photos/Files chooser instead of jumping to the camera. */}
           <input
-            ref={fileInputRef}
+            ref={galleryInputRef}
             type="file"
             accept="image/*"
             multiple
+            className="hidden"
+            onChange={onGalleryFiles}
+          />
+          {/* Device-camera fallback: forces the native camera app (used when
+              the in-app camera is blocked or unavailable on mobile). */}
+          <input
+            ref={deviceCameraInputRef}
+            type="file"
+            accept="image/*"
             capture="environment"
             className="hidden"
-            onChange={(e) => {
-              void addFiles(Array.from(e.target.files ?? []))
-              e.target.value = ''
-            }}
+            onChange={onGalleryFiles}
           />
         </div>
 
@@ -269,14 +287,22 @@ export default function ScanProductPage() {
           </div>
         )}
 
-        <Button
-          variant="outline"
-          className="mt-3 w-full sm:w-auto"
-          icon={<Camera className="h-4 w-4" />}
-          onClick={() => setCameraOpen(true)}
-        >
-          Open camera
-        </Button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            icon={<Camera className="h-4 w-4" />}
+            onClick={() => setCameraOpen(true)}
+          >
+            Open camera
+          </Button>
+          <Button
+            variant="outline"
+            icon={<Aperture className="h-4 w-4" />}
+            onClick={() => deviceCameraInputRef.current?.click()}
+          >
+            Device camera
+          </Button>
+        </div>
       </section>
 
       {/* 3 — Product details */}
