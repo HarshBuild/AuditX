@@ -11,6 +11,7 @@ import PageHeader from '../ui/PageHeader'
 import Tabs, { type TabItem } from '../ui/Tabs'
 import { useAuth } from '../../lib/auth'
 import { fetchScansForUserPage } from '../../lib/db'
+import { photoUrl } from '../../lib/inspection'
 import { scanStatusTone } from '../../lib/ui'
 import { formatDateTime } from '../../utils/format'
 import { displayProductName, displayText } from '../../lib/textnorm'
@@ -21,6 +22,48 @@ function verdictTone(s: ScanRow): 'emerald' | 'amber' | 'rose' | 'cyan' {
   if (s.verdict === 'PARTIALLY_COMPLIANT') return 'amber'
   if (s.verdict === 'NON_COMPLIANT') return 'rose'
   return 'cyan'
+}
+
+/** Thumbnail that resolves Firebase Storage paths to download URLs. */
+function ScanThumb({ path, name }: { path: string; name: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let live = true
+    setUrl(null)
+    setFailed(false)
+    const p = photoUrl(path)
+    if (!p) {
+      setFailed(true)
+      return
+    }
+    void p
+      .then((u) => {
+        if (live) setUrl(u)
+      })
+      .catch(() => {
+        if (live) setFailed(true)
+      })
+    return () => {
+      live = false
+    }
+  }, [path])
+  if (!url || failed) {
+    return (
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-xs font-bold text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+        {displayProductName(name).slice(0, 2).toUpperCase()}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      onError={() => setFailed(true)}
+      className="h-10 w-10 shrink-0 rounded-lg object-cover"
+      loading="lazy"
+    />
+  )
 }
 
 /** Cursor-paginated batch size for the scan-history list. */
@@ -102,11 +145,10 @@ export default function RecordsPage() {
 
   const statusTabs: TabItem[] = [
     { key: 'all', label: 'All', count: scans.length },
-    { key: 'analyzed', label: 'Analyzed', count: scans.filter((s) => s.status === 'analyzed').length },
-    { key: 'flagged', label: 'Flagged', count: scans.filter((s) => s.status === 'flagged').length },
-    { key: 'manual_review', label: 'Manual review', count: scans.filter((s) => s.status === 'manual_review').length },
-    { key: 'pending_review', label: 'Pending review', count: scans.filter((s) => s.status === 'pending_review').length },
-    { key: 'resolved', label: 'Resolved', count: scans.filter((s) => s.status === 'resolved').length },
+    { key: 'compliant', label: 'Compliant', count: scans.filter((s) => s.status === 'compliant').length },
+    { key: 'needs_review', label: 'Needs review', count: scans.filter((s) => s.status === 'needs_review').length },
+    { key: 'violation', label: 'Violation', count: scans.filter((s) => s.status === 'violation').length },
+    { key: 'critical', label: 'Critical', count: scans.filter((s) => s.status === 'critical').length },
   ]
 
   const columns: Array<DataColumn<ScanRow>> = [
@@ -115,13 +157,7 @@ export default function RecordsPage() {
       label: 'Product',
       render: (s) => (
         <div className="flex min-w-[220px] items-center gap-3">
-          {s.image_url ? (
-            <img src={s.image_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
-          ) : (
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-xs font-bold text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-              {displayProductName(s.product_name).slice(0, 2).toUpperCase()}
-            </span>
-          )}
+          <ScanThumb path={s.image_url} name={s.product_name} />
           <div className="min-w-0">
             <p className="truncate font-semibold text-slate-800 dark:text-slate-100">{s.product_name?.trim() ? displayProductName(s.product_name) : 'Untitled'}</p>
             <p className="truncate text-xs text-slate-400">{displayText(s.brand || s.manufacturer) || '—'}</p>
@@ -139,12 +175,12 @@ export default function RecordsPage() {
       key: 'score',
       label: 'Score',
       className: 'text-right',
-      render: (s) => <span className="font-bold text-slate-700 dark:text-slate-200">{s.overall_score}</span>,
+      render: (s) => <span className="font-bold text-slate-700 dark:text-slate-200">{s.overall_score ?? '—'}</span>,
     },
     {
       key: 'verdict',
       label: 'Verdict',
-      render: (s) => <ToneBadge tone={verdictTone(s)}>{s.verdict}</ToneBadge>,
+      render: (s) => <ToneBadge tone={verdictTone(s)}>{s.verdict || 'Pending'}</ToneBadge>,
     },
     {
       key: 'status',

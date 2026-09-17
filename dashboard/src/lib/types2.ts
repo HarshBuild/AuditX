@@ -1,6 +1,16 @@
 /* PART 2 domain types (mirror the Supabase schema fields) */
 
-export type ScanStatus = 'pending_review' | 'analyzed' | 'flagged' | 'manual_review' | 'resolved'
+export type ScanStatus =
+  | 'pending_review'
+  | 'analyzed'
+  | 'flagged'
+  | 'manual_review'
+  | 'resolved'
+  // Current inspection statuses written by the backend (InspectionStatus).
+  | 'compliant'
+  | 'needs_review'
+  | 'violation'
+  | 'critical'
 
 /** Which processing engine actually produced this scan (detected at runtime). */
 export type ScanEngine = 'cloud_function' | 'gemini' | 'local' | 'fast' | 'queued' | 'unknown'

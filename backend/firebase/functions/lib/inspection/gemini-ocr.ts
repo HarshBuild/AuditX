@@ -7,7 +7,7 @@
  */
 
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectionCategory } from './types.js'
-import { DEFAULT_GEMINI_MODEL, geminiGenerateContent, dataUrlToInline, extractJson } from '../gemini.js'
+import { DEFAULT_GEMINI_MODEL, geminiGenerateContent, dataUrlToInline, extractJson, withTransientRetry } from '../gemini.js'
 
 const FIELD_KEYS = [
   'commodity_name',
@@ -96,13 +96,13 @@ export async function geminiVisionOCR(
     parts.push({ text: `[Photo ${i + 1}]` })
   }
 
-  const answer = await geminiGenerateContent({
+  const answer = await withTransientRetry(() => geminiGenerateContent({
     model,
     system: SYSTEM_PROMPT,
     parts,
     temperature: 0.05,
     maxOutputTokens: 8192,
-  })
+  }))
   const parsed = extractJson(answer)
   const rawImages = Array.isArray(parsed?.images) ? parsed.images : []
 

@@ -22,6 +22,12 @@ export function severityValue(sev: string): Severity {
 
 export function scanStatusTone(status: string): BadgeTone {
   switch (status) {
+    // Current inspection statuses (backend InspectionStatus).
+    case 'compliant': return 'emerald'
+    case 'needs_review': return 'amber'
+    case 'violation': return 'rose'
+    case 'critical': return 'rose'
+    // Legacy workflow statuses (old documents).
     case 'analyzed': return 'cyan'
     case 'flagged': return 'amber'
     case 'manual_review': return 'brand'

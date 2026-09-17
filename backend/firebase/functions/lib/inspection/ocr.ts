@@ -313,6 +313,8 @@ export async function runVerificationReports(input: ProviderInput): Promise<Repo
     const reasons = outcomes.map((o) => `${o.provider}: ${o.error ?? 'failed'}`).join('; ')
     throw new Error(
       `The label could not be read (${reasons}). ` +
+      'Checklist for the operator: (1) Report 1 needs the Python OCR service live and PYTHON_OCR_URL set on the backend; ' +
+      '(2) Report 2 needs GEMINI_API_KEY set; (3) Report 3 needs OPENROUTER_API_KEY set. ' +
       'Retake the photo with better lighting and retry — no fabricated data is ever returned.',
     )
   }

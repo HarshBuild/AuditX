@@ -9,7 +9,7 @@
  */
 
 import type { OcrConfidence, OcrProviderResult, PerImageExtract, PhotoInput, InspectionCategory } from './types.js'
-import { extractJson } from '../gemini.js'
+import { extractJson, withTransientRetry } from '../gemini.js'
 
 const BASE = 'https://openrouter.ai/api/v1'
 
@@ -117,19 +117,28 @@ export async function openRouterVisionOCR(
   if (process.env.OPENROUTER_SITE_URL) headers['HTTP-Referer'] = process.env.OPENROUTER_SITE_URL
   if (process.env.OPENROUTER_APP_NAME) headers['X-Title'] = process.env.OPENROUTER_APP_NAME
 
-  const res = await fetch(`${BASE}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: openRouterModel(),
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content },
-      ],
-      temperature: 0.05,
-      max_tokens: 8192,
-    }),
-    signal: AbortSignal.timeout(90_000),
+  const res = await withTransientRetry(async () => {
+    const r = await fetch(`${BASE}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: openRouterModel(),
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content },
+        ],
+        temperature: 0.05,
+        max_tokens: 8192,
+      }),
+      signal: AbortSignal.timeout(90_000),
+    })
+    // Throw transient statuses so the retry wrapper catches them; other
+    // statuses fall through to the honest error below.
+    if (r.status === 429 || r.status === 502 || r.status === 503) {
+      const body = await r.text().catch(() => '')
+      throw new Error(`OpenRouter ${r.status}: ${body.slice(0, 200)}`)
+    }
+    return r
   })
   if (!res.ok) {
     const err = await res.text().catch(() => '')

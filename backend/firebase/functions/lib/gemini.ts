@@ -87,3 +87,42 @@ export function extractJson(text: string): any {
     return m ? JSON.parse(m[0]) : null
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Transient-failure retry (503 overloaded / 429 rate-limit / network) */
+/* ------------------------------------------------------------------ */
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** True for errors worth one retry: overloaded, rate-limited, bad gateway, network blip. */
+export function isTransientError(e: unknown): boolean {
+  const msg = `${(e as Error)?.message ?? e}`.toLowerCase()
+  return (
+    /\b(503|502|429)\b/.test(msg) ||
+    msg.includes('unavailable') ||
+    msg.includes('overloaded') ||
+    msg.includes('high demand') ||
+    msg.includes('rate limit') ||
+    msg.includes('rate-limit') ||
+    msg.includes('fetch failed') ||
+    msg.includes('timeout') ||
+    msg.includes('temporarily')
+  )
+}
+
+/**
+ * Run fn once; on a transient error wait `delayMs` and retry once more.
+ * Config errors (401/403/404/400) fail immediately — retrying is useless.
+ */
+export async function withTransientRetry<T>(fn: () => Promise<T>, delayMs = 5000): Promise<T> {
+  try {
+    return await fn()
+  } catch (e) {
+    if (!isTransientError(e)) throw e
+    console.warn(`⚠️ transient AI error (${(e as Error)?.message?.slice(0, 120) ?? e}) — retrying once in ${delayMs}ms.`)
+    await sleep(delayMs)
+    return fn()
+  }
+}
