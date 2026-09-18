@@ -21,7 +21,15 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ ok: false, error: 'Report id is required.' })
       return
     }
-    const doc = await getScanDoc(id).catch(() => null)
+    let doc: Record<string, unknown> | null
+    try {
+      doc = await getScanDoc(id)
+    } catch (e) {
+      // Database/connection failure is NOT "not found" — surface it honestly.
+      console.error('⚠️ /api/verify lookup failed:', (e as Error)?.message ?? e)
+      res.status(500).json({ ok: false, error: `Verification lookup failed: ${(e as Error)?.message ?? e}` })
+      return
+    }
     if (!doc) {
       res.status(404).json({ ok: false, error: 'Report not found.' })
       return
