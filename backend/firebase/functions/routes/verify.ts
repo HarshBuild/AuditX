@@ -27,9 +27,10 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
       return
     }
     const d = doc as Record<string, unknown>
-    // Only inspections with a completed analysis are verifiable.
+    // Only inspections with a completed analysis are verifiable. A distinct
+    // code lets the UI explain instead of showing a generic missing page.
     if (d.ocr_status !== 'done') {
-      res.status(404).json({ ok: false, error: 'Report not found.' })
+      res.status(404).json({ ok: false, error: 'INCOMPLETE:Report analysis is not complete yet.' })
       return
     }
     res.json({

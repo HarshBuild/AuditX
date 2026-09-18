@@ -25,7 +25,7 @@ export default function VerifyPage() {
   const { t } = useLanguage()
   const [data, setData] = useState<Verification | null>(null)
   const [loading, setLoading] = useState(true)
-  const [failed, setFailed] = useState(false)
+  const [failKind, setFailKind] = useState<'missing' | 'incomplete' | 'network' | null>(null)
 
   useEffect(() => {
     let live = true
@@ -33,12 +33,21 @@ export default function VerifyPage() {
       try {
         if (!id) throw new Error('missing id')
         const base = CONFIG.AUDITX_API_URL.replace(/\/+$/, '')
-        const res = await fetchWithTimeout(`${base}/api/verify/${encodeURIComponent(id)}`, {}, 30_000)
-        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; verification?: Verification }
-        if (!res.ok || !json.ok || !json.verification) throw new Error('not found')
+        let res: Response
+        try {
+          res = await fetchWithTimeout(`${base}/api/verify/${encodeURIComponent(id)}`, {}, 30_000)
+        } catch (e) {
+          if (live) setFailKind('network')
+          throw e
+        }
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; verification?: Verification; error?: string }
+        if (!res.ok || !json.ok || !json.verification) {
+          if (live) setFailKind(String(json.error ?? '').startsWith('INCOMPLETE:') ? 'incomplete' : 'missing')
+          return
+        }
         if (live) setData(json.verification)
       } catch {
-        if (live) setFailed(true)
+        if (live) setFailKind((k) => k ?? 'missing')
       } finally {
         if (live) setLoading(false)
       }
@@ -67,11 +76,15 @@ export default function VerifyPage() {
               <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
               <p className="mt-3 text-sm text-slate-500">{t('verify.loading')}</p>
             </div>
-          ) : failed || !data ? (
+          ) : failKind || !data ? (
             <div className="py-8 text-center">
               <AlertCircle className="mx-auto h-10 w-10 text-rose-500" />
-              <p className="mt-3 font-bold text-ink-text dark:text-white">{t('verify.notFound')}</p>
-              <p className="mt-1 text-sm text-slate-500">{t('verify.notFoundMsg')}</p>
+              <p className="mt-3 font-bold text-ink-text dark:text-white">
+                {failKind === 'incomplete' ? t('verify.incomplete') : failKind === 'network' ? t('verify.unreachable') : t('verify.notFound')}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {failKind === 'incomplete' ? t('verify.incompleteMsg') : failKind === 'network' ? t('verify.unreachableMsg') : t('verify.notFoundMsg')}
+              </p>
             </div>
           ) : (
             <div className="mt-5">
