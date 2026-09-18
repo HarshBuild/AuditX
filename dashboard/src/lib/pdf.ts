@@ -16,6 +16,7 @@
 /* eslint-disable no-console */
 import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
+import QRCode from 'qrcode'
 import { translate } from '../i18n/report'
 import { riskBand, riskTone } from './risk'
 import { formatDateTime } from '../utils/format'
@@ -505,7 +506,7 @@ const DETAIL_ROWS: Array<[string, string]> = [
   ['imported_manufacturer_detail', 'Importer detail'],
 ]
 
-function buildMisaReportHtml(d: InspectionDoc, generatedAt: string): string {
+function buildMisaReportHtml(d: InspectionDoc, generatedAt: string, qr?: { dataUrl: string; url: string; caption: string }): string {
   const card = (title: string, body: string) => `
     <div style="margin-top:18px">
       <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:${SILVER};font-weight:600">${esc(title)}</div>
@@ -604,6 +605,10 @@ function buildMisaReportHtml(d: InspectionDoc, generatedAt: string): string {
       <div style="display:inline-flex;align-items:center;gap:8px;margin-top:18px;padding:8px 14px;border-radius:999px;background:${st.bg};color:${st.text};font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px">
         ${esc(st.label)}
       </div>
+      ${qr ? `<div style="position:absolute;right:26px;bottom:26px;text-align:center;background:#fff;border-radius:10px;padding:8px 8px 6px;">
+        <img src="${qr.dataUrl}" style="width:74px;height:74px;display:block;" />
+        <div style="font-size:7px;color:${SLATE};margin-top:4px;max-width:90px;">${esc(qr.caption)}</div>
+      </div>` : ''}
       <div style="position:absolute;right:26px;top:26px;text-align:center;background:rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px">
         <div style="font-size:26px;font-weight:800;color:${st.bg === RED_BG ? '#F5A3A3' : '#fff'}">${esc(score)}</div>
         <div style="font-size:9px;letter-spacing:1px;color:#93A7C7">/ 100</div>
@@ -654,9 +659,17 @@ function buildMisaReportHtml(d: InspectionDoc, generatedAt: string): string {
 }
 
 export async function downloadInspectionReport(d: InspectionDoc, lang = 'en'): Promise<string> {
-  void lang
   const generatedAt = new Date().toISOString()
-  const html = buildMisaReportHtml(d, generatedAt)
+  // QR to the public verification page (best-effort — report works without it).
+  let qr: { dataUrl: string; url: string; caption: string } | undefined
+  try {
+    const url = `${window.location.origin}/verify/${encodeURIComponent(d.id)}`
+    const dataUrl = await QRCode.toDataURL(url, { width: 220, margin: 1 })
+    qr = { dataUrl, url, caption: t(lang, 'verify_qr') }
+  } catch {
+    qr = undefined
+  }
+  const html = buildMisaReportHtml(d, generatedAt, qr)
 
   const el = document.createElement('div')
   el.setAttribute('aria-hidden', 'true')

@@ -37,6 +37,7 @@ import claimsRouter from './routes/claims.js'
 import ocrRouter from './routes/ocr.js'
 import productsRouter from './routes/products.js'
 import inspectionsRouter from './routes/inspections.js'
+import verifyRouter from './routes/verify.js'
 
 // --- Express app ---
 const app: express.Express = express()
@@ -147,6 +148,8 @@ app.use('/api/set-claims', firebaseAuthMiddleware, claimsRouter)
 app.use('/api/ocr', firebaseAuthMiddleware, ocrRouter)
 app.use('/api/products', firebaseAuthMiddleware, productsRouter)
 app.use('/api/inspections', firebaseAuthMiddleware, inspectionsRouter)
+// Public (no auth): QR-code report verification — safe fields only.
+app.use('/api/verify', verifyRouter)
 
 // --- 404 ---
 app.use((_req: Request, _res: Response): void => {

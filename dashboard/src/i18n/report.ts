@@ -67,6 +67,7 @@ type CopyKey =
   | 'back'
   | 'side'
   | 'other'
+  | 'verify_qr'
 
 const en: Record<CopyKey, string> = {
   report_title: 'AuditX — Compliance Inspection Report',
@@ -118,6 +119,7 @@ const en: Record<CopyKey, string> = {
   back: 'Back',
   side: 'Side',
   other: 'Other',
+  verify_qr: 'Scan to verify online',
 }
 
 const hi: Record<CopyKey, string> = {
@@ -170,6 +172,7 @@ const hi: Record<CopyKey, string> = {
   back: 'पीछे',
   side: 'किनारा',
   other: 'अन्य',
+  verify_qr: 'ऑनलाइन सत्यापित करने के लिए स्कैन करें',
 }
 
 const ta: Record<CopyKey, string> = {
@@ -221,6 +224,7 @@ const ta: Record<CopyKey, string> = {
   front: 'முன்',
   back: 'பின்',
   side: 'பக்கம்',
+  verify_qr: 'Scan to verify online',
   other: 'மற்றவை',
 }
 
@@ -273,6 +277,7 @@ const te: Record<CopyKey, string> = {
   front: 'ముందు',
   back: 'వెనుక',
   side: 'ప్రక్క',
+  verify_qr: 'Scan to verify online',
   other: 'ఇతర',
 }
 
@@ -325,6 +330,7 @@ const bn: Record<CopyKey, string> = {
   front: 'সামনে',
   back: 'পেছনে',
   side: 'পার্শ্ব',
+  verify_qr: 'Scan to verify online',
   other: 'অন্যান্য',
 }
 
@@ -377,6 +383,7 @@ const mr: Record<CopyKey, string> = {
   front: 'समोर',
   back: 'मागे',
   side: 'बाजू',
+  verify_qr: 'Scan to verify online',
   other: 'इतर',
 }
 
@@ -429,6 +436,7 @@ const gu: Record<CopyKey, string> = {
   front: 'આગળ',
   back: 'પાછળ',
   side: 'બાજુ',
+  verify_qr: 'Scan to verify online',
   other: 'અન્ય',
 }
 
@@ -481,6 +489,7 @@ const pa: Record<CopyKey, string> = {
   front: 'ਅੱਗੇ',
   back: 'ਪਿੱਛੇ',
   side: 'ਪਾਸਾ',
+  verify_qr: 'Scan to verify online',
   other: 'ਹੋਰ',
 }
 

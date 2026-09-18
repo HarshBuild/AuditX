@@ -4,6 +4,7 @@ import Workspace from '../components/layout/Workspace'
 import LandingPage from '../components/pages/LandingPage'
 import LoginPage from '../components/pages/LoginPage'
 import SignupPage from '../components/pages/SignupPage'
+import VerifyPage from '../components/pages/VerifyPage'
 import ProfilePage from '../components/pages/ProfilePage'
 import SettingsPage from '../components/pages/SettingsPage'
 import HelpPage from '../components/pages/HelpPage'
@@ -222,11 +223,12 @@ function SharedGate() {
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* Public landing + auth */}
+      {/* Public landing + auth + report verification (QR, no login) */}
       <Route path="/" element={<LandingGate />} />
       <Route element={<PublicGate />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/verify/:id" element={<VerifyPage />} />
       </Route>
 
       {/* Authenticated, account-status gates (no app shell) */}
