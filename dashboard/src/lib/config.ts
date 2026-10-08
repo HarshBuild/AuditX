@@ -9,19 +9,24 @@
 
 const read = (envKey: string, lsKey: string, fallback: string) =>
   (import.meta.env[envKey] as string | undefined) ||
-  localStorage.getItem(lsKey) ||
+  (typeof localStorage !== 'undefined' ? localStorage.getItem(lsKey) : null) ||
   fallback
 
+// NOTE: No hardcoded Supabase URL/key here on purpose.
+// The old fallback 'https://imcymvfoicfvskyvdyko.supabase.co' is dead
+// (DNS NXDOMAIN) and caused confusing signup failures.
+// Configure via dashboard/.env (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)
+// or localStorage overrides (mc_supabase_url / mc_supabase_anon_key).
 export const CONFIG = {
   SUPABASE_URL: read(
     'VITE_SUPABASE_URL',
     'mc_supabase_url',
-    'https://imcymvfoicfvskyvdyko.supabase.co',
+    '',
   ),
   SUPABASE_ANON_KEY: read(
     'VITE_SUPABASE_ANON_KEY',
     'mc_supabase_anon_key',
-    'sb_publishable_m6SGr96VZo0n3jVbQ-Q49A_UATQ4vCF',
+    '',
   ),
   /**
    * AuditX Express API base URL (Render service `AuditX-111`).
@@ -32,6 +37,22 @@ export const CONFIG = {
    */
   AUDITX_API_URL:
     (import.meta.env.VITE_AUDITX_API_URL as string | undefined) ||
-    localStorage.getItem('mc_auditx_api_url') ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('mc_auditx_api_url') : null) ||
     'https://auditx-111.onrender.com',
+}
+
+/** True when a plausible Supabase URL + anon key are configured. */
+export function isSupabaseConfigured(): boolean {
+  const url = CONFIG.SUPABASE_URL.trim()
+  const key = CONFIG.SUPABASE_ANON_KEY.trim()
+  return url.startsWith('https://') && url.includes('.supabase.co') && key.length > 20
+}
+
+/** Actionable message shown when Supabase is not configured. */
+export function supabaseConfigError(): string {
+  return (
+    'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in dashboard/.env ' +
+    '(see .env.example), or in the browser via localStorage keys mc_supabase_url / mc_supabase_anon_key, ' +
+    'then restart the dev server. Get values from Supabase Dashboard → Project Settings → Data API.'
+  )
 }

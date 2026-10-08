@@ -6,15 +6,23 @@
  */
 
 import { createClient, type SupabaseClient, type User as SupabaseUser } from '@supabase/supabase-js'
-import { CONFIG } from './config'
+import { CONFIG, isSupabaseConfigured } from './config'
 
-export const supabase: SupabaseClient = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+// createClient requires non-empty args at import time. When .env is missing
+// we use a dummy placeholder so the app can boot and show an actionable
+// "Supabase is not configured" error instead of crashing or hitting DNS NXDOMAIN.
+const SUPABASE_URL = CONFIG.SUPABASE_URL.trim() || 'https://placeholder.supabase.co'
+const SUPABASE_ANON_KEY = CONFIG.SUPABASE_ANON_KEY.trim() || 'placeholder-anon-key'
+
+export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
   },
 })
+
+export { isSupabaseConfigured }
 
 /*
  * Normalized authenticated-user shape kept identical to the previous

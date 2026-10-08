@@ -7,24 +7,6 @@
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- Helper: is the caller staff? (SECURITY DEFINER so RLS can use it)
--- ---------------------------------------------------------------------
-create or replace function public.is_admin()
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid()
-      and role in ('admin', 'super_admin', 'inspector')
-      and status = 'active'
-  );
-$$;
-
--- ---------------------------------------------------------------------
 -- profiles — one row per auth user (id = auth.users.id)
 -- ---------------------------------------------------------------------
 create table if not exists public.profiles (
@@ -41,6 +23,25 @@ create table if not exists public.profiles (
   last_login timestamptz,
   updated_at timestamptz not null default now()
 );
+
+-- ---------------------------------------------------------------------
+-- Helper: is the caller staff? (SECURITY DEFINER so RLS can use it)
+-- Must be created AFTER profiles so the return query parses.
+-- ---------------------------------------------------------------------
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid()
+      and role in ('admin', 'super_admin', 'inspector')
+      and status = 'active'
+  );
+$$;
 
 -- ---------------------------------------------------------------------
 -- scans — inspection documents. Queryable mirrors + full `data` jsonb.

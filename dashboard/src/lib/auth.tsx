@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { supabase, mapSupabaseUser, type AuthUser } from './supabase'
+import { CONFIG, isSupabaseConfigured, supabaseConfigError } from './config'
 import { useToast } from '../components/ui/Toast'
 import {
   defaultProfileForUser,
@@ -201,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (email: string, password: string) => {
+      if (!isSupabaseConfigured()) return { error: supabaseConfigError() }
       try {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) return { error: friendlyAuthError(error) }
@@ -240,6 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(
     async (input: SignUpInput): Promise<SignUpResult> => {
+      if (!isSupabaseConfigured()) return { error: supabaseConfigError() }
       try {
         const { data, error } = await supabase.auth.signUp({
           email: input.email,
@@ -329,6 +332,7 @@ async function readCurrentProfile(currentUser: AuthUser): Promise<UserProfile | 
 /** Map Supabase auth errors to safe, actionable messages (never leak account existence). */
 function friendlyAuthError(e: unknown): string {
   const raw = `${(e as { message?: string })?.message ?? ''}`.toLowerCase()
+  const url = CONFIG.SUPABASE_URL || '(missing)'
   if (!raw) return 'Sign in failed with an unexpected error. Please try again — if this keeps happening, contact the administrator.'
   if (raw.includes('invalid login credentials') || raw.includes('invalid email or password') || raw.includes('email not confirmed')) {
     if (raw.includes('email not confirmed')) return 'Please confirm your email address first — check your inbox for the confirmation link.'
@@ -346,8 +350,8 @@ function friendlyAuthError(e: unknown): string {
   if (raw.includes('rate limit') || raw.includes('too many') || raw.includes('429')) {
     return 'Too many attempts. Wait a minute and try again.'
   }
-  if (raw.includes('network') || raw.includes('fetch failed') || raw.includes('timeout')) {
-    return 'Network error. Check your connection and try again.'
+  if (raw.includes('network') || raw.includes('fetch failed') || raw.includes('timeout') || raw.includes('failed to fetch') || raw.includes('nxdomain') || raw.includes('enotfound')) {
+    return `Cannot reach Supabase at ${url}. Check VITE_SUPABASE_URL (dashboard/.env or localStorage mc_supabase_url) — the old imcymvfoicfvskyvdyko.supabase.co project no longer exists (DNS NXDOMAIN). Use your live Project URL from Supabase Dashboard → Project Settings → Data API.`
   }
   if (raw.includes('provider') && (raw.includes('disabled') || raw.includes('not enabled') || raw.includes('not supported'))) {
     return 'Google sign-in isn\u2019t enabled for this project yet. Ask the administrator to switch it on in Supabase Authentication → Providers.'
