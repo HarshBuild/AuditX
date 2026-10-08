@@ -7,27 +7,22 @@
  * backend (service role), never by the config values themselves.
  */
 
-const read = (envKey: string, lsKey: string, fallback: string) =>
-  (import.meta.env[envKey] as string | undefined) ||
-  (typeof localStorage !== 'undefined' ? localStorage.getItem(lsKey) : null) ||
-  fallback
-
-// NOTE: No hardcoded Supabase URL/key here on purpose.
-// The old fallback 'https://imcymvfoicfvskyvdyko.supabase.co' is dead
-// (DNS NXDOMAIN) and caused confusing signup failures.
-// Configure via dashboard/.env (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)
-// or localStorage overrides (mc_supabase_url / mc_supabase_anon_key).
+function ls(key: string): string | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
+  } catch {
+    return null
+  }
+}
 export const CONFIG = {
-  SUPABASE_URL: read(
-    'VITE_SUPABASE_URL',
-    'mc_supabase_url',
+  SUPABASE_URL:
+    (import.meta.env.VITE_SUPABASE_URL as string | undefined) ||
+    ls('mc_supabase_url') ||
     '',
-  ),
-  SUPABASE_ANON_KEY: read(
-    'VITE_SUPABASE_ANON_KEY',
-    'mc_supabase_anon_key',
+  SUPABASE_ANON_KEY:
+    (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ||
+    ls('mc_supabase_anon_key') ||
     '',
-  ),
   /**
    * AuditX Express API base URL (Render service `AuditX-111`).
    * Used for scan analysis, assistant, barcode lookup, product-database
